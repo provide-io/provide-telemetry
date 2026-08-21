@@ -10,11 +10,18 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.tooling
+# ci/publish-npm.sh is a POSIX shell script executed directly. Windows cannot
+# exec it (WinError 193) and never needs to: the release workflow's publish-npm
+# job runs on ubuntu-24.04.
+pytestmark = [
+    pytest.mark.tooling,
+    pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell script; publish runs on ubuntu"),
+]
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "ci" / "publish-npm.sh"
 

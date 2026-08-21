@@ -25,10 +25,7 @@ export const CONTEXT_MANAGER_MESSAGE =
   'in this Node application.';
 
 export type ContextManagerOutcome =
-  | 'installed'
-  | 'unsupported-runtime'
-  | 'module-missing'
-  | 'install-failed';
+  'installed' | 'unsupported-runtime' | 'module-missing' | 'install-failed';
 
 export interface ContextManagerDeps {
   isNode: () => boolean;
@@ -79,9 +76,8 @@ export async function installContextManager(
     const api = (await deps.importApi()) as {
       context: { setGlobalContextManager: (manager: unknown) => void };
     };
-    const Ctor = (
-      hooks as { AsyncLocalStorageContextManager: new () => { enable: () => unknown } }
-    ).AsyncLocalStorageContextManager;
+    const Ctor = (hooks as { AsyncLocalStorageContextManager: new () => { enable: () => unknown } })
+      .AsyncLocalStorageContextManager;
     const manager = new Ctor();
     manager.enable();
     api.context.setGlobalContextManager(manager);
