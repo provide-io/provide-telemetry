@@ -148,7 +148,17 @@ def test_parity_event_name_contract_covers_every_fixture_case() -> None:
 
     import yaml
 
-    repo_root = Path(__file__).resolve().parents[2]
+    # Anchor to the real repo root via VERSION rather than counting parents:
+    # mutmut relocates test files into mutants/, where parents[2] is the mutant
+    # tree and spec/ does not exist. Same reason as
+    # tests/parity/test_behavioral_fixtures.py::_find_repo_root_from.
+    def _repo_root(start: Path) -> Path:
+        for parent in start.resolve().parents:
+            if (parent / "VERSION").exists():
+                return parent
+        raise FileNotFoundError(f"Could not locate repo root from {start}")  # pragma: no cover
+
+    repo_root = _repo_root(Path(__file__))
     fixtures = yaml.safe_load((repo_root / "spec" / "behavioral_fixtures.yaml").read_text())
     cases = fixtures["event_name_contract"]
 
