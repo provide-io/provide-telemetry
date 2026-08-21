@@ -63,13 +63,68 @@ public class PiiModeAndSecretTests
     }
 
     [Fact]
-    public void TruncateModeWithNoLimitLeavesTheTextWhole()
+    public void TruncateModeWithAZeroLimitKeepsOnlyTheSuffixAndReceiptsIt()
     {
+        // Zero is a limit, not "no limit": a rule that keeps nothing must not
+        // hand the whole value through — and the value did change, so the
+        // change is receipted like any other truncation.
+        Receipts.EnableReceipts(true, "", "svc");
         Pii.RegisterPIIRule(new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = 0 });
 
         var sanitized = Sanitize(new Dictionary<string, object?> { ["note"] = "a long note" });
 
-        Assert.Equal("a long note", sanitized["note"]);
+        Assert.Equal(Pii.TruncationSuffix, sanitized["note"]);
+        Assert.Equal("truncate", Assert.Single(Receipts.GetEmittedReceiptsForTests()).Action);
+    }
+
+    [Fact]
+    public void TruncateModeWithoutALimitKeepsEightScalarValues()
+    {
+        Assert.Equal(8, new PIIRule().TruncateTo);
+        Assert.Equal(8, Pii.DefaultTruncateTo);
+        Pii.RegisterPIIRule(new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate });
+
+        var sanitized = Sanitize(new Dictionary<string, object?> { ["note"] = "abcdefghij" });
+
+        Assert.Equal("abcdefgh" + Pii.TruncationSuffix, sanitized["note"]);
+    }
+
+    [Fact]
+    public void TruncateModeClampsANegativeLimitToZero()
+    {
+        Pii.RegisterPIIRule(new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = -3 });
+
+        var sanitized = Sanitize(new Dictionary<string, object?> { ["note"] = "hello" });
+
+        Assert.Equal(Pii.TruncationSuffix, sanitized["note"]);
+    }
+
+    [Fact]
+    public void TruncateModeCountsScalarValuesNotUtf16CodeUnits()
+    {
+        // Each emoji is one scalar value but two UTF-16 code units. Counting
+        // code units would cut the second emoji in half; counting scalar
+        // values keeps three whole ones and leaves a three-emoji string alone.
+        Pii.RegisterPIIRule(new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = 3 });
+        Pii.RegisterPIIRule(new PIIRule { Path = new[] { "fits" }, Mode = PiiModes.Truncate, TruncateTo = 3 });
+
+        var sanitized = Sanitize(new Dictionary<string, object?> { ["note"] = "😀😀😀😀😀", ["fits"] = "😀😀😀" });
+
+        Assert.Equal("😀😀😀" + Pii.TruncationSuffix, sanitized["note"]);
+        Assert.Equal("😀😀😀", sanitized["fits"]);
+    }
+
+    [Fact]
+    public void TruncateModeLeavesAnEmptyStringAloneEvenAtLimitZero()
+    {
+        // Nothing to shorten, so nothing changes and nothing is receipted.
+        Receipts.EnableReceipts(true, "", "svc");
+        Pii.RegisterPIIRule(new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = 0 });
+
+        var sanitized = Sanitize(new Dictionary<string, object?> { ["note"] = "" });
+
+        Assert.Equal("", sanitized["note"]);
+        Assert.Empty(Receipts.GetEmittedReceiptsForTests());
     }
 
     [Fact]
@@ -205,18 +260,27 @@ public class PiiModeAndSecretTests
     }
 
     [Fact]
-    public void HashValue_NullAndEmptyStringHashAlike()
+    public void HashValue_SpellsNullAsItsCanonicalJson()
     {
-        Assert.Equal(Pii.HashValue(""), Pii.HashValue(null));
+        // null is a value with a canonical spelling, not an absent string: the
+        // digest is sha256("null"), which every SDK agrees on, rather than
+        // sha256("") which would collide with the empty string.
+        Assert.Equal(Pii.HashValue("null"), Pii.HashValue(null));
+        Assert.NotEqual(Pii.HashValue(""), Pii.HashValue(null));
     }
 
     [Fact]
-    public void HashValue_UsesTheInvariantCultureForNonIntegralValues()
+    public void HashValue_SpellsNonStringsAsCanonicalJson()
     {
-        // A comma decimal separator from a machine's locale would give a
-        // different digest for the same value on a different host.
+        // RFC 8785 fixes the text that is hashed, so neither a machine's
+        // decimal separator nor .NET's capitalised Boolean.ToString() can give
+        // a different digest from the other SDKs for the same value.
         Assert.Equal(Pii.HashValue("1.5"), Pii.HashValue(1.5));
-        Assert.Equal(Pii.HashValue("True"), Pii.HashValue(true));
+        Assert.Equal(Pii.HashValue("true"), Pii.HashValue(true));
+        Assert.NotEqual(Pii.HashValue("True"), Pii.HashValue(true));
+        Assert.Equal(
+            Pii.HashValue("{\"a\":\"x\",\"b\":1}"),
+            Pii.HashValue(new Dictionary<string, object?> { ["b"] = 1, ["a"] = "x" }));
     }
 
     [Fact]

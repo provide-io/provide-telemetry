@@ -6,6 +6,23 @@ languages; this file covers only what shipped to NuGet.
 
 ---
 
+## [Unreleased]
+
+### Breaking
+
+- **`PIIRule.TruncateTo` defaults to 8, and a limit of 0 keeps only the
+  suffix.** An unset limit used to be 0, and 0 meant "no limit" — a truncate
+  rule registered without `TruncateTo` passed the whole value through, which
+  no other SDK does. Unset now means the cross-SDK default of 8, zero yields
+  exactly `"..."`, and a negative limit is clamped to zero. The limit counts
+  Unicode scalar values rather than UTF-16 code units, so an emoji is never
+  cut in half. `Pii.DefaultTruncateTo` names the default.
+- **`Pii.HashValue` hashes the RFC 8785 canonical JSON of non-string
+  values** — the same text the receipts hash — instead of their `ToString()`
+  rendering. `true` therefore digests as `"true"` (was `"True"`) and `null` as
+  `"null"` (was `""`), matching every other SDK; strings and integers are
+  unchanged.
+
 ## [0.8.0] — 2026-08-19
 
 > **First release to actually reach NuGet.** Trusted Publishing had rejected

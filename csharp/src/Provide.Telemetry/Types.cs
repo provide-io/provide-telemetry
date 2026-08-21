@@ -64,7 +64,13 @@ public sealed class PIIRule
 {
     public IReadOnlyList<string> Path { get; set; } = Array.Empty<string>();
     public string Mode { get; set; } = PiiModes.Redact;
-    public int TruncateTo { get; set; }
+
+    /// <summary>
+    /// How many Unicode scalar values <see cref="PiiModes.Truncate"/> keeps
+    /// before the suffix. Unset means the cross-SDK default of 8; zero keeps
+    /// nothing but the suffix; a negative value is clamped to zero.
+    /// </summary>
+    public int TruncateTo { get; set; } = Pii.DefaultTruncateTo;
 }
 
 public static class PiiModes

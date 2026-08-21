@@ -23,6 +23,8 @@ object result = caseId switch
 {
     "lazy_init_logger" => CaseLazyInitLogger(),
     "lazy_logger_shutdown_re_setup" => CaseLazyLoggerShutdownReSetup(),
+    "consent_env_none_at_setup" => CaseConsentEnvNoneAtSetup(),
+    "consent_env_none_lazy_logger" => CaseConsentEnvNoneLazyLogger(),
     "strict_schema_rejection" => CaseStrictSchemaRejection(),
     "strict_event_name_only" => CaseStrictEventNameOnly(),
     "required_keys_rejection" => CaseRequiredKeysRejection(),
@@ -136,6 +138,41 @@ static Dictionary<string, object?> CaseLazyLoggerShutdownReSetup()
         ["shutdown_fallback_all"] = second.Fallback.Logs && second.Fallback.Traces && second.Fallback.Metrics,
         ["re_setup_done"] = third.SetupDone,
         ["second_logger_uses_fresh_config"] = restartedJson.Contains("probe-restarted"),
+    };
+}
+
+static Dictionary<string, object?> CaseConsentEnvNoneAtSetup()
+{
+    // PROVIDE_CONSENT_LEVEL=NONE comes from the harness; setup reads it, so the
+    // one record emitted afterwards must be suppressed without any code change.
+    Testing.ResetForTests();
+    Environment.SetEnvironmentVariable("PROVIDE_LOG_FORMAT", "json");
+    ProvideTelemetry.SetupTelemetry();
+    var status = ProvideTelemetry.GetRuntimeStatus();
+    var records = CaptureEmit("probe", "info", "log.output.parity");
+    var consentNone = ProvideTelemetry.GetConsentLevel() == ConsentLevel.None;
+    ProvideTelemetry.ShutdownTelemetry();
+    return new()
+    {
+        ["case"] = "consent_env_none_at_setup",
+        ["setup_done"] = status.SetupDone,
+        ["consent_none"] = consentNone,
+        ["record_suppressed"] = !HasMessage(records, "log.output.parity"),
+    };
+}
+
+static Dictionary<string, object?> CaseConsentEnvNoneLazyLogger()
+{
+    // No SetupTelemetry: emitting is what triggers the lazy init, and that
+    // path must read the consent env before the very record that woke it.
+    Testing.ResetForTests();
+    Environment.SetEnvironmentVariable("PROVIDE_LOG_FORMAT", "json");
+    var records = CaptureEmit("probe", "info", "log.output.parity");
+    return new()
+    {
+        ["case"] = "consent_env_none_lazy_logger",
+        ["consent_none"] = ProvideTelemetry.GetConsentLevel() == ConsentLevel.None,
+        ["record_suppressed"] = !HasMessage(records, "log.output.parity"),
     };
 }
 

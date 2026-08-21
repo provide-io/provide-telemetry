@@ -200,6 +200,45 @@ public class GovernanceConsentTests
     }
 
     [Fact]
+    public void GetLogger_LazyInit_LoadsConsentFromEnv()
+    {
+        Environment.SetEnvironmentVariable("PROVIDE_CONSENT_LEVEL", "NONE");
+        Environment.SetEnvironmentVariable("PROVIDE_LOG_FORMAT", "json");
+        try
+        {
+            // No SetupTelemetry: the first record a logger emits takes the lazy
+            // path, which must read the env the same way the explicit path does
+            // — and must do so before that very record is admitted.
+            var sw = new StringWriter();
+            var orig = Console.Error;
+            Console.SetError(sw);
+            ProvideTelemetry.GetLogger("lazy-consent").Info("lazy.consent.should.block");
+            Console.SetError(orig);
+
+            Assert.Equal(ConsentLevel.None, ProvideTelemetry.GetConsentLevel());
+            Assert.False(ProvideTelemetry.ShouldAllow("logs", "ERROR"));
+            Assert.DoesNotContain("lazy.consent.should.block", sw.ToString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PROVIDE_CONSENT_LEVEL", null);
+            Environment.SetEnvironmentVariable("PROVIDE_LOG_FORMAT", null);
+            Testing.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public void SetupTelemetry_UnsetConsentEnvLeavesAProgrammaticLevelAlone()
+    {
+        Environment.SetEnvironmentVariable("PROVIDE_CONSENT_LEVEL", null);
+        ProvideTelemetry.SetConsentLevel(ConsentLevel.Minimal);
+
+        ProvideTelemetry.SetupTelemetry();
+
+        Assert.Equal(ConsentLevel.Minimal, ProvideTelemetry.GetConsentLevel());
+    }
+
+    [Fact]
     public void SetupTelemetry_Idempotent_IgnoresSecondConfig()
     {
         var first = TelemetryConfig.Default();

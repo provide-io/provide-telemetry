@@ -38,6 +38,47 @@ public class ParityPiiTests
         Assert.Equal("73475cb40a56", r["n"]);
     }
 
+    // Non-string values hash their RFC 8785 canonical JSON, so the digest is
+    // the same in every SDK: sha256("true"), not sha256("True").
+    [Fact]
+    public void PiiHash_Boolean_CanonicalJson()
+    {
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "flag" }, Mode = PiiModes.Hash } });
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["flag"] = true }, true, 32);
+        Assert.Equal("b5bea41b6c62", r["flag"]);
+    }
+
+    [Fact]
+    public void PiiHash_Null_CanonicalJson()
+    {
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "gone" }, Mode = PiiModes.Hash } });
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["gone"] = null }, true, 32);
+        Assert.Equal("74234e98afe7", r["gone"]);
+        Assert.Equal("74234e98afe7", Pii.HashValue(null));
+    }
+
+    [Fact]
+    public void PiiHash_Float_CanonicalJson()
+    {
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "ratio" }, Mode = PiiModes.Hash } });
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["ratio"] = 1.5 }, true, 32);
+        Assert.Equal("9f29a130438b", r["ratio"]);
+    }
+
+    [Fact]
+    public void PiiHash_Object_KeySortedCanonicalJson()
+    {
+        // Keys are registered out of order; the canonical form sorts them, so
+        // the digest is sha256('{"a":"x","b":1}').
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "obj" }, Mode = PiiModes.Hash } });
+        var payload = new Dictionary<string, object?>
+        {
+            ["obj"] = new Dictionary<string, object?> { ["b"] = 1, ["a"] = "x" },
+        };
+        var r = Pii.SanitizePayload(payload, true, 32);
+        Assert.Equal("cdab067e9f3b", r["obj"]);
+    }
+
     [Fact]
     public void PiiTruncate_LongerThanLimit()
     {
@@ -52,6 +93,41 @@ public class ParityPiiTests
         ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = 5 } });
         var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["note"] = "hello" }, true, 32);
         Assert.Equal("hello", r["note"]);
+    }
+
+    [Fact]
+    public void PiiTruncate_UnsetLimit_DefaultsToEight()
+    {
+        // TruncateTo deliberately omitted: the rule is registered without a limit.
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate } });
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["note"] = "abcdefghij" }, true, 32);
+        Assert.Equal("abcdefgh...", r["note"]);
+    }
+
+    [Fact]
+    public void PiiTruncate_ZeroLimit_KeepsOnlyTheSuffix()
+    {
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = 0 } });
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["note"] = "hello" }, true, 32);
+        Assert.Equal("...", r["note"]);
+    }
+
+    [Fact]
+    public void PiiTruncate_NegativeLimit_ClampsToZero()
+    {
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = -3 } });
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["note"] = "hello" }, true, 32);
+        Assert.Equal("...", r["note"]);
+    }
+
+    [Fact]
+    public void PiiTruncate_CountsUnicodeScalarValues()
+    {
+        // Five astral code points; a UTF-16 slice of three would split the
+        // second emoji in half.
+        ProvideTelemetry.ReplacePIIRules(new[] { new PIIRule { Path = new[] { "note" }, Mode = PiiModes.Truncate, TruncateTo = 3 } });
+        var r = Pii.SanitizePayload(new Dictionary<string, object?> { ["note"] = "😀😀😀😀😀" }, true, 32);
+        Assert.Equal("😀😀😀...", r["note"]);
     }
 
     [Fact]

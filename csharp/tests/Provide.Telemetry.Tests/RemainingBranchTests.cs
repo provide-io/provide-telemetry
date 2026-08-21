@@ -240,11 +240,12 @@ public class RemainingBranchTests : IDisposable
     // ── stringification that answers null ────────────────────────────────────
 
     [Fact]
-    public void AValueWhoseToStringAnswersNullHashesAsTheEmptyString()
+    public void AValueWithNoCanonicalJsonEncodingHashesAsNull()
     {
-        // Convert.ToString can hand back null for a type that says so; the
-        // fallback keeps the digest defined rather than faulting mid-redaction.
-        Assert.Equal(Pii.HashValue(""), Pii.HashValue(new NullStringer()));
+        // Hashing never consults ToString(): a type with no JCS encoding
+        // canonicalises to null, so its digest is defined — and is the null
+        // digest — rather than faulting mid-redaction.
+        Assert.Equal(Pii.HashValue(null), Pii.HashValue(new NullStringer()));
     }
 
     [Fact]

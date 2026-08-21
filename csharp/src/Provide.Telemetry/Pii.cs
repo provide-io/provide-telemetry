@@ -14,6 +14,9 @@ public static class Pii
     public const string Redacted = "***";
     public const string TruncationSuffix = "...";
     public const int DefaultMaxDepth = 8;
+
+    /// <summary>Scalar values a truncate rule keeps when no limit is given.</summary>
+    public const int DefaultTruncateTo = 8;
     public const int MinSecretLength = 20;
 
     private static readonly object Gate = new();
@@ -291,16 +294,20 @@ public static class Pii
         return SecretSpans(text, custom).Count > 0;
     }
 
+    /// <summary>
+    /// SHA-256 of the value, first 12 lowercase hex characters.
+    /// </summary>
+    /// <remarks>
+    /// A string hashes its own UTF-8 bytes. Anything else hashes its RFC 8785
+    /// canonical JSON — the same text the receipts hash — so <c>true</c> is
+    /// <c>"true"</c>, <c>null</c> is <c>"null"</c>, <c>1.5</c> is <c>"1.5"</c>
+    /// and an object is key-sorted, in this SDK exactly as in every other.
+    /// Hashing <c>ToString()</c> would spell the boolean <c>"True"</c> and null
+    /// as the empty string — digests no other SDK can reproduce.
+    /// </remarks>
     public static string HashValue(object? value)
     {
-        var s = value switch
-        {
-            null => "",
-            string str => str,
-            // Match Go/Python fmt of integers without type suffix.
-            int or long or short or byte => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)!,
-            _ => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "",
-        };
+        var s = value is string str ? str : CanonicalJson.Serialize(value);
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(s));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..12];
     }
@@ -414,15 +421,46 @@ public static class Pii
                     var text = value is string s
                         ? s
                         : Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
-                    if (truncateTo <= 0 || text.Length <= truncateTo) return (true, text);
+                    // Zero is a limit, not the absence of one: it keeps nothing
+                    // but the suffix. A negative limit clamps to zero rather
+                    // than faulting or — worse — passing the whole value.
+                    var truncated = TruncateScalars(text, Math.Max(0, truncateTo));
+                    if (truncated is null) return (true, text);
                     context.Redactions.Add(new PendingRedaction(fieldPath, PiiModes.Truncate, value));
-                    return (true, text[..truncateTo] + TruncationSuffix);
+                    return (true, truncated);
                 }
             case PiiModes.Pass:
                 return (true, value);
             default:
                 return (true, Redact(value, fieldPath, context));
         }
+    }
+
+    /// <summary>
+    /// Keep the first <paramref name="limit"/> Unicode scalar values of
+    /// <paramref name="text"/> and append the suffix, or answer null when the
+    /// text already fits.
+    /// </summary>
+    /// <remarks>
+    /// Counted in scalar values, never UTF-16 code units: a <c>string</c> index
+    /// lands between the halves of a surrogate pair and would cut an astral
+    /// character — an emoji, most CJK extension ideographs — in two, producing
+    /// output no other SDK produces and a string no decoder accepts. The cut
+    /// index is accumulated from each rune's UTF-16 width, which is also how
+    /// the enumerator advances, so a lone surrogate counts as one scalar and
+    /// the slice stays in step with it.
+    /// </remarks>
+    private static string? TruncateScalars(string text, int limit)
+    {
+        var kept = 0;
+        var cut = 0;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (kept == limit) return text[..cut] + TruncationSuffix;
+            kept++;
+            cut += rune.Utf16SequenceLength;
+        }
+        return null;
     }
 
     private static bool PathMatches(IReadOnlyList<string> rulePath, IReadOnlyList<string> path)
