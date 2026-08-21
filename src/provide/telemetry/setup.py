@@ -25,6 +25,7 @@ from collections.abc import Callable
 from provide.telemetry._lifecycle import coordinator
 from provide.telemetry._runtime_types import SignalDrainOutcome
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.consent import _load_consent_from_env
 from provide.telemetry.logger.core import _reset_logging_for_tests as _reset_logging
 from provide.telemetry.logger.core import configure_logging, shutdown_logging
 from provide.telemetry.tracing.provider import _refresh_otel_tracing, setup_tracing, shutdown_tracing
@@ -79,6 +80,9 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
         if coordinator.peek().setup_done:
             return get_runtime_config()
         cfg = config or TelemetryConfig.from_env()
+        # Consent is read here, not by TelemetryConfig: PROVIDE_CONSENT_LEVEL is
+        # an operator opt-out that must bind whether or not a config was passed.
+        _load_consent_from_env()
         _quiet_otel_sdk_loggers()
         apply_runtime_config(cfg)
         from provide.telemetry.health import set_setup_error

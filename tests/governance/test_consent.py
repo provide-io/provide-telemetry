@@ -132,12 +132,62 @@ def test_minimal_unknown_signal_blocked() -> None:
     assert should_allow("custom_signal") is False
 
 
-def test_load_consent_from_env_unset_defaults_to_full(monkeypatch: pytest.MonkeyPatch) -> None:
-    """When PROVIDE_CONSENT_LEVEL is unset, _load_consent_from_env defaults to FULL."""
+def test_load_consent_from_env_unset_leaves_level_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unset PROVIDE_CONSENT_LEVEL is not an instruction: a level chosen in code survives the load."""
     from provide.telemetry.consent import _load_consent_from_env
 
     monkeypatch.delenv("PROVIDE_CONSENT_LEVEL", raising=False)
-    # Set level to something other than FULL first
     set_consent_level(ConsentLevel.MINIMAL)
     _load_consent_from_env()
+    assert get_consent_level() == ConsentLevel.MINIMAL
+
+
+def test_load_consent_from_env_trims_and_uppercases(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.consent import _load_consent_from_env
+
+    monkeypatch.setenv("PROVIDE_CONSENT_LEVEL", "  none ")
+    _load_consent_from_env()
+    assert get_consent_level() == ConsentLevel.NONE
+
+
+# ── Wiring: the env var must reach setup and the lazy logger path ────────────
+
+
+def test_setup_telemetry_applies_env_consent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PROVIDE_CONSENT_LEVEL=NONE is honoured by setup_telemetry() with no code change."""
+    from provide.telemetry.setup import setup_telemetry
+
+    monkeypatch.setenv("PROVIDE_CONSENT_LEVEL", "NONE")
+    setup_telemetry()
+    assert get_consent_level() == ConsentLevel.NONE
+
+
+def test_setup_telemetry_env_unset_keeps_programmatic_consent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from provide.telemetry.setup import setup_telemetry
+
+    monkeypatch.delenv("PROVIDE_CONSENT_LEVEL", raising=False)
+    set_consent_level(ConsentLevel.MINIMAL)
+    setup_telemetry()
+    assert get_consent_level() == ConsentLevel.MINIMAL
+
+
+def test_lazy_get_logger_applies_env_consent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A process that never calls setup_telemetry() still honours the opt-out on first get_logger()."""
+    from provide.telemetry.logger.core import _reset_logging_for_tests, get_logger
+
+    _reset_logging_for_tests()
+    monkeypatch.setenv("PROVIDE_CONSENT_LEVEL", "NONE")
+    get_logger("consent.lazy")
+    assert get_consent_level() == ConsentLevel.NONE
+
+
+def test_get_logger_after_setup_keeps_programmatic_consent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Env wins at setup; a level set in code afterwards is not clobbered by a later get_logger()."""
+    from provide.telemetry.logger.core import get_logger
+    from provide.telemetry.setup import setup_telemetry
+
+    monkeypatch.setenv("PROVIDE_CONSENT_LEVEL", "NONE")
+    setup_telemetry()
+    set_consent_level(ConsentLevel.FULL)
+    get_logger("consent.after")
     assert get_consent_level() == ConsentLevel.FULL

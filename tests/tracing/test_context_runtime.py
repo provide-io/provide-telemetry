@@ -108,6 +108,9 @@ def test_install_preserves_current_context() -> None:
         assert otel_context.get_value("marker-key") == "marker-val"
     finally:
         otel_context.detach(token)
+    # The token was issued before the swap; adopting the live ContextVar is what
+    # lets it reset instead of being silently swallowed as a foreign token.
+    assert otel_context.get_value("marker-key") is None
 
 
 async def _drive_cross_context_span() -> None:
@@ -191,6 +194,87 @@ def test_setup_tracing_installs_safe_runtime_context() -> None:
     try:
         provider_mod.setup_tracing(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
         assert isinstance(otel_context._RUNTIME_CONTEXT, _SafeContextVarsRuntimeContext)
+    finally:
+        provider_mod.shutdown_tracing()
+        _reset_tracing_for_tests()
+
+
+async def _child_attaches_before_install(ready: asyncio.Event, go: asyncio.Event, seen: dict[str, object]) -> None:
+    token = otel_context.attach(otel_context.set_value("marker-key", "child-val"))
+    ready.set()
+    await go.wait()
+    seen["after_install"] = otel_context.get_value("marker-key")
+    otel_context.detach(token)
+    seen["after_detach"] = otel_context.get_value("marker-key")
+
+
+async def _install_while_child_holds_context(seen: dict[str, object]) -> None:
+    ready, go = asyncio.Event(), asyncio.Event()
+    child = asyncio.create_task(_child_attaches_before_install(ready, go, seen))
+    await ready.wait()
+    seen["installed"] = install_safe_runtime_context()
+    go.set()
+    await child
+
+
+@pytest.mark.usefixtures("restore_runtime_context")
+def test_install_preserves_other_tasks_context() -> None:
+    """A task that attached *before* the swap keeps its context and detaches cleanly after it.
+
+    Copying the caller's current value into a fresh ContextVar would leave every
+    other task reading an empty context; adopting the live ContextVar does not.
+    """
+    otel_context._RUNTIME_CONTEXT = ContextVarsRuntimeContext()
+    seen: dict[str, object] = {}
+    asyncio.run(_install_while_child_holds_context(seen))
+    assert seen == {"installed": True, "after_install": "child-val", "after_detach": None}
+
+
+@pytest.mark.usefixtures("restore_runtime_context")
+def test_install_adopts_the_live_contextvar() -> None:
+    otel_context._RUNTIME_CONTEXT = ContextVarsRuntimeContext()
+    live = otel_context._RUNTIME_CONTEXT._current_context
+    assert install_safe_runtime_context() is True
+    assert otel_context._RUNTIME_CONTEXT._current_context is live
+
+
+class _ForeignRuntime:
+    """A runtime context that is not ContextVars-based: only its current value can be carried over."""
+
+    def __init__(self, current: Context) -> None:
+        self._current = current
+
+    def get_current(self) -> Context:
+        return self._current
+
+
+@pytest.mark.usefixtures("restore_runtime_context")
+def test_install_copies_current_from_a_non_contextvars_runtime() -> None:
+    foreign_current = otel_context.set_value("marker-key", "foreign-val", otel_context.Context())
+    otel_context._RUNTIME_CONTEXT = _ForeignRuntime(foreign_current)  # type: ignore[assignment]
+    assert install_safe_runtime_context() is True
+    assert otel_context.get_value("marker-key") == "foreign-val"
+
+
+@pytest.mark.usefixtures("restore_runtime_context")
+def test_setup_tracing_degrades_when_private_runtime_api_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A renamed private OTel attribute costs the guard, not the setup."""
+    import warnings
+
+    from provide.telemetry.tracing import context_runtime as runtime_mod
+
+    def _broken() -> bool:
+        raise AttributeError("_RUNTIME_CONTEXT")
+
+    monkeypatch.setattr(runtime_mod, "install_safe_runtime_context", _broken)
+    _reset_tracing_for_tests()
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            provider_mod.setup_tracing(TelemetryConfig.from_env({"PROVIDE_TRACE_ENABLED": "true"}))
+        messages = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
+        assert any("cross-context-safe OTel runtime context unavailable" in m for m in messages)
+        assert get_tracer("degraded") is not None
     finally:
         provider_mod.shutdown_tracing()
         _reset_tracing_for_tests()

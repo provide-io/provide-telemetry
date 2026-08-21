@@ -320,8 +320,17 @@ def _mask(value: Any, mode: MaskMode, truncate_to: int) -> Any:
     if mode == "redact":
         return _REDACTED
     if mode == "hash":
+        if isinstance(value, str):
+            text = value
+        else:
+            # Non-strings hash their RFC 8785 canonical JSON so every SDK spells
+            # booleans, null, numbers and nested values identically. Imported
+            # lazily: receipts imports this module.
+            from provide.telemetry.receipts import canonical_json
+
+            text = canonical_json(value)
         # Codec lookup is case-insensitive, so an "UTF-8" mutation is equivalent.
-        encoded = str(value).encode("utf-8")  # pragma: no mutate — codec alias; 'UTF-8' selects the identical codec
+        encoded = text.encode("utf-8")  # pragma: no mutate — codec alias; 'UTF-8' selects the identical codec
         return hashlib.sha256(
             encoded
         ).hexdigest()[

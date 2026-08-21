@@ -8,7 +8,7 @@
 Covers:
   _endpoint._check_port:            the IPv6-safe rsplit("]", 1) trailing-colon guard
   consent.should_allow:             the sub-threshold sentinel default for unknown levels
-  consent._load_consent_from_env:   the FULL default is uppercase before ConsentLevel()
+  consent._load_consent_from_env:   an unset variable is a no-op, not a reset to FULL
   _config_validation:               endpoint join, warning category and stacklevel
   sampling._should_sample_unchecked: the 1.0 / 0.0 fast-path boundaries
   sampling._normalize_rate:         the clamp warning's event name
@@ -130,18 +130,18 @@ def test_trace_level_is_distinguished_from_a_missing_level() -> None:
     assert consent_mod.should_allow("logs", "DEBUG") is False
 
 
-def test_consent_env_default_is_full(monkeypatch: Any) -> None:
-    """The literal default must already be a valid ConsentLevel name.
+def test_consent_env_unset_is_a_no_op(monkeypatch: Any) -> None:
+    """An unset variable must not touch the level — and must not be parsed either.
 
-    ConsentLevel("full") raises ValueError, which the caller swallows — so a
-    lower-cased default would silently leave consent at whatever it was.
+    Inverting the None guard sends ``None`` into ``.strip()``; dropping it
+    would reset a level chosen in code. Both leave NONE behind or raise.
     """
     monkeypatch.delenv("PROVIDE_CONSENT_LEVEL", raising=False)
     consent_mod.set_consent_level(ConsentLevel.NONE)
 
     consent_mod._load_consent_from_env()
 
-    assert consent_mod.get_consent_level() is ConsentLevel.FULL
+    assert consent_mod.get_consent_level() is ConsentLevel.NONE
 
 
 # ── _config_validation ──────────────────────────────────────────────────────

@@ -23,8 +23,12 @@ otherwise. :func:`install_safe_runtime_context` swaps it in globally;
 no code change.
 
 This is installed by swapping ``opentelemetry.context._RUNTIME_CONTEXT`` at
-setup time (before any spans exist). Services that can guarantee import order
-may instead select it via the ``OTEL_PYTHON_CONTEXT`` entry point.
+setup time. The swap adopts the ContextVar already in use, so tasks that were
+mid-span when ``setup_telemetry()`` ran keep their context. Services that can
+guarantee import order may instead select it via the ``OTEL_PYTHON_CONTEXT``
+entry point. Both ``_RUNTIME_CONTEXT`` and ``_current_context`` are private
+OTel attributes: ``setup_tracing`` treats their absence as a degraded condition
+(warns and continues) rather than a setup failure.
 """
 
 from __future__ import annotations
@@ -63,13 +67,24 @@ def install_safe_runtime_context() -> bool:
     """Swap OTel's runtime context for the cross-context-safe variant.
 
     Idempotent: returns ``True`` if it installed the safe context, ``False`` if
-    it was already active. Carries the active ``Context`` over so installing
-    mid-flight never strands an in-flight span.
+    it was already active.
+
+    When the active runtime is OTel's own ``ContextVarsRuntimeContext`` the safe
+    variant *adopts its ContextVar* rather than creating a new one. That is what
+    makes a mid-flight install safe: every task — not only the caller — keeps its
+    current ``Context``, and tokens handed out before the swap still ``reset``
+    cleanly afterwards. A fresh ContextVar would carry over just the calling
+    task's value and silently strand every other task at an empty context. Any
+    other runtime implementation falls back to copying the caller's current
+    ``Context``, which is the most that can be recovered from it.
     """
     current = _otel_context._RUNTIME_CONTEXT
     if isinstance(current, _SafeContextVarsRuntimeContext):
         return False
     safe = _SafeContextVarsRuntimeContext()
-    safe._current_context.set(current.get_current())
+    if isinstance(current, ContextVarsRuntimeContext):
+        safe._current_context = current._current_context
+    else:
+        safe._current_context.set(current.get_current())
     _otel_context._RUNTIME_CONTEXT = safe
     return True

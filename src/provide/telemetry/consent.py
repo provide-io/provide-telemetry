@@ -77,19 +77,19 @@ def should_allow(signal: str, log_level: str | None = None) -> bool:
     return False  # traces/metrics/context blocked at MINIMAL
 
 
-# Default consent when PROVIDE_CONSENT_LEVEL is unset. Suppressed on its own
-# line rather than on the read below: the default is upper-cased along with the
-# env value so a case mutation cannot change the result, and any other mutation
-# of it yields a string ConsentLevel() rejects, leaving the already-FULL default
-# in place. The env var *name* and the `.upper()` on the read are not equivalent
-# and stay mutable.
-_DEFAULT_CONSENT_LEVEL = "FULL"  # pragma: no mutate — upper-cased with the env value; any other literal is rejected by ConsentLevel, leaving the FULL default
-
-
 def _load_consent_from_env() -> None:
-    raw = os.environ.get("PROVIDE_CONSENT_LEVEL", _DEFAULT_CONSENT_LEVEL).strip().upper()
+    """Apply ``PROVIDE_CONSENT_LEVEL`` if it is set.
+
+    Called by ``setup_telemetry()`` and by the lazy ``get_logger()`` path, so an
+    operator opt-out takes effect without a code change. Trimmed and upper-cased;
+    an unset variable is a no-op (a level chosen in code survives) and an
+    unrecognised value is ignored rather than raised — documented fail-open.
+    """
+    raw = os.environ.get("PROVIDE_CONSENT_LEVEL")
+    if raw is None:
+        return
     with contextlib.suppress(ValueError):
-        set_consent_level(ConsentLevel(raw))
+        set_consent_level(ConsentLevel(raw.strip().upper()))
 
 
 def _reset_consent_for_tests() -> None:

@@ -114,6 +114,30 @@ def test_parity_pii_hash_integer() -> None:
     assert r["n"] == "73475cb40a56"  # pragma: allowlist secret
 
 
+def test_parity_pii_hash_boolean_uses_canonical_json() -> None:
+    replace_pii_rules([PIIRule(path=("flag",), mode="hash")])
+    r = sanitize_payload({"flag": True}, enabled=True, max_depth=32)
+    assert r["flag"] == "b5bea41b6c62"  # pragma: allowlist secret
+
+
+def test_parity_pii_hash_null_uses_canonical_json() -> None:
+    replace_pii_rules([PIIRule(path=("missing",), mode="hash")])
+    r = sanitize_payload({"missing": None}, enabled=True, max_depth=32)
+    assert r["missing"] == "74234e98afe7"  # pragma: allowlist secret
+
+
+def test_parity_pii_hash_float_uses_canonical_number_form() -> None:
+    replace_pii_rules([PIIRule(path=("ratio",), mode="hash")])
+    r = sanitize_payload({"ratio": 1.5}, enabled=True, max_depth=32)
+    assert r["ratio"] == "9f29a130438b"  # pragma: allowlist secret
+
+
+def test_parity_pii_hash_object_uses_key_sorted_canonical_json() -> None:
+    replace_pii_rules([PIIRule(path=("blob",), mode="hash")])
+    r = sanitize_payload({"blob": {"b": 1, "a": "x"}}, enabled=True, max_depth=32)
+    assert r["blob"] == "cdab067e9f3b"  # pragma: allowlist secret
+
+
 # ── PII Truncate ─────────────────────────────────────────────────────────────
 
 
@@ -139,6 +163,30 @@ def test_parity_pii_truncate_non_string_converted() -> None:
     replace_pii_rules([PIIRule(path=("n",), mode="truncate", truncate_to=5)])
     r = sanitize_payload({"n": 1234567890}, enabled=True, max_depth=32)
     assert r["n"] == "12345..."
+
+
+def test_parity_pii_truncate_unset_limit_defaults_to_8() -> None:
+    replace_pii_rules([PIIRule(path=("note",), mode="truncate")])
+    r = sanitize_payload({"note": "abcdefghij"}, enabled=True, max_depth=32)
+    assert r["note"] == "abcdefgh..."
+
+
+def test_parity_pii_truncate_zero_limit_keeps_only_suffix() -> None:
+    replace_pii_rules([PIIRule(path=("note",), mode="truncate", truncate_to=0)])
+    r = sanitize_payload({"note": "hello"}, enabled=True, max_depth=32)
+    assert r["note"] == "..."
+
+
+def test_parity_pii_truncate_negative_limit_clamps_to_zero() -> None:
+    replace_pii_rules([PIIRule(path=("note",), mode="truncate", truncate_to=-3)])
+    r = sanitize_payload({"note": "hello"}, enabled=True, max_depth=32)
+    assert r["note"] == "..."
+
+
+def test_parity_pii_truncate_counts_code_points_not_utf16_units() -> None:
+    replace_pii_rules([PIIRule(path=("note",), mode="truncate", truncate_to=3)])
+    r = sanitize_payload({"note": "😀😀😀😀😀"}, enabled=True, max_depth=32)
+    assert r["note"] == "😀😀😀..."
 
 
 # ── PII Redact ───────────────────────────────────────────────────────────────

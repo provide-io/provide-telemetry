@@ -15,7 +15,9 @@ from contextlib import redirect_stderr
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from provide.telemetry import (
+    ConsentLevel,
     RuntimeOverrides,
+    get_consent_level,
     get_logger,
     get_runtime_config,
     get_runtime_status,
@@ -80,6 +82,36 @@ def _case_lazy_logger_shutdown_re_setup() -> dict[str, object]:
         "second_logger_uses_fresh_config": restarted.get("service") == "probe-restarted"
         and restarted.get("env") == "parity-restarted"
         and restarted.get("version") == "9.9.9",
+    }
+
+
+def _try_capture_record(message: str) -> dict[str, object]:
+    """Like _capture_record, but an absent record is a result, not an error."""
+    buf = io.StringIO()
+    with redirect_stderr(buf):
+        set_trace_context(TRACE_ID, SPAN_ID)
+        get_logger("probe").info(message)
+    return next((record for record in _json_records(buf.getvalue()) if record.get("message") == message), {})
+
+
+def _case_consent_env_none_at_setup() -> dict[str, object]:
+    setup_telemetry()
+    status = get_runtime_status()
+    record = _try_capture_record("log.output.parity")
+    return {
+        "case": "consent_env_none_at_setup",
+        "setup_done": bool(status.setup_done),
+        "consent_none": get_consent_level() is ConsentLevel.NONE,
+        "record_suppressed": record == {},
+    }
+
+
+def _case_consent_env_none_lazy_logger() -> dict[str, object]:
+    record = _try_capture_record("log.output.parity")
+    return {
+        "case": "consent_env_none_lazy_logger",
+        "consent_none": get_consent_level() is ConsentLevel.NONE,
+        "record_suppressed": record == {},
     }
 
 
@@ -369,6 +401,8 @@ def main() -> int:
     result = {
         "lazy_init_logger": _case_lazy_init_logger,
         "lazy_logger_shutdown_re_setup": _case_lazy_logger_shutdown_re_setup,
+        "consent_env_none_at_setup": _case_consent_env_none_at_setup,
+        "consent_env_none_lazy_logger": _case_consent_env_none_lazy_logger,
         "strict_schema_rejection": _case_strict_schema_rejection,
         "strict_event_name_only": _case_strict_event_name_only,
         "required_keys_rejection": _case_required_keys_rejection,

@@ -431,8 +431,12 @@ def _has_real_otel_log_provider() -> bool:
 def get_logger(name: str | None = None) -> _TraceWrapper:
     if not _configured:
         from provide.telemetry.config import TelemetryConfig
+        from provide.telemetry.consent import _load_consent_from_env
         from provide.telemetry.sampling import SamplingPolicy, set_sampling_policy
 
+        # The pre-setup path must honour PROVIDE_CONSENT_LEVEL too: a process
+        # that only ever calls get_logger() still gets the operator's opt-out.
+        _load_consent_from_env()
         cfg = TelemetryConfig.from_env()
         # Install the logs sampling policy so PROVIDE_SAMPLING_LOGS_RATE takes
         # effect for lazy-init emission.  Narrow on purpose: leave exporter and

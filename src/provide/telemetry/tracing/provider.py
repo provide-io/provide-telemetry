@@ -149,6 +149,14 @@ def setup_tracing(config: TelemetryConfig) -> None:
         install_safe_runtime_context()
     except ImportError:  # pragma: no cover - OTel SDK unavailable
         pass
+    except AttributeError as exc:  # pragma: no cover - private OTel runtime attributes moved
+        # The swap reaches into private OTel attributes. An SDK that renamed
+        # them must not fail setup; it just loses the cross-context guard.
+        warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
+            f"cross-context-safe OTel runtime context unavailable, continuing without it: {exc}",  # pragma: no mutate — warning message string is non-semantic
+            RuntimeWarning,  # pragma: no mutate — warning category; any subclass of Warning is equivalent for the catch-all tests
+            stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
+        )  # pragma: no mutate — closing paren line for multi-line call; trivial
 
     with _provider_lock:
         if _provider_configured:
