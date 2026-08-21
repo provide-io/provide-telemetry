@@ -114,23 +114,37 @@ def event_name(*segments: str) -> str:
     lowercase/underscore segments.  In relaxed mode (default): accepts 1+
     segments with no format validation.
     """
-    strict = _get_strict_check()
-    if strict:
+    if len(segments) == 0:
+        raise EventSchemaError("event_name requires at least 1 segment")
+    for i, value in enumerate(segments):
+        if not value:
+            raise EventSchemaError(f"event name segments must be non-empty: segment[{i}]")
+    if _get_strict_check():
         if not (_MIN_SEGMENTS <= len(segments) <= _MAX_SEGMENTS):
             raise EventSchemaError(f"expected {_MIN_SEGMENTS}-{_MAX_SEGMENTS} segments, got {len(segments)}")
         for i, value in enumerate(segments):
             if not _SEGMENT_RE.match(value):
                 raise EventSchemaError(f"invalid event segment: segment[{i}]={value}")
-    elif len(segments) == 0:
-        raise EventSchemaError("event_name requires at least 1 segment")
     return ".".join(segments)
 
 
 def validate_event_name(name: str, strict_event_name: bool) -> None:
-    if not strict_event_name:
+    """Validate a dotted event name against the shared five-language contract.
+
+    Strict mode requires 3-5 segments each matching ``[a-z][a-z0-9_]*``. Relaxed
+    mode requires one or more non-empty segments and enforces no grammar; before
+    2026-08-20 it enforced nothing at all, so ``""`` and ``"a..b"`` both passed.
+
+    The relaxed check avoids splitting because this runs on every log record
+    through ``enforce_event_schema``. A name has an empty segment exactly when it
+    is empty, starts or ends with the separator, or contains two in a row.
+    """
+    if strict_event_name:
+        if not _EVENT_RE.match(name):
+            raise EventSchemaError(f"invalid event name: {name}")
         return
-    if not _EVENT_RE.match(name):
-        raise EventSchemaError(f"invalid event name: {name}")
+    if not name or name.startswith(".") or name.endswith(".") or ".." in name:
+        raise EventSchemaError(f"event name segments must be non-empty: {name!r}")
 
 
 def validate_required_keys(data: dict[str, object], required_keys: tuple[str, ...]) -> None:

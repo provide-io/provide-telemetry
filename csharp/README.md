@@ -50,6 +50,28 @@ ProvideTelemetry.ShutdownTelemetry();
 
 Configuration is env-driven (`PROVIDE_*` / `OTEL_*`), matching the polyglot contract.
 
+### Event names
+
+`Schema.Event()` accepts exactly 3 segments (`domain.action.status`) or 4
+(`domain.action.resource.status`). That count is a property of the record shape,
+so it applies in every mode.
+
+`Schema.EventName()` and `Schema.ValidateEventName()` follow the shared
+five-language name contract instead, which depends on the schema mode:
+
+- **Relaxed** (the default) accepts one or more segments and enforces no segment
+  grammar, so `Schema.EventName("startup")` and
+  `Schema.EventName("User", "Login-OK")` are both valid.
+- **Strict** (`PROVIDE_TELEMETRY_STRICT_SCHEMA=true`) accepts 3-5 segments, each
+  matching `^[a-z][a-z0-9_]*$`.
+- Zero segments and empty segments throw in both modes, so
+  `Schema.EventName()`, `Schema.EventName("user", "", "ok")` and
+  `Schema.ValidateEventName("a..b")` all raise `EventSchemaError`.
+
+Before 0.8.1 `EventName` enforced the strict 3-5 count in relaxed mode, and
+`ValidateEventName` applied the segment grammar on every call without consulting
+the mode at all. See the changelog.
+
 ## Examples
 
 See [`examples/README.md`](examples/README.md) for runnable demos:

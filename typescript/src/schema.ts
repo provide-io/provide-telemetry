@@ -118,6 +118,13 @@ export function eventName(...segments: string[]): string {
     // Stryker disable next-line StringLiteral: error message content doesn't affect behavior
     throw new EventSchemaError(`expected ${MIN_SEGMENTS}-${MAX_SEGMENTS} segments, got 0`);
   }
+  // An empty segment fails in both modes. Until 2026-08-20 only the zero-length
+  // case was checked here, so eventName('user', '', 'ok') produced 'user..ok' —
+  // while validateEventName already rejected the same name in relaxed mode.
+  if (segments.some((s) => s.length === 0)) {
+    // Stryker disable next-line StringLiteral: error message content doesn't affect behavior
+    throw new EventSchemaError('event name must have at least one non-empty segment');
+  }
   const strict = getStrictSchema();
   if (strict) {
     if (segments.length < MIN_SEGMENTS || segments.length > MAX_SEGMENTS) {

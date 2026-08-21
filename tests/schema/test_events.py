@@ -149,7 +149,10 @@ def test_event_name_relaxed_accepts_three_segments() -> None:
 
 
 def test_event_name_strict_rejects_zero_segments() -> None:
-    with _strict_config(), pytest.raises(EventSchemaError, match=r"expected 3-5 segments, got 0"):
+    # The zero-segment rule became mode-independent on 2026-08-20 — it fails in
+    # relaxed mode too — so it is checked before the strict branch and now
+    # reports the shared message rather than the strict arity one.
+    with _strict_config(), pytest.raises(EventSchemaError, match=r"requires at least 1 segment"):
         event_name()
 
 
