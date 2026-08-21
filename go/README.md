@@ -101,9 +101,6 @@ contract instead, which depends on the schema mode:
   `EventName("user", "", "ok")` and `ValidateEventName("a..b")` all return an
   error.
 
-Earlier releases enforced the strict 3–5 count in relaxed mode too, and accepted
-an empty segment. See the changelog for the release that changed it.
-
 ### Tracing
 
 ```go

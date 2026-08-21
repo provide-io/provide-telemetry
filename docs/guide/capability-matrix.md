@@ -72,9 +72,8 @@ Notes:
   `ci/verify-csharp-consumer-packages.sh` packs both packages into a throwaway
   feed and installs them at an exact version with our package ids confined to
   that feed, so a broken nuspec, a wrong target framework or a missing
-  dependency group fails CI rather than reaching a consumer. It found exactly
-  that on 2026-08-20: the integration package was packing without its dependency
-  on `Provide.Telemetry`. If you add a signal or a language, the collector job is the
+  dependency group fails CI rather than reaching a consumer.
+  If you add a signal or a language, the collector job is the
   row's evidence: make it assert every signal it claims.
 - Rust and C# cannot auto-detect a host-installed provider. In Rust,
   `opentelemetry`'s `global::tracer_provider()` returns an opaque

@@ -68,10 +68,6 @@ five-language name contract instead, which depends on the schema mode:
   `Schema.EventName()`, `Schema.EventName("user", "", "ok")` and
   `Schema.ValidateEventName("a..b")` all raise `EventSchemaError`.
 
-Earlier releases enforced the strict 3-5 count in relaxed mode, and
-`ValidateEventName` applied the segment grammar on every call without consulting
-the mode at all. See the changelog for the release that changed it.
-
 ## Examples
 
 See [`examples/README.md`](examples/README.md) for runnable demos:
