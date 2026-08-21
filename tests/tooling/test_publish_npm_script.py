@@ -10,18 +10,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-# ci/publish-npm.sh is a POSIX shell script executed directly. Windows cannot
-# exec it (WinError 193) and never needs to: the release workflow's publish-npm
-# job runs on ubuntu-24.04.
-pytestmark = [
-    pytest.mark.tooling,
-    pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell script; publish runs on ubuntu"),
-]
+from tests.tooling.test_init_go_workspace import _bash_executable, _bash_path
+
+pytestmark = pytest.mark.tooling
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "ci" / "publish-npm.sh"
 
@@ -71,10 +66,20 @@ def _stub_npm(
 
 
 def _run(tmp_path: Path, package_dir: Path, bin_dir: Path) -> subprocess.CompletedProcess[str]:
+    # Invoked through bash rather than executed directly: Windows cannot exec a
+    # .sh file (WinError 193), but the runners ship Git Bash, so the script's
+    # logic stays covered on every OS in the matrix. Same helpers as
+    # test_run_uv_sync_with_retry.py.
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
-    env["PACKAGE_DIR"] = str(package_dir)
-    return subprocess.run([str(_SCRIPT)], env=env, capture_output=True, text=True, check=False)
+    env["PACKAGE_DIR"] = _bash_path(package_dir)
+    return subprocess.run(  # nosec B603 — fixed argv, no shell
+        [_bash_executable(), _bash_path(_SCRIPT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def _calls(tmp_path: Path) -> str:
