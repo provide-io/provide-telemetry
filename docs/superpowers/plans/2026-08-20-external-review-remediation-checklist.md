@@ -24,8 +24,8 @@ mistaken for the flake fix.
 
 ## Baseline (do this first — no separate plan file)
 
-- [ ] Working tree clean at start: `git status --short` prints nothing.
-- [ ] Baseline commit SHA recorded here: `________`
+- [x] Working tree clean at start: `git status --short` prints nothing.
+- [x] Baseline commit SHA recorded here: `0a48973f`
 - [ ] Original Rust failure evidence preserved verbatim at
       `docs/superpowers/plans/evidence/2026-08-20-rust-flake-original.txt`.
       If the original output was not captured anywhere, record that fact
@@ -65,7 +65,7 @@ provider as Provide-owned.
 `rust/Cargo.lock:514-516` pins `h2 0.4.15`. The advisory ID is **not** recorded
 in the review; step one is to obtain it from `cargo audit`, not to assume it.
 
-- [ ] `cargo audit` run against committed `rust/Cargo.lock`; advisory ID,
+- [x] `cargo audit` run against committed `rust/Cargo.lock`; advisory ID,
       affected range, and patched version recorded below.
 - [ ] `h2` upgraded to the patched version. If unreachable under current
       constraints → **stop and escalate**, record the blocking constraint here.
@@ -80,10 +80,26 @@ in the review; step one is to obtain it from `cargo audit`, not to assume it.
 
 **Advisory evidence:**
 ```
-advisory id:      ________
-affected range:   ________
-patched version:  ________
-command:          ________
+$ cd rust && cargo audit
+    Loaded 1225 security advisories (from /Users/tim/.cargo/advisory-db)
+    Scanning Cargo.lock for vulnerabilities (248 crate dependencies)
+Crate:     h2
+Version:   0.4.15
+Title:     h2 unbounded empty DATA frames
+Date:      2026-08-17
+ID:        RUSTSEC-2026-0258
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0258
+Solution:  Upgrade to >=0.4.16
+Dependency tree: h2 0.4.15 <- hyper 1.11.0 <- {tonic 0.14.6, reqwest 0.12.28,
+  hyper-util 0.1.20, hyper-timeout 0.5.2, hyper-rustls 0.27.9}
+  ... <- opentelemetry-otlp 0.31.1 <- provide-telemetry 0.8.0
+
+error: 1 vulnerability found!
+
+advisory id:      RUSTSEC-2026-0258
+affected range:   h2 < 0.4.16
+patched version:  0.4.16
+command:          cd rust && cargo audit   (cargo-audit 0.22.1)
 ```
 
 ### 3. Rust line-coverage gate
