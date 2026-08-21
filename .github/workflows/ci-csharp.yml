@@ -52,6 +52,21 @@ jobs:
       - name: Enforce coverage floor
         run: python3 ../ci/check_csharp_coverage.py "$RUNNER_TEMP/cscov" --line-floor 100 --branch-floor 98
 
+  # Blocks on any vulnerable NuGet package, transitive included, in every
+  # project of the solution. Restores first so an unrestored solution cannot
+  # report an empty — and therefore falsely clean — package list.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
+        with:
+          dotnet-version: "10.0.x"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.11"
+      - run: uv run python ci/audit_csharp.py
+
   examples-smoke:
     runs-on: ubuntu-latest
     steps:

@@ -58,3 +58,32 @@ def test_finding_is_reported_with_its_advisory_and_fix(capsys: pytest.CaptureFix
 def test_clean_result_names_the_ecosystem(capsys: pytest.CaptureFixture[str]) -> None:
     fail_on_findings([], ecosystem="csharp")
     assert "csharp" in capsys.readouterr().out
+
+
+def test_csharp_report_parsing_extracts_transitive_vulnerabilities() -> None:
+    from ci.audit_csharp import _findings_for
+
+    project = {
+        "frameworks": [
+            {
+                "framework": "net10.0",
+                "transitivePackages": [
+                    {
+                        "id": "Example.Pkg",
+                        "resolvedVersion": "1.0.0",
+                        "vulnerabilities": [{"severity": "High", "advisoryurl": "https://example.test/GHSA"}],
+                    }
+                ],
+            }
+        ]
+    }
+    findings = _findings_for(project)
+    assert len(findings) == 1
+    assert findings[0].package == "Example.Pkg"
+    assert findings[0].severity == "High"
+
+
+def test_csharp_report_parsing_ignores_a_project_with_no_frameworks() -> None:
+    from ci.audit_csharp import _findings_for
+
+    assert _findings_for({"path": "/some/project.csproj"}) == []
