@@ -49,6 +49,28 @@ pii_hash:
     input: 42
     expected: "73475cb40a56"  # pragma: allowlist secret
 
+  # Non-string values hash their RFC 8785 canonical JSON, so every SDK spells
+  # booleans, null, numbers and nested objects the same way before hashing.
+  - description: "hash of boolean uses canonical JSON spelling"
+    input: true
+    # sha256("true")[:12]
+    expected: "b5bea41b6c62"  # pragma: allowlist secret
+
+  - description: "hash of null uses canonical JSON spelling"
+    input: null
+    # sha256("null")[:12]
+    expected: "74234e98afe7"  # pragma: allowlist secret
+
+  - description: "hash of float uses canonical JSON number form"
+    input: 1.5
+    # sha256("1.5")[:12]
+    expected: "9f29a130438b"  # pragma: allowlist secret
+
+  - description: "hash of object uses key-sorted canonical JSON"
+    input: {"b": 1, "a": "x"}
+    # sha256('{"a":"x","b":1}')[:12]
+    expected: "cdab067e9f3b"  # pragma: allowlist secret
+
 pii_truncate:
   - description: "string longer than limit is truncated with suffix"
     input: "hello world"
@@ -70,6 +92,28 @@ pii_truncate:
     truncate_to: 5
     # str(1234567890) = "1234567890" (10 chars > 5)
     expected: "12345..."
+
+  - description: "unset limit defaults to 8"
+    input: "abcdefghij"
+    # truncate_to deliberately omitted: the rule is registered without a limit
+    expected: "abcdefgh..."
+
+  - description: "zero limit keeps only the suffix"
+    input: "hello"
+    truncate_to: 0
+    expected: "..."
+
+  - description: "negative limit clamps to zero"
+    input: "hello"
+    truncate_to: -3
+    # Rust's truncate_to is usize and cannot be negative; its test covers zero.
+    expected: "..."
+
+  - description: "limit counts Unicode scalar values, not UTF-16 units"
+    input: "😀😀😀😀😀"
+    truncate_to: 3
+    # five astral code points; a UTF-16 slice of 3 would split the second emoji
+    expected: "😀😀😀..."
 
 pii_redact:
   - description: "sensitive key is replaced with redaction marker"

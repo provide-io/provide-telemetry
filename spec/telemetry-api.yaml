@@ -824,12 +824,18 @@ behavioral_parity:
       - suffix: "..."
       - non_string_values: convert to string first
       - default_truncate_to: 8
+      - unset_truncate_to: "8 in every SDK; Go's zero-value TruncateTo is normalised to 8 when the rule is registered"
+      - zero_truncate_to: "keeps nothing but the suffix — the output is exactly the suffix"
+      - negative_truncate_to: "clamped to 0 — never an error, never the whole value"
+      - unit: "Unicode scalar values (code points), never UTF-16 code units or bytes, so a surrogate pair is never split"
 
   pii_hash:
     description: >
       Hash mode produces a deterministic 12-char hex digest.
     rules:
-      - algorithm: SHA-256 of string representation
+      - algorithm: SHA-256
+      - string_values: "hash the UTF-8 bytes of the string itself"
+      - non_string_values: "hash the RFC 8785 (JCS) canonical JSON of the value, produced by the same canonicaliser the receipts use — true → \"true\", null → \"null\", 1.5 → \"1.5\", objects key-sorted"
       - output: first 12 hex characters (lowercase)
 
   propagation_guards:

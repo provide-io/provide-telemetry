@@ -31,6 +31,22 @@ cases:
       emitted: true
       schema_error: true
 
+  # PROVIDE_CONSENT_LEVEL=NONE is read by setup and by the lazy logger path, so
+  # an operator opt-out takes effect without any code change. Both probes emit
+  # one INFO record and must see consent at NONE and nothing written.
+  - id: consent_env_none_at_setup
+    kind: flags
+    expected:
+      setup_done: true
+      consent_none: true
+      record_suppressed: true
+
+  - id: consent_env_none_lazy_logger
+    kind: flags
+    expected:
+      consent_none: true
+      record_suppressed: true
+
   - id: strict_event_name_only
     kind: flags
     expected:

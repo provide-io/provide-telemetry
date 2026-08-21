@@ -149,6 +149,12 @@ def _runtime_probe_case_env(case_id: str) -> dict[str, str]:
             "PROVIDE_TRACE_ENABLED": "false",
             "PROVIDE_METRICS_ENABLED": "false",
         }
+    if case_id in {"consent_env_none_at_setup", "consent_env_none_lazy_logger"}:
+        return {
+            "PROVIDE_CONSENT_LEVEL": "NONE",
+            "PROVIDE_TRACE_ENABLED": "false",
+            "PROVIDE_METRICS_ENABLED": "false",
+        }
     if case_id == "strict_event_name_only":
         return {
             "PROVIDE_TELEMETRY_STRICT_SCHEMA": "false",
