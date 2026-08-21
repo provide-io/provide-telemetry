@@ -16,6 +16,7 @@ import { setSamplingPolicy } from './sampling.js';
 import { setQueuePolicy } from './backpressure.js';
 import { MAX_EXPORT_ATTEMPTS, setExporterPolicy } from './resilience.js';
 import { ConfigurationError } from './exceptions.js';
+import { loadConsentFromEnv } from './consent.js';
 import { setSetupError } from './health.js';
 import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation.js';
 import { _setActiveConfig } from './runtime.js';
@@ -346,6 +347,10 @@ function _applySetupBody(overrides?: Partial<TelemetryConfig>): void {
   _config = candidate;
   _configVersion++;
   _setActiveConfig(_config);
+  // Consent comes from the environment at setup time, like every other SDK:
+  // PROVIDE_CONSENT_LEVEL=NONE must silence a process that calls setup, and
+  // an unset variable leaves a programmatic setConsentLevel() alone.
+  loadConsentFromEnv();
   try {
     applyConfigPolicies(_config);
   } catch (err: unknown) {

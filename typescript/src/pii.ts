@@ -9,6 +9,7 @@
  */
 
 import { shortHash12 } from './hash.js';
+import { canonicalJson } from './canonical-json.js';
 import {
   PATTERNS as _GENERATED_PATTERNS,
   MIN_SECRET_LENGTH as _MIN_SECRET_LENGTH,
@@ -294,7 +295,11 @@ export interface PIIRule {
   /** Dot-separated field path (e.g. "user.email"). Python uses tuple paths instead. */
   path: string;
   mode: MaskMode;
-  /** For 'truncate' mode: max characters before '...' is appended. */
+  /**
+   * For 'truncate' mode: how many Unicode code points to keep before '...' is
+   * appended. Unset means 8; a negative value clamps to 0, which keeps only the
+   * suffix.
+   */
   truncateTo?: number;
 }
 
@@ -341,17 +346,46 @@ function _hashValue(val: string): string {
   }
 }
 
+/**
+ * Hash-mode digest of any value.
+ *
+ * A string hashes as itself. Anything else hashes its RFC 8785 canonical JSON
+ * — the same form the receipts hash — so `true`, `null`, `1.5` and a
+ * key-sorted object digest identically in every SDK, and an object never
+ * hashes as `[object Object]`.
+ */
+function _hashAny(value: unknown): string {
+  return _hashValue(typeof value === 'string' ? value : canonicalJson(value));
+}
+
+/** Code points kept by truncate mode when a rule or policy sets no limit. */
+const DEFAULT_TRUNCATE_TO = 8;
+const TRUNCATION_SUFFIX = '...';
+
+/**
+ * Keep the first `limit` Unicode code points of `text`, appending the suffix
+ * when anything was cut.
+ *
+ * Counted and sliced in code points, not UTF-16 units: `String.prototype
+ * .slice` can split a surrogate pair, leaving a lone surrogate where an emoji
+ * was, and would disagree with the other SDKs about where the cut falls.
+ */
+function _truncate(text: string, limit: number): string {
+  const points = Array.from(text);
+  if (points.length <= limit) return text;
+  return points.slice(0, limit).join('') + TRUNCATION_SUFFIX;
+}
+
 function _applyMode(value: unknown, rule: PIIRule): { keep: boolean; value: unknown } {
   switch (rule.mode) {
     case 'drop':
       // Stryker disable next-line ObjectLiteral
       return { keep: false, value: undefined };
     case 'hash':
-      return { keep: true, value: _hashValue(String(value)) };
+      return { keep: true, value: _hashAny(value) };
     case 'truncate': {
-      const limit = Math.max(0, rule.truncateTo ?? 8);
-      const text = String(value);
-      return { keep: true, value: text.length > limit ? text.slice(0, limit) + '...' : text };
+      const limit = Math.max(0, rule.truncateTo ?? DEFAULT_TRUNCATE_TO);
+      return { keep: true, value: _truncate(String(value), limit) };
     }
     default:
       return { keep: true, value: REDACTED };
@@ -589,16 +623,14 @@ export function sanitizePayload(
               (action === 'redact' || action === 'hash' || action === 'truncate') &&
               obj[key] !== REDACTED
             ) {
-              const limit = 8;
               const val = obj[key];
               if (action === 'redact') {
                 obj[key] = REDACTED;
               } else if (action === 'hash') {
-                obj[key] = _hashValue(String(val));
+                obj[key] = _hashAny(val);
               } else {
                 // truncate
-                const text = String(val);
-                obj[key] = text.length > limit ? text.slice(0, limit) + '...' : text;
+                obj[key] = _truncate(String(val), DEFAULT_TRUNCATE_TO);
               }
             }
           }

@@ -31,6 +31,7 @@ import {
   type PropagationALS,
 } from '../src/propagation.js';
 import { _resetRuntimeForTests } from '../src/runtime.js';
+import { getConsentLevel, resetConsentForTests } from '../src/consent.js';
 
 beforeEach(() => {
   _resetConfig();
@@ -124,5 +125,18 @@ describe('setupTelemetryAsync', () => {
     const [a, b] = await Promise.all([spawn('task-A', 0), spawn('task-B', 0), setupPromise]);
     expect(a.traceId).toBe('task-A');
     expect(b.traceId).toBe('task-B');
+  });
+});
+
+describe('setupTelemetryAsync loads consent from the environment', () => {
+  afterEach(() => {
+    delete process.env['PROVIDE_CONSENT_LEVEL'];
+    resetConsentForTests();
+  });
+
+  it('PROVIDE_CONSENT_LEVEL=NONE is applied by the async variant too', async () => {
+    process.env['PROVIDE_CONSENT_LEVEL'] = 'NONE';
+    await setupTelemetryAsync({ serviceName: 'svc' });
+    expect(getConsentLevel()).toBe('NONE');
   });
 });

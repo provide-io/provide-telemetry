@@ -16,7 +16,7 @@
 import pino from 'pino';
 import { configFromEnv, getConfig, _getConfigVersion } from './config.js';
 import { getContext } from './context.js';
-import { shouldAllow } from './consent.js';
+import { loadConsentFromEnv, shouldAllow } from './consent.js';
 import { computeErrorFingerprint } from './fingerprint.js';
 import { formatPretty, supportsColor } from './pretty.js';
 import { _emittedField, _incrementHealth } from './health.js';
@@ -88,8 +88,16 @@ function resolveLoggerConfig() {
   return _getConfigVersion() === 0 ? configFromEnv() : getConfig();
 }
 
+/**
+ * Env-driven policies for a logger built before setupTelemetry() has run.
+ *
+ * Guarded on the config version so it only fires on the lazy path: once setup
+ * has happened, env was already applied there and a later root rebuild must
+ * not clobber a consent level the application set programmatically since.
+ */
 function applyLazyLoggerPoliciesFromEnv(): void {
   if (_getConfigVersion() !== 0) return;
+  loadConsentFromEnv();
   const cfg = configFromEnv();
   setSamplingPolicy('logs', { defaultRate: cfg.samplingLogsRate });
 }

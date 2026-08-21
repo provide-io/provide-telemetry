@@ -4,6 +4,7 @@
 
 import {
   getConfig,
+  getConsentLevel,
   getLogger,
   getRuntimeConfig,
   getRuntimeStatus,
@@ -287,6 +288,37 @@ function hasMessage(records: Record<string, unknown>[], message: string): boolea
   return records.some((rec) => rec['message'] === message || rec['msg'] === message);
 }
 
+/**
+ * PROVIDE_CONSENT_LEVEL=NONE must be read by setup and silence every record.
+ * captureEmit rather than captureRecord: the record is expected to be absent,
+ * and captureRecord treats that as a failure.
+ */
+async function caseConsentEnvNoneAtSetup(): Promise<Record<string, unknown>> {
+  resetTelemetryState();
+  setupTelemetry({ consoleOutput: false, captureToWindow: true });
+  const status = getRuntimeStatus();
+  const records = captureEmit('probe', 'info', 'log.output.parity');
+  const result = {
+    case: 'consent_env_none_at_setup',
+    setup_done: status.setupDone,
+    consent_none: getConsentLevel() === 'NONE',
+    record_suppressed: !hasMessage(records, 'log.output.parity'),
+  };
+  await shutdownTelemetry();
+  return result;
+}
+
+/** Same contract on the lazy path: a logger used before any setup honours the env. */
+function caseConsentEnvNoneLazyLogger(): Record<string, unknown> {
+  resetTelemetryState();
+  const records = captureEmit('probe', 'info', 'log.output.parity');
+  return {
+    case: 'consent_env_none_lazy_logger',
+    consent_none: getConsentLevel() === 'NONE',
+    record_suppressed: !hasMessage(records, 'log.output.parity'),
+  };
+}
+
 async function caseHotReloadLogLevel(): Promise<Record<string, unknown>> {
   resetTelemetryState();
   setupTelemetry({
@@ -405,6 +437,8 @@ async function main(): Promise<void> {
     lazy_init_logger: caseLazyInitLogger,
     lazy_logger_shutdown_re_setup: caseLazyLoggerShutdownReSetup,
     strict_schema_rejection: caseStrictSchemaRejection,
+    consent_env_none_at_setup: caseConsentEnvNoneAtSetup,
+    consent_env_none_lazy_logger: caseConsentEnvNoneLazyLogger,
     strict_event_name_only: caseStrictEventNameOnly,
     required_keys_rejection: caseRequiredKeysRejection,
     invalid_config: caseInvalidConfig,

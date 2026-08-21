@@ -6,6 +6,7 @@ import { _resetConfig, getConfig, setupTelemetry, version } from '../src/config.
 import { _resetSamplingForTests } from '../src/sampling.js';
 import { _resetBackpressureForTests } from '../src/backpressure.js';
 import { _resetResilienceForTests } from '../src/resilience.js';
+import { getConsentLevel, resetConsentForTests, setConsentLevel } from '../src/consent.js';
 import pkg from '../package.json' with { type: 'json' };
 
 afterEach(() => {
@@ -91,5 +92,31 @@ describe('config — DEFAULTS.consoleOutput is true (kills BooleanLiteral mutati
   it('consoleOutput is true in DEFAULTS — getConfig() after reset returns true without setupTelemetry', () => {
     _resetConfig();
     expect(getConfig().consoleOutput).toBe(true);
+  });
+});
+
+describe('setupTelemetry loads consent from the environment', () => {
+  afterEach(() => {
+    delete process.env['PROVIDE_CONSENT_LEVEL'];
+    resetConsentForTests();
+  });
+
+  it('PROVIDE_CONSENT_LEVEL=NONE silences telemetry through setupTelemetry()', () => {
+    process.env['PROVIDE_CONSENT_LEVEL'] = 'NONE';
+    setupTelemetry({ serviceName: 'svc' });
+    expect(getConsentLevel()).toBe('NONE');
+  });
+
+  it('env wins over a programmatic level set before setup', () => {
+    setConsentLevel('MINIMAL');
+    process.env['PROVIDE_CONSENT_LEVEL'] = 'functional';
+    setupTelemetry({ serviceName: 'svc' });
+    expect(getConsentLevel()).toBe('FUNCTIONAL');
+  });
+
+  it('an unset variable leaves a programmatic level alone across setup', () => {
+    setConsentLevel('MINIMAL');
+    setupTelemetry({ serviceName: 'svc' });
+    expect(getConsentLevel()).toBe('MINIMAL');
   });
 });

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 provide.io llc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   type ConsentLevel,
@@ -177,16 +177,41 @@ describe('loadConsentFromEnv', () => {
     expect(getConsentLevel()).toBe('NONE');
   });
 
-  test('ignores invalid env value', () => {
-    process.env['PROVIDE_CONSENT_LEVEL'] = 'BOGUS';
-    loadConsentFromEnv();
-    expect(getConsentLevel()).toBe('FULL'); // unchanged from reset
+  test('every valid value applies over any prior level', () => {
+    const levels: ConsentLevel[] = ['FULL', 'FUNCTIONAL', 'MINIMAL', 'NONE'];
+    for (const level of levels) {
+      setConsentLevel(level === 'FULL' ? 'NONE' : 'FULL');
+      process.env['PROVIDE_CONSENT_LEVEL'] = level;
+      loadConsentFromEnv();
+      expect(getConsentLevel()).toBe(level);
+    }
   });
 
-  test('defaults to FULL when env not set', () => {
+  test('ignores invalid env value and leaves the current level untouched', () => {
+    setConsentLevel('MINIMAL');
+    process.env['PROVIDE_CONSENT_LEVEL'] = 'BOGUS';
+    loadConsentFromEnv();
+    expect(getConsentLevel()).toBe('MINIMAL');
+  });
+
+  test('leaves the default FULL in place when env is unset', () => {
     delete process.env['PROVIDE_CONSENT_LEVEL'];
     loadConsentFromEnv();
     expect(getConsentLevel()).toBe('FULL');
+  });
+
+  test('unset env leaves a programmatic level untouched (no reset to FULL)', () => {
+    setConsentLevel('MINIMAL');
+    delete process.env['PROVIDE_CONSENT_LEVEL'];
+    loadConsentFromEnv();
+    expect(getConsentLevel()).toBe('MINIMAL');
+  });
+
+  test('empty env value is unrecognised and leaves the level untouched', () => {
+    setConsentLevel('FUNCTIONAL');
+    process.env['PROVIDE_CONSENT_LEVEL'] = '';
+    loadConsentFromEnv();
+    expect(getConsentLevel()).toBe('FUNCTIONAL');
   });
 
   test('handles lowercase env value', () => {
@@ -199,5 +224,41 @@ describe('loadConsentFromEnv', () => {
     process.env['PROVIDE_CONSENT_LEVEL'] = '  NONE  ';
     loadConsentFromEnv();
     expect(getConsentLevel()).toBe('NONE');
+  });
+
+  test('reads nothing and leaves the level untouched when process is unavailable', () => {
+    setConsentLevel('MINIMAL');
+    process.env['PROVIDE_CONSENT_LEVEL'] = 'NONE';
+    const realProcess = globalThis.process;
+    // Simulate a browser bundle: `process` is not defined at all.
+    vi.stubGlobal('process', undefined);
+    try {
+      loadConsentFromEnv();
+      expect(getConsentLevel()).toBe('MINIMAL');
+    } finally {
+      vi.stubGlobal('process', realProcess);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('swallows an env accessor that throws and leaves the level untouched', () => {
+    setConsentLevel('MINIMAL');
+    const realProcess = globalThis.process;
+    const throwing = new Proxy(
+      {},
+      {
+        get: () => {
+          throw new Error('env unavailable');
+        },
+      },
+    );
+    vi.stubGlobal('process', { env: throwing });
+    try {
+      loadConsentFromEnv();
+      expect(getConsentLevel()).toBe('MINIMAL');
+    } finally {
+      vi.stubGlobal('process', realProcess);
+      vi.unstubAllGlobals();
+    }
   });
 });

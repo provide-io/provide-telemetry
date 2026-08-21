@@ -127,6 +127,50 @@ describe('parity: pii_hash', () => {
     const hash = shortHash12('42');
     expect(hash).toBe('73475cb40a56'); // pragma: allowlist secret
   });
+
+  it('hash rule on a string hashes the raw string, not its JSON spelling', () => {
+    registerPiiRule({ path: 'v', mode: 'hash' });
+    const obj: Record<string, unknown> = { v: 'same-input' };
+    sanitizePayload(obj);
+    // sha256('same-input')[:12], never sha256('"same-input"')
+    expect(obj['v']).toBe('f52c2013103b');
+  });
+
+  it('hash rule on an integer matches the string digest', () => {
+    registerPiiRule({ path: 'v', mode: 'hash' });
+    const obj: Record<string, unknown> = { v: 42 };
+    sanitizePayload(obj);
+    expect(obj['v']).toBe('73475cb40a56'); // pragma: allowlist secret
+  });
+
+  it('hash of boolean uses canonical JSON spelling', () => {
+    registerPiiRule({ path: 'v', mode: 'hash' });
+    const obj: Record<string, unknown> = { v: true };
+    sanitizePayload(obj);
+    expect(obj['v']).toBe('b5bea41b6c62'); // pragma: allowlist secret
+  });
+
+  it('hash of null uses canonical JSON spelling', () => {
+    registerPiiRule({ path: 'v', mode: 'hash' });
+    const obj: Record<string, unknown> = { v: null };
+    sanitizePayload(obj);
+    expect(obj['v']).toBe('74234e98afe7'); // pragma: allowlist secret
+  });
+
+  it('hash of float uses canonical JSON number form', () => {
+    registerPiiRule({ path: 'v', mode: 'hash' });
+    const obj: Record<string, unknown> = { v: 1.5 };
+    sanitizePayload(obj);
+    expect(obj['v']).toBe('9f29a130438b'); // pragma: allowlist secret
+  });
+
+  it('hash of object uses key-sorted canonical JSON', () => {
+    registerPiiRule({ path: 'v', mode: 'hash' });
+    const obj: Record<string, unknown> = { v: { b: 1, a: 'x' } };
+    sanitizePayload(obj);
+    // sha256('{"a":"x","b":1}')[:12] — never sha256('[object Object]')
+    expect(obj['v']).toBe('cdab067e9f3b'); // pragma: allowlist secret
+  });
 });
 
 // ── PII Truncate ────────────────────────────────────────────────────────────
@@ -160,6 +204,43 @@ describe('parity: pii_truncate', () => {
     const obj: Record<string, unknown> = { note: 1234567890 };
     sanitizePayload(obj);
     expect(obj['note']).toBe('12345...');
+  });
+
+  it('unset limit defaults to 8', () => {
+    registerPiiRule({ path: 'note', mode: 'truncate' });
+    const obj: Record<string, unknown> = { note: 'abcdefghij' };
+    sanitizePayload(obj);
+    expect(obj['note']).toBe('abcdefgh...');
+  });
+
+  it('zero limit keeps only the suffix', () => {
+    registerPiiRule({ path: 'note', mode: 'truncate', truncateTo: 0 });
+    const obj: Record<string, unknown> = { note: 'hello' };
+    sanitizePayload(obj);
+    expect(obj['note']).toBe('...');
+  });
+
+  it('negative limit clamps to zero', () => {
+    registerPiiRule({ path: 'note', mode: 'truncate', truncateTo: -3 });
+    const obj: Record<string, unknown> = { note: 'hello' };
+    sanitizePayload(obj);
+    expect(obj['note']).toBe('...');
+  });
+
+  it('limit counts Unicode scalar values, not UTF-16 units', () => {
+    registerPiiRule({ path: 'note', mode: 'truncate', truncateTo: 3 });
+    // Five astral code points; a UTF-16 slice of 3 would split the second emoji.
+    const obj: Record<string, unknown> = { note: '😀😀😀😀😀' };
+    sanitizePayload(obj);
+    expect(obj['note']).toBe('😀😀😀...');
+  });
+
+  it('a value of exactly the limit in code points is not truncated', () => {
+    registerPiiRule({ path: 'note', mode: 'truncate', truncateTo: 2 });
+    // Two code points, four UTF-16 units: a unit-based length would truncate.
+    const obj: Record<string, unknown> = { note: '😀😀' };
+    sanitizePayload(obj);
+    expect(obj['note']).toBe('😀😀');
   });
 });
 
