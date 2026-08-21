@@ -30,6 +30,9 @@ import (
 	_ "github.com/provide-io/provide-telemetry/go/otel"
 )
 
+// piiKeyUser is the payload key the PII rules below are scoped to.
+const piiKeyUser = "user"
+
 func requireEnv(name string) string {
 	v := os.Getenv(name)
 	if v == "" {
@@ -57,7 +60,7 @@ func emit(ctx context.Context, iteration int) error {
 		// The PII rules will sanitize email and truncate full_name before logging.
 		payload := map[string]any{
 			"iteration": iteration,
-			"user": map[string]any{
+			piiKeyUser: map[string]any{
 				"email":     "ops@example.com",
 				"full_name": "Operator Example",
 			},
@@ -66,7 +69,7 @@ func emit(ctx context.Context, iteration int) error {
 		sanitized := telemetry.SanitizePayload(payload, true, 0)
 		log.InfoContext(ctx, logEvt.Event, append(logEvt.Attrs(),
 			"iteration", strconv.Itoa(iteration),
-			"user", fmt.Sprintf("%v", sanitized["user"]),
+			piiKeyUser, fmt.Sprintf("%v", sanitized[piiKeyUser]),
 			"token", fmt.Sprintf("%v", sanitized["token"]),
 		)...)
 		return nil
@@ -84,11 +87,11 @@ func main() {
 
 	// Register PII rules before setup.
 	telemetry.RegisterPIIRule(telemetry.PIIRule{
-		Path: []string{"user", "email"},
+		Path: []string{piiKeyUser, "email"},
 		Mode: telemetry.PIIModeHash,
 	})
 	telemetry.RegisterPIIRule(telemetry.PIIRule{
-		Path:       []string{"user", "full_name"},
+		Path:       []string{piiKeyUser, "full_name"},
 		Mode:       telemetry.PIIModeTruncate,
 		TruncateTo: 4,
 	})

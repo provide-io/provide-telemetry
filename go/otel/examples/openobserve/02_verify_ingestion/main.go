@@ -34,6 +34,13 @@ import (
 	"time"
 )
 
+// Signal names as OpenObserve spells its stream types.
+const (
+	signalLogs    = "logs"
+	signalTraces  = "traces"
+	signalMetrics = "metrics"
+)
+
 func requireEnv(name string) string {
 	v := os.Getenv(name)
 	if v == "" {
@@ -140,10 +147,10 @@ func streamNames(ctx context.Context, baseURL, streamType, auth string) (map[str
 func requiredSignals() map[string]struct{} {
 	raw := os.Getenv("OPENOBSERVE_REQUIRED_SIGNALS")
 	if raw == "" {
-		raw = "logs"
+		raw = signalLogs
 	}
 	result := make(map[string]struct{})
-	valid := map[string]struct{}{"logs": {}, "metrics": {}, "traces": {}}
+	valid := map[string]struct{}{signalLogs: {}, signalMetrics: {}, signalTraces: {}}
 	for _, part := range strings.Split(raw, ",") {
 		part = strings.TrimSpace(strings.ToLower(part))
 		if _, ok := valid[part]; !ok {
@@ -212,12 +219,12 @@ func main() { //nolint:gocyclo // verification script with sequential checks
 	required := requiredSignals()
 
 	// Snapshot counts before emitting.
-	beforeLogHits, _ := searchHits(ctx, baseURL, "logs", auth, startUS, time.Now().UnixMicro())
-	beforeTraceHits, _ := searchHits(ctx, baseURL, "traces", auth, startUS, time.Now().UnixMicro())
-	beforeMetricStreams, _ := streamNames(ctx, baseURL, "metrics", auth)
+	beforeLogHits, _ := searchHits(ctx, baseURL, signalLogs, auth, startUS, time.Now().UnixMicro())
+	beforeTraceHits, _ := searchHits(ctx, baseURL, signalTraces, auth, startUS, time.Now().UnixMicro())
+	beforeMetricStreams, _ := streamNames(ctx, baseURL, signalMetrics, auth)
 	before := map[string]any{
-		"logs":                   countLogsForRunID(beforeLogHits, logEvent, runID),
-		"traces":                 countTraces(beforeTraceHits, traceName),
+		signalLogs:               countLogsForRunID(beforeLogHits, logEvent, runID),
+		signalTraces:             countTraces(beforeTraceHits, traceName),
 		"metrics_stream_present": func() bool { _, ok := beforeMetricStreams[metricStream]; return ok }(),
 	}
 	fmt.Printf("before=%v\n", before)
@@ -232,30 +239,30 @@ func main() { //nolint:gocyclo // verification script with sequential checks
 	// Poll for up to 30s.
 	deadline := time.Now().Add(30 * time.Second)
 	after := map[string]any{
-		"logs":                   0,
-		"traces":                 0,
+		signalLogs:               0,
+		signalTraces:             0,
 		"metrics_stream_present": false,
 	}
 	for time.Now().Before(deadline) {
 		endUS := time.Now().UnixMicro()
-		logHits, _ := searchHits(ctx, baseURL, "logs", auth, startUS, endUS)
-		traceHits, _ := searchHits(ctx, baseURL, "traces", auth, startUS, endUS)
-		metricStreams, _ := streamNames(ctx, baseURL, "metrics", auth)
+		logHits, _ := searchHits(ctx, baseURL, signalLogs, auth, startUS, endUS)
+		traceHits, _ := searchHits(ctx, baseURL, signalTraces, auth, startUS, endUS)
+		metricStreams, _ := streamNames(ctx, baseURL, signalMetrics, auth)
 
 		logCount := countLogsForRunID(logHits, logEvent, runID)
 		traceCount := countTraces(traceHits, traceName)
 		_, metricPresent := metricStreams[metricStream]
 
-		after["logs"] = logCount
-		after["traces"] = traceCount
+		after[signalLogs] = logCount
+		after[signalTraces] = traceCount
 		after["metrics_stream_present"] = metricPresent
 
-		_, needLogs := required["logs"]
-		_, needTraces := required["traces"]
-		_, needMetrics := required["metrics"]
+		_, needLogs := required[signalLogs]
+		_, needTraces := required[signalTraces]
+		_, needMetrics := required[signalMetrics]
 
-		logsOK := !needLogs || logCount > before["logs"].(int)
-		tracesOK := !needTraces || traceCount > before["traces"].(int)
+		logsOK := !needLogs || logCount > before[signalLogs].(int)
+		tracesOK := !needTraces || traceCount > before[signalTraces].(int)
 		metricsOK := !needMetrics || metricPresent
 
 		if logsOK && tracesOK && metricsOK {
@@ -267,19 +274,19 @@ func main() { //nolint:gocyclo // verification script with sequential checks
 	fmt.Printf("after=%v\n", after)
 
 	var missing []string
-	if _, need := required["logs"]; need {
-		if after["logs"].(int) <= before["logs"].(int) {
-			missing = append(missing, "logs")
+	if _, need := required[signalLogs]; need {
+		if after[signalLogs].(int) <= before[signalLogs].(int) {
+			missing = append(missing, signalLogs)
 		}
 	}
-	if _, need := required["traces"]; need {
-		if after["traces"].(int) <= before["traces"].(int) {
-			missing = append(missing, "traces")
+	if _, need := required[signalTraces]; need {
+		if after[signalTraces].(int) <= before[signalTraces].(int) {
+			missing = append(missing, signalTraces)
 		}
 	}
-	if _, need := required["metrics"]; need {
+	if _, need := required[signalMetrics]; need {
 		if !after["metrics_stream_present"].(bool) {
-			missing = append(missing, "metrics")
+			missing = append(missing, signalMetrics)
 		}
 	}
 

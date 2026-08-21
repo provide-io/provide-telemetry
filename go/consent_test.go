@@ -5,6 +5,8 @@
 package telemetry
 
 import (
+	"context"
+	"os"
 	"testing"
 )
 
@@ -196,6 +198,85 @@ func TestLoadConsentFromEnvEmpty(t *testing.T) {
 	// empty env var leaves level unchanged
 	if got := GetConsentLevel(); got != ConsentFull {
 		t.Errorf("expected ConsentFull after empty env, got %v", got)
+	}
+}
+
+// ── Environment wiring ────────────────────────────────────────────────────────
+//
+// LoadConsentFromEnv existed from the start; nothing called it, so
+// PROVIDE_CONSENT_LEVEL=NONE was read by every other SDK and ignored by Go.
+// These pin the two entry points that now load it — setup and the lazy
+// pre-setup logger — and the two things they must not do: overwrite a level
+// when the variable is unset, and overwrite a programmatic level after setup.
+
+func TestSetupTelemetryLoadsConsentFromEnv(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
+
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "NONE")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if got := GetConsentLevel(); got != ConsentNone {
+		t.Fatalf("expected setup to load ConsentNone from env, got %v", got)
+	}
+	if ShouldAllow(signalLogs, "ERROR") {
+		t.Fatal("expected NONE loaded at setup to block logs")
+	}
+}
+
+func TestSetupTelemetryLeavesConsentWhenEnvUnset(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
+
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "")
+	_ = os.Unsetenv("PROVIDE_CONSENT_LEVEL")
+	SetConsentLevel(ConsentMinimal)
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if got := GetConsentLevel(); got != ConsentMinimal {
+		t.Fatalf("expected unset env to leave ConsentMinimal in place, got %v", got)
+	}
+}
+
+func TestGetLoggerBeforeSetupLoadsConsentFromEnv(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
+
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "NONE")
+	before := GetHealthSnapshot()
+	GetLogger(context.Background(), "x").Info("lazy.logger.consent.none")
+	if got := GetConsentLevel(); got != ConsentNone {
+		t.Fatalf("expected lazy GetLogger to load ConsentNone from env, got %v", got)
+	}
+	if after := GetHealthSnapshot(); after.LogsEmitted != before.LogsEmitted {
+		t.Fatalf("expected NONE to suppress the lazy record: before=%d after=%d", before.LogsEmitted, after.LogsEmitted)
+	}
+}
+
+func TestGetLoggerAfterSetupDoesNotReloadConsentFromEnv(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	ResetConsentForTests()
+	t.Cleanup(ResetConsentForTests)
+
+	t.Setenv("PROVIDE_CONSENT_LEVEL", "NONE")
+	if _, err := SetupTelemetry(); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	// A programmatic decision made after setup is the authority; a later
+	// GetLogger must not clobber it with the environment again.
+	SetConsentLevel(ConsentFull)
+	GetLogger(context.Background(), "x").Info("post.setup.consent.full")
+	if got := GetConsentLevel(); got != ConsentFull {
+		t.Fatalf("expected GetLogger after setup to leave ConsentFull, got %v", got)
 	}
 }
 

@@ -341,6 +341,49 @@ func TestSetGetPIIRules_RoundTrip(t *testing.T) {
 	}
 }
 
+// ── Registration normalises an unset truncate limit ──────────────────────────
+//
+// Go's zero-value TruncateTo means "unset", and the spec says unset is 8. Both
+// entry points that store rules normalise it; other modes and explicit
+// limits — including negative ones, which piicore clamps at apply time — are
+// stored as given.
+
+func TestSetPIIRules_NormalizesUnsetTruncateTo(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{
+		{Path: []string{"a"}, Mode: PIIModeTruncate},
+		{Path: []string{"b"}, Mode: PIIModeTruncate, TruncateTo: 5},
+		{Path: []string{"c"}, Mode: PIIModeTruncate, TruncateTo: -3},
+		{Path: []string{"d"}, Mode: PIIModeHash},
+	})
+	got := GetPIIRules()
+	want := []int{DefaultTruncateTo, 5, -3, 0}
+	for i, limit := range want {
+		if got[i].TruncateTo != limit {
+			t.Errorf("rule %d: TruncateTo = %d, want %d", i, got[i].TruncateTo, limit)
+		}
+	}
+}
+
+func TestRegisterPIIRule_NormalizesUnsetTruncateTo(t *testing.T) {
+	resetPII(t)
+	RegisterPIIRule(PIIRule{Path: []string{"a"}, Mode: PIIModeTruncate})
+	RegisterPIIRule(PIIRule{Path: []string{"b"}, Mode: PIIModeRedact})
+	got := GetPIIRules()
+	if got[0].TruncateTo != DefaultTruncateTo {
+		t.Errorf("truncate rule: TruncateTo = %d, want %d", got[0].TruncateTo, DefaultTruncateTo)
+	}
+	if got[1].TruncateTo != 0 {
+		t.Errorf("redact rule: TruncateTo = %d, want 0 (field ignored, left as given)", got[1].TruncateTo)
+	}
+}
+
+func TestDefaultTruncateTo_Is8(t *testing.T) {
+	if DefaultTruncateTo != 8 {
+		t.Fatalf("DefaultTruncateTo = %d, want 8", DefaultTruncateTo)
+	}
+}
+
 // ── Test 13: _resetPIIRules clears rules ─────────────────────────────────────
 
 func TestResetPIIRules_ClearsRules(t *testing.T) {

@@ -13,6 +13,10 @@ import (
 )
 
 // PIIRule defines a rule for sanitizing a specific field path.
+//
+// In truncate mode a zero TruncateTo means "unset" and is normalised to
+// DefaultTruncateTo when the rule is registered; a negative TruncateTo is
+// clamped to 0 at apply time, so the output is exactly the suffix.
 type PIIRule = piicore.PIIRule
 
 // PII mode constants.
@@ -22,6 +26,29 @@ const (
 	PIIModeHash     = piicore.PIIModeHash
 	PIIModeTruncate = piicore.PIIModeTruncate
 )
+
+// DefaultTruncateTo is the truncate-mode limit a rule registered without one
+// receives, matching the other SDKs' default of 8 code points.
+const DefaultTruncateTo = piicore.DefaultTruncateTo
+
+// Hash mode digests the RFC 8785 canonical JSON of a non-string value, which
+// is the serializer the receipts already use. piicore cannot import it — the
+// dependency runs the other way — so it is handed over here, before any rule
+// can run.
+func init() {
+	piicore.SetHashCanonicalizer(CanonicalJSON)
+}
+
+// _normalizePIIRule fills in the defaults a stored rule must carry: a
+// truncate rule whose TruncateTo was left at Go's zero value takes
+// DefaultTruncateTo. Negative limits are left alone — piicore clamps them to 0
+// at apply time — and other modes ignore the field entirely.
+func _normalizePIIRule(rule PIIRule) PIIRule {
+	if rule.Mode == PIIModeTruncate && rule.TruncateTo == 0 {
+		rule.TruncateTo = DefaultTruncateTo
+	}
+	return rule
+}
 
 // SecretPattern pairs a diagnostic name with a compiled regexp.
 type SecretPattern struct {
@@ -133,12 +160,16 @@ func SetReceiptHook(fn func(string, string, any)) {
 	_receiptHook = fn
 }
 
-// SetPIIRules replaces the global PII rule list.
+// SetPIIRules replaces the global PII rule list. Each rule is normalised on
+// the way in (see _normalizePIIRule), so GetPIIRules reports the limit a
+// truncate rule will actually apply.
 func SetPIIRules(rules []PIIRule) {
 	_piiMu.Lock()
 	defer _piiMu.Unlock()
 	cp := make([]PIIRule, len(rules))
-	copy(cp, rules)
+	for i, rule := range rules {
+		cp[i] = _normalizePIIRule(rule)
+	}
 	_piiRules = cp
 }
 
@@ -204,7 +235,7 @@ func _applyMaskAction(result map[string]any, k string, v any, action string) {
 	if strVal, ok := v.(string); ok && strVal == piicore.Redacted {
 		return // already redacted — do not double-mask
 	}
-	masked, drop := piicore.ApplyMode(v, action, 8)
+	masked, drop := piicore.ApplyMode(v, action, piicore.DefaultTruncateTo)
 	if !drop {
 		result[k] = masked
 	}

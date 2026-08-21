@@ -156,6 +156,11 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 		}
 	}
 
+	// Honour PROVIDE_CONSENT_LEVEL before any gate is published. Unset or
+	// unrecognised leaves the level alone, so a SetConsentLevel made before
+	// setup survives a process that never sets the variable.
+	LoadConsentFromEnv()
+
 	// Wire per-signal sampling from config.
 	_applyRuntimePolicies(cfg)
 

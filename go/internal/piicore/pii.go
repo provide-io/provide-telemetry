@@ -4,7 +4,10 @@
 // Package piicore contains the stateless PII sanitization engine shared by
 // the top-level telemetry package and the logger sub-package.  All mutable
 // state (rule lists, hooks, custom patterns) lives in the callers; this
-// package only provides pure functions.
+// package only provides pure functions. The one exception is the hash
+// canonicalizer hook (SetHashCanonicalizer), which exists because the RFC
+// 8785 serializer lives in the root package and the root package imports
+// this one.
 package piicore
 
 import (
@@ -13,14 +16,24 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 )
 
 // PIIRule defines a rule for sanitizing a specific field path.
+//
+// TruncateTo only matters in truncate mode. Go's zero value means "unset":
+// the root package normalises 0 to DefaultTruncateTo when the rule is
+// registered, so a rule built without a limit truncates to 8 code points like
+// every other SDK. A negative limit is clamped to 0 at apply time, which
+// keeps nothing but the suffix — never an error, never the whole value.
 type PIIRule struct {
 	Path       []string
 	Mode       string
 	TruncateTo int
 }
+
+// DefaultTruncateTo is the truncate-mode limit used when a rule carries none.
+const DefaultTruncateTo = 8
 
 // PII mode constants.
 const (
@@ -77,19 +90,57 @@ func ApplyRule(rule PIIRule, path []string) bool {
 	return true
 }
 
+// hashCanonicalizer renders a non-string value to the text hash mode digests.
+//
+// The contract is the RFC 8785 canonical JSON of the value — the same
+// serializer the redaction receipts use — so that every SDK hashes true as
+// "true", nil as "null" and an object key-sorted. That serializer lives in the
+// root package, which imports this one, so it is installed here at init
+// through SetHashCanonicalizer rather than imported. Until one is installed
+// (this package's own tests, or a binary that links only a sub-package) the
+// fallback is fmt's %v rendering.
+var hashCanonicalizer atomic.Pointer[func(any) string]
+
+// SetHashCanonicalizer installs the renderer hash mode uses for non-string
+// values. Passing nil restores the %v fallback.
+func SetHashCanonicalizer(fn func(any) string) {
+	if fn == nil {
+		hashCanonicalizer.Store(nil)
+		return
+	}
+	hashCanonicalizer.Store(&fn)
+}
+
+// hashInput returns the bytes-as-text that hash mode digests for value: the
+// string itself, or the canonical rendering of anything else.
+func hashInput(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	if fn := hashCanonicalizer.Load(); fn != nil {
+		return (*fn)(value)
+	}
+	return fmt.Sprintf("%v", value)
+}
+
 // ApplyMode applies the given mode to value and returns (result, should_drop).
+//
+// Truncate counts Unicode code points, never bytes or UTF-16 units, so an
+// astral character is kept or dropped whole. A limit of 0 yields exactly the
+// suffix; a negative limit is clamped to 0 rather than panicking on the slice.
 func ApplyMode(value any, mode string, truncateTo int) (any, bool) {
 	switch mode {
 	case PIIModeDrop:
 		return nil, true
 	case PIIModeHash:
-		sum := sha256.Sum256([]byte(fmt.Sprintf("%v", value)))
+		sum := sha256.Sum256([]byte(hashInput(value)))
 		return fmt.Sprintf("%x", sum)[:12], false
 	case PIIModeTruncate:
 		s := fmt.Sprintf("%v", value)
+		limit := max(truncateTo, 0)
 		runes := []rune(s)
-		if len(runes) >= truncateTo+1 {
-			return string(runes[:truncateTo]) + TruncationSuffix, false
+		if len(runes) > limit {
+			return string(runes[:limit]) + TruncationSuffix, false
 		}
 		return s, false
 	default:

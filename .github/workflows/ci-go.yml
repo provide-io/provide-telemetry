@@ -146,6 +146,12 @@ jobs:
       - name: Run golangci-lint
         run: golangci-lint run --path-prefix=go
         working-directory: go
+      # go/otel is its own module, so the root run above never sees it. It
+      # inherits go/.golangci.yml and reports paths relative to that file, so
+      # the prefix is still "go" — "go/otel" would double the directory.
+      - name: Run golangci-lint (go/otel)
+        run: golangci-lint run --path-prefix=go
+        working-directory: go/otel
 
   security:
     runs-on: ubuntu-latest
@@ -188,6 +194,18 @@ jobs:
           # from go.dev. Bump it whenever a stdlib vuln fix lands.
           GOTOOLCHAIN: go1.26.6
         run: govulncheck .
+      # go/otel is its own module and was never scanned: the root `./...` stops
+      # at the module boundary. Its examples and probe are small enough to scan whole.
+      - name: Run gosec (go/otel)
+        working-directory: go/otel
+        run: gosec ./...
+      # Same toolchain pin as the root step, for the same reason — the vuln
+      # scanner must see the newest patched stdlib, not the runner's cache.
+      - name: Run govulncheck (go/otel)
+        working-directory: go/otel
+        env:
+          GOTOOLCHAIN: go1.26.6
+        run: govulncheck ./...
 
   vet:
     runs-on: ubuntu-latest
@@ -208,6 +226,10 @@ jobs:
           echo "Using workspace: ${WORKFILE}"
           go env GOWORK
       - name: Run go vet
+        run: go vet ./...
+      # go/otel is its own module; `./...` from go/ does not descend into it.
+      - name: Run go vet (go/otel)
+        working-directory: go/otel
         run: go vet ./...
 
   performance-smoke:

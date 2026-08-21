@@ -127,10 +127,12 @@ func ClearCardinalityLimits() {
 
 // RegisterPIIRule appends a single PIIRule to the global rule list.
 // It is the spec-named equivalent — [ReplacePIIRules] replaces all rules atomically.
+// The rule is normalised on the way in, so a truncate rule registered without
+// a TruncateTo is stored with [DefaultTruncateTo].
 func RegisterPIIRule(rule PIIRule) {
 	_piiMu.Lock()
 	defer _piiMu.Unlock()
-	_piiRules = append(_piiRules, rule)
+	_piiRules = append(_piiRules, _normalizePIIRule(rule))
 }
 
 // ReplacePIIRules atomically replaces all PII rules with the provided slice.

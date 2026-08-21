@@ -5,9 +5,9 @@ package otel
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -278,7 +278,7 @@ func _attributeFromSlogAttr(attr slog.Attr) attribute.KeyValue {
 		return attribute.String(attr.Key, value.Time().Format("2006-01-02T15:04:05.999999999Z07:00"))
 	case slog.KindUint64:
 		u := value.Uint64()
-		if u > uint64(^uint64(0)>>1) {
+		if u > math.MaxInt64 {
 			return attribute.String(attr.Key, fmt.Sprint(u))
 		}
 		return attribute.Int64(attr.Key, int64(u))
@@ -302,5 +302,3 @@ func _defaultOTLPLogExporterFactory(ctx context.Context, opts ...otlploghttp.Opt
 var _newOTLPTraceExporter = _defaultOTLPTraceExporterFactory     //nolint:gochecknoglobals
 var _newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory //nolint:gochecknoglobals
 var _newOTLPLogExporter = _defaultOTLPLogExporterFactory         //nolint:gochecknoglobals
-
-var errOTelShutdown = errors.New("otel shutdown error")

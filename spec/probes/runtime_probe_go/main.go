@@ -88,6 +88,38 @@ func caseLazyLoggerShutdownReSetup() map[string]any {
 	}
 }
 
+// caseConsentEnvNoneAtSetup pins that PROVIDE_CONSENT_LEVEL=NONE is read at
+// setup: the level is NONE afterwards and an INFO record is suppressed rather
+// than written. captureEmit is used instead of captureRecord because the
+// latter panics when no record appears, and no record appearing is the point.
+func caseConsentEnvNoneAtSetup() map[string]any {
+	telemetry.ResetForTests()
+	_, _ = telemetry.SetupTelemetry()
+	status := telemetry.GetRuntimeStatus()
+	records := captureEmit("probe", "info", "log.output.parity")
+	consentNone := telemetry.GetConsentLevel() == telemetry.ConsentNone
+	_ = telemetry.ShutdownTelemetry(context.Background())
+	return map[string]any{
+		"case":              "consent_env_none_at_setup",
+		"setup_done":        status.SetupDone,
+		"consent_none":      consentNone,
+		"record_suppressed": !hasMessage(records, "log.output.parity"),
+	}
+}
+
+// caseConsentEnvNoneLazyLogger pins the same contract for a process that
+// never calls SetupTelemetry: the lazy pre-setup logger loads the level from
+// the environment itself.
+func caseConsentEnvNoneLazyLogger() map[string]any {
+	telemetry.ResetForTests()
+	records := captureEmit("probe", "info", "log.output.parity")
+	return map[string]any{
+		"case":              "consent_env_none_lazy_logger",
+		"consent_none":      telemetry.GetConsentLevel() == telemetry.ConsentNone,
+		"record_suppressed": !hasMessage(records, "log.output.parity"),
+	}
+}
+
 func caseStrictSchemaRejection() map[string]any {
 	telemetry.ResetForTests()
 	_, _ = telemetry.SetupTelemetry()
@@ -436,6 +468,10 @@ func main() {
 		result = caseLazyInitLogger()
 	case "lazy_logger_shutdown_re_setup":
 		result = caseLazyLoggerShutdownReSetup()
+	case "consent_env_none_at_setup":
+		result = caseConsentEnvNoneAtSetup()
+	case "consent_env_none_lazy_logger":
+		result = caseConsentEnvNoneLazyLogger()
 	case "strict_schema_rejection":
 		result = caseStrictSchemaRejection()
 	case "strict_event_name_only":

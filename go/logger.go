@@ -416,6 +416,11 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 	}
 	if !_runtimeSetupDone() {
 		_, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: cfg.Sampling.LogsRate})
+		// The lazy pre-setup logger must honour PROVIDE_CONSENT_LEVEL too, or
+		// a process that never calls SetupTelemetry emits under NONE. Only
+		// before setup: afterwards a programmatic SetConsentLevel is the
+		// authority and must not be overwritten by the environment.
+		LoadConsentFromEnv()
 	}
 	// Prefer the published generation; fall back to whatever logger has been
 	// configured without a full setup (the lazy pre-setup path). Both sources

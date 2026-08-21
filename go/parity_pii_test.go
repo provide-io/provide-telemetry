@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"regexp"
 	"testing"
+
+	"github.com/provide-io/provide-telemetry/go/internal/piicore"
 )
 
 // ── PII Hash ─────────────────────────────────────────────────────────────────
@@ -44,6 +46,46 @@ func TestParity_PIIHash_Integer(t *testing.T) {
 	r := SanitizePayload(map[string]any{"n": 42}, true, 32)
 	if r["n"] != "73475cb40a56" { // pragma: allowlist secret
 		t.Errorf("hash(42): want 73475cb40a56, got %v", r["n"])
+	}
+}
+
+// Non-string values hash their RFC 8785 canonical JSON, not fmt's %v, so
+// every SDK digests the same bytes: true → "true", nil → "null", 1.5 → "1.5",
+// objects key-sorted. 42 is unchanged because %v and JCS agree on integers.
+
+func TestParity_PIIHash_Boolean(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"flag"}, Mode: PIIModeHash}})
+	r := SanitizePayload(map[string]any{"flag": true}, true, 32)
+	if r["flag"] != "b5bea41b6c62" { // pragma: allowlist secret
+		t.Errorf("hash(true): want b5bea41b6c62, got %v", r["flag"])
+	}
+}
+
+func TestParity_PIIHash_Null(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"nothing"}, Mode: PIIModeHash}})
+	r := SanitizePayload(map[string]any{"nothing": nil}, true, 32)
+	if r["nothing"] != "74234e98afe7" { // pragma: allowlist secret
+		t.Errorf("hash(nil): want 74234e98afe7, got %v", r["nothing"])
+	}
+}
+
+func TestParity_PIIHash_Float(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"ratio"}, Mode: PIIModeHash}})
+	r := SanitizePayload(map[string]any{"ratio": 1.5}, true, 32)
+	if r["ratio"] != "9f29a130438b" { // pragma: allowlist secret
+		t.Errorf("hash(1.5): want 9f29a130438b, got %v", r["ratio"])
+	}
+}
+
+func TestParity_PIIHash_Object(t *testing.T) {
+	resetPII(t)
+	SetPIIRules([]PIIRule{{Path: []string{"obj"}, Mode: PIIModeHash}})
+	r := SanitizePayload(map[string]any{"obj": map[string]any{"b": 1, "a": "x"}}, true, 32)
+	if r["obj"] != "cdab067e9f3b" { // pragma: allowlist secret
+		t.Errorf(`hash({"b":1,"a":"x"}): want cdab067e9f3b, got %v`, r["obj"])
 	}
 }
 
@@ -91,6 +133,48 @@ func TestParity_PIIRedact_CaseInsensitive(t *testing.T) {
 	r := SanitizePayload(map[string]any{"API_KEY": "abc123"}, true, 32)
 	if r["API_KEY"] != "***" {
 		t.Errorf("redact(API_KEY): want ***, got %v", r["API_KEY"])
+	}
+}
+
+// A rule registered without a limit truncates to 8, the default every SDK
+// shares; Go's zero-value TruncateTo is normalised on registration.
+func TestParity_PIITruncate_UnsetLimitDefaultsTo8(t *testing.T) {
+	resetPII(t)
+	RegisterPIIRule(PIIRule{Path: []string{"note"}, Mode: PIIModeTruncate})
+	r := SanitizePayload(map[string]any{"note": "abcdefghij"}, true, 32)
+	if r["note"] != "abcdefgh..." {
+		t.Errorf("truncate(abcdefghij, unset): want %q, got %v", "abcdefgh...", r["note"])
+	}
+}
+
+// Registration normalises 0 to the default, so the zero-limit contract — the
+// output is exactly the suffix — is exercised against the engine directly.
+func TestParity_PIITruncate_ZeroLimit_SuffixOnly(t *testing.T) {
+	got, drop := piicore.ApplyMode("hello", PIIModeTruncate, 0)
+	if drop || got != "..." {
+		t.Errorf("truncate(hello, 0): want %q, got %v (drop=%v)", "...", got, drop)
+	}
+}
+
+// A negative limit is clamped to 0 — never an error, never the whole value,
+// and never a panic on a negative slice bound.
+func TestParity_PIITruncate_NegativeLimit_ClampsToZero(t *testing.T) {
+	resetPII(t)
+	RegisterPIIRule(PIIRule{Path: []string{"note"}, Mode: PIIModeTruncate, TruncateTo: -3})
+	r := SanitizePayload(map[string]any{"note": "hello"}, true, 32)
+	if r["note"] != "..." {
+		t.Errorf("truncate(hello, -3): want %q, got %v", "...", r["note"])
+	}
+}
+
+// The limit counts Unicode scalar values: five astral emoji cut at 3 keep
+// three whole emoji, where a UTF-16 slice would split the second one.
+func TestParity_PIITruncate_CountsCodePoints(t *testing.T) {
+	resetPII(t)
+	RegisterPIIRule(PIIRule{Path: []string{"note"}, Mode: PIIModeTruncate, TruncateTo: 3})
+	r := SanitizePayload(map[string]any{"note": "😀😀😀😀😀"}, true, 32)
+	if r["note"] != "😀😀😀..." {
+		t.Errorf("truncate(5 emoji, 3): want %q, got %v", "😀😀😀...", r["note"])
 	}
 }
 
