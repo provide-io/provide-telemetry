@@ -81,6 +81,23 @@ describe('installContextManager', () => {
     await expect(installContextManager(d)).resolves.toBe('module-missing');
   });
 
+  // `throw null` and `throw 'string'` are legal JavaScript, and a rejected
+  // dynamic import is not guaranteed to carry an Error. Reading `.code` off a
+  // non-object must not itself throw — the optional chaining in
+  // _isModuleMissing is load-bearing, not defensive decoration.
+  it.each([null, undefined, 'a string', 42])(
+    'treats a non-object rejection (%p) as a failed install, not a crash',
+    async (thrown) => {
+      const d = deps({
+        importHooks: async () => {
+          throw thrown;
+        },
+      });
+      await expect(installContextManager(d)).resolves.toBe('install-failed');
+      expect(d.readSetupError()).toBe(CONTEXT_MANAGER_MESSAGE);
+    },
+  );
+
   it('distinguishes an import that fails for another reason', async () => {
     const d = deps({
       importHooks: async () => {
