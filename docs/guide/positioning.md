@@ -1,6 +1,8 @@
 # Architectural Positioning
 
-As of April 14, 2026, this is the practical comparison for `provide-telemetry` versus direct OpenTelemetry and vendor-owned SDK stacks, followed by the blunt recommendation on what to do with this repo.
+The practical comparison of `provide-telemetry` against direct OpenTelemetry and
+vendor-owned SDK stacks, followed by the blunt recommendation on what to do with
+this repo.
 
 ## Decision Table
 
@@ -14,27 +16,37 @@ As of April 14, 2026, this is the practical comparison for `provide-telemetry` v
 ## How I Would Decide
 
 - Choose `provide-telemetry` if the real problem is organizational consistency.
-- Choose OpenTelemetry if the real problem is portability and standards alignment.
+- Choose OpenTelemetry if the real problem is portability and standards
+  alignment.
 - Choose Datadog if the real problem is operational speed and product depth.
-- Choose Sentry if the real problem is debugging failures and app performance with a strong error workflow.
+- Choose Sentry if the real problem is debugging failures and app performance
+  with a strong error workflow.
 
 ## Why These Ratings
 
-- `provide-telemetry` scores high on consistency because the repo is explicitly built as a shared facade plus parity spec, but that same choice creates internal lock-in and maintenance burden.
-- OpenTelemetry scores best on portability because it is the standard itself, but it gives you primitives, not your policy layer.
-- Datadog scores best on "works quickly" because its official path includes agent-driven and single-step instrumentation, plus built-in correlation and service map features.
-- Sentry scores best when traces exist to explain errors and performance issues, not when you want a neutral telemetry control plane.
+- `provide-telemetry` scores high on consistency because the repo is explicitly
+  built as a shared facade plus parity spec, but that same choice creates
+  internal lock-in and maintenance burden.
+- OpenTelemetry scores best on portability because it is the standard itself,
+  but it gives you primitives, not your policy layer.
+- Datadog scores best on "works quickly" because its official path includes
+  agent-driven and single-step instrumentation, plus built-in correlation and
+  service map features.
+- Sentry scores best when traces exist to explain errors and performance issues,
+  not when you want a neutral telemetry control plane.
 
 ## Short Version
 
 - If you want to own the contract: `provide-telemetry`.
-- If you want to own as little as possible while staying standard: OpenTelemetry.
+- If you want to own as little as possible while staying standard:
+  OpenTelemetry.
 - If you want to buy the platform: Datadog.
 - If you want errors first, tracing second: Sentry.
 
 ## Recommendation
 
-My blunt recommendation: shrink it, not keep it as-is and not replace it with a vendor SDK as the core abstraction.
+My blunt recommendation: shrink it, not keep it as-is and not replace it with a
+vendor SDK as the core abstraction.
 
 ### What To Keep
 
@@ -47,14 +59,16 @@ My blunt recommendation: shrink it, not keep it as-is and not replace it with a 
 ### What To De-emphasize Or Remove
 
 - Ambitious runtime reconfiguration
-- Governance is mandatory in all supported runtime surfaces; no optional build variants remain.
+- Governance is mandatory in all supported runtime surfaces; no optional build
+  variants remain.
 - Duplicated custom behavior that sits far above raw OTel in five languages
 
 ### Why
 
 The repo's strongest asset is clear:
 
-- It gives a polyglot org one telemetry contract, proven by the shared spec in `spec/telemetry-api.yaml`.
+- It gives a polyglot org one telemetry contract, proven by the shared spec in
+  `spec/telemetry-api.yaml`.
 
 Its weakest asset is also clear:
 
@@ -64,18 +78,23 @@ That second part is where cost and fragility start to dominate:
 
 - Five implementations means semantic drift risk.
 - Global mutable runtime state makes correctness harder.
-- Advanced behaviors like hot reload and multi-runtime consistency are where the architecture is already showing cracks.
+- Advanced behaviors like hot reload and multi-runtime consistency are where the
+  architecture is already showing cracks.
 
-So the repo has a good core idea, but it is carrying too much platform logic for what should probably remain an SDK.
+So the repo has a good core idea, but it is carrying too much platform logic for
+what should probably remain an SDK.
 
 ### When I Would Keep It
 
 Keep the broader design only if all of these are true:
 
-- You have a real multi-language estate: at least three active languages in production.
-- You have multiple teams who need one contract more than they need raw flexibility.
+- You have a real multi-language estate: at least three active languages in
+  production.
+- You have multiple teams who need one contract more than they need raw
+  flexibility.
 - You have compliance or privacy requirements that justify built-in policy.
-- You have at least one dedicated owner who can maintain parity across Python, TypeScript, Go, Rust, and C#.
+- You have at least one dedicated owner who can maintain parity across Python,
+  TypeScript, Go, Rust, and C#.
 
 If that is the environment, this repo is defensible.
 
@@ -107,18 +126,24 @@ Only do that if the org decision is:
 - "We are buying observability as a platform capability."
 - "We do not want to own a telemetry abstraction layer."
 
-Then this repo should not remain the primary API. Either retire it or reduce it to a thin integration adapter.
+Then this repo should not remain the primary API. Either retire it or reduce it
+to a thin integration adapter.
 
 ### Net
 
 - Small team or single-language org: replace with direct OpenTelemetry.
 - Mid-size polyglot org: shrink this repo to the contract and policy layer.
-- Large org with real platform ownership and compliance pressure: keep it, but tighten its scope and harden the weak boundaries.
+- Large org with real platform ownership and compliance pressure: keep it, but
+  tighten its scope and harden the weak boundaries.
 
 ## Sources
 
 - OpenTelemetry docs: https://opentelemetry.io/docs/
-- Datadog tracing getting started: https://docs.datadoghq.com/getting_started/tracing/
-- Datadog platform overview: https://docs.datadoghq.com/getting_started/application/
-- Sentry OpenTelemetry support: https://docs.sentry.io/platforms/node/performance/instrumentation/opentelemetry
-- Sentry tracing setup: https://docs.sentry.io/platforms/javascript/guides/express/tracing
+- Datadog tracing getting started:
+  https://docs.datadoghq.com/getting_started/tracing/
+- Datadog platform overview:
+  https://docs.datadoghq.com/getting_started/application/
+- Sentry OpenTelemetry support:
+  https://docs.sentry.io/platforms/node/performance/instrumentation/opentelemetry
+- Sentry tracing setup:
+  https://docs.sentry.io/platforms/javascript/guides/express/tracing
