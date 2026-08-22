@@ -217,3 +217,90 @@ def test_shutdown_never_declines_for_want_of_budget(monkeypatch: Any) -> None:
 
     assert drain_mod.bounded_provider_shutdown(_NoopProvider(), 5.0) is True
     assert [c for c in calls if "skipped" in c["message"]] == []
+
+
+# ── Cross-context runtime-context guard ─────────────────────────────────────
+
+
+def _stub_context_runtime(monkeypatch: Any, install: object) -> None:
+    """Put a fake context_runtime module in place of the OTel-only real one.
+
+    ``setup_tracing`` imports it lazily, so replacing the sys.modules entry is
+    enough — and it lets these tests run in the no-otel gate, where the real
+    module cannot be imported at all.
+    """
+    import sys
+    import types
+
+    module = types.ModuleType("provide.telemetry.tracing.context_runtime")
+    module.install_safe_runtime_context = install  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "provide.telemetry.tracing.context_runtime", module)
+
+
+def test_runtime_context_attribute_error_warns_and_setup_continues(monkeypatch: Any) -> None:
+    """A renamed private OTel attribute costs the guard, not the setup.
+
+    The swap reads ``opentelemetry.context._RUNTIME_CONTEXT`` and the runtime's
+    ``_current_context``. Both are private, so an SDK that renames one raises
+    AttributeError here — which must degrade to a warning naming the failure,
+    never abort setup_tracing.
+    """
+    from provide.telemetry.config import TelemetryConfig
+
+    def _raise() -> bool:
+        raise AttributeError("_RUNTIME_CONTEXT")
+
+    calls = _capture_warn(monkeypatch, tracing_provider)
+    monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
+    _stub_context_runtime(monkeypatch, _raise)
+
+    try:
+        tracing_provider.setup_tracing(TelemetryConfig())
+    finally:
+        tracing_provider._reset_tracing_for_tests()
+
+    warned = [c for c in calls if c["category"] is RuntimeWarning]
+    assert len(warned) == 1
+    assert warned[0]["message"] == (
+        "cross-context-safe OTel runtime context unavailable, continuing without it: _RUNTIME_CONTEXT"
+    )
+    assert warned[0]["stacklevel"] == 2
+
+
+def test_runtime_context_import_error_is_silent(monkeypatch: Any) -> None:
+    """An absent SDK is the ordinary no-otel case: install is skipped without a word."""
+    import sys
+
+    from provide.telemetry.config import TelemetryConfig
+
+    calls = _capture_warn(monkeypatch, tracing_provider)
+    monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
+    # A None entry makes the lazy import raise ImportError even where the real
+    # module is installed, so the test means the same thing in both gates.
+    monkeypatch.setitem(sys.modules, "provide.telemetry.tracing.context_runtime", None)
+
+    try:
+        tracing_provider.setup_tracing(TelemetryConfig())
+    finally:
+        tracing_provider._reset_tracing_for_tests()
+
+    assert [c for c in calls if c["category"] is RuntimeWarning] == []
+
+
+def test_runtime_context_installed_when_available(monkeypatch: Any) -> None:
+    """The ordinary path calls the installer exactly once and warns about nothing."""
+    from provide.telemetry.config import TelemetryConfig
+
+    installed: list[bool] = []
+
+    calls = _capture_warn(monkeypatch, tracing_provider)
+    monkeypatch.setattr(tracing_provider, "_HAS_OTEL", True)
+    _stub_context_runtime(monkeypatch, lambda: installed.append(True))
+
+    try:
+        tracing_provider.setup_tracing(TelemetryConfig())
+    finally:
+        tracing_provider._reset_tracing_for_tests()
+
+    assert installed == [True]
+    assert [c for c in calls if c["category"] is RuntimeWarning] == []

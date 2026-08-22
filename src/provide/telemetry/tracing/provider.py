@@ -141,15 +141,16 @@ def setup_tracing(config: TelemetryConfig) -> None:
     # (async-gen aclose() from another task, cancelled/GC'd coroutines) so spans
     # in async services don't flood logs with "Failed to detach context".
     # OTel-only (context_runtime subclasses a real OTel class) and guarded: a
-    # partial/absent SDK must never raise out of setup. Exercised by the
-    # otel-marked test_context_runtime suite.
-    try:  # pragma: no cover - requires the optional OTel SDK at runtime
+    # partial/absent SDK must never raise out of setup. The install itself is
+    # exercised by the otel-marked test_context_runtime suite; all three
+    # outcomes here are pinned without the extra in test_provider_warning_mutants.
+    try:
         from provide.telemetry.tracing.context_runtime import install_safe_runtime_context
 
         install_safe_runtime_context()
-    except ImportError:  # pragma: no cover - OTel SDK unavailable
+    except ImportError:
         pass
-    except AttributeError as exc:  # pragma: no cover - private OTel runtime attributes moved
+    except AttributeError as exc:
         # The swap reaches into private OTel attributes. An SDK that renamed
         # them must not fail setup; it just loses the cross-context guard.
         warnings.warn(  # pragma: no mutate — best-effort warning emission; exact wording is non-semantic
