@@ -1,22 +1,50 @@
 # API Reference
 
-All public symbols are exported from `provide.telemetry`. Import everything from the top-level package:
+All public symbols are exported from `provide.telemetry`. Import everything from
+the top-level package:
 
 ```python
 from provide.telemetry import setup_telemetry, get_logger, trace
 ```
 
-Rust follows the same top-level contract from `rust/src/lib.rs`, but context-setting APIs return guards so prior state is restored automatically when the guard drops.
+Rust follows the same top-level contract from `rust/src/lib.rs`, but
+context-setting APIs return guards so prior state is restored automatically when
+the guard drops.
 
-This document is the shared semantic contract for Python, TypeScript, Go,
-Rust, and C#. Names and signatures vary by language, but the behavioral
-guarantees described here are the parity target.
+This document is the shared semantic contract for Python, TypeScript, Go, Rust,
+and C#. Names and signatures vary by language, but the behavioral guarantees
+described here are the parity target.
+
+## Contents
+
+- [Setup and Lifecycle](#setup-and-lifecycle)
+- [Runtime Configuration](#runtime-configuration)
+- [Logging](#logging)
+- [Tracing](#tracing)
+- [Metrics](#metrics)
+- [Session Context](#session-context)
+- [Error Fingerprinting](#error-fingerprinting)
+- [Event Schema](#event-schema)
+- [ASGI Integration](#asgi-integration)
+- [W3C Propagation](#w3c-propagation)
+- [Sampling Policies](#sampling-policies)
+- [Backpressure Policies](#backpressure-policies)
+- [Exporter Resilience Policies](#exporter-resilience-policies)
+- [PII Sanitization](#pii-sanitization)
+- [Cardinality Guards](#cardinality-guards)
+- [Health and Self-Observability](#health-and-self-observability)
+- [SLO Helpers](#slo-helpers)
+- [Exceptions](#exceptions)
+- [Config Dataclasses](#config-dataclasses)
+- [Rust Notes](#rust-notes)
 
 ## Setup and Lifecycle
 
 ### `setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
 
-Initialize logging, tracing, and metrics providers. Lock-protected and idempotent — safe to call concurrently. Accepts an optional config; defaults to `TelemetryConfig.from_env()`. Returns the applied config.
+Initialize logging, tracing, and metrics providers. Lock-protected and
+idempotent — safe to call concurrently. Accepts an optional config; defaults to
+`TelemetryConfig.from_env()`. Returns the applied config.
 
 > **Per-language signatures:** Python accepts an optional `TelemetryConfig` object.
 > TypeScript accepts `Partial<TelemetryConfig>` overrides merged over env config.
@@ -74,11 +102,11 @@ Flush and tear down all providers and clear local runtime state. A later
 `setup_telemetry()` call returns the package to the same runtime-status shape as
 the initial setup for the common path, including after lazy logger use.
 
-`timeout_seconds` bounds the drain that precedes teardown — the part that can hang
-on an unreachable collector — and defaults to the configured bounded-shutdown
-deadline. Pass the time remaining in a SIGTERM handler so the drain cannot overrun
-the orchestrator's termination grace period; teardown itself is local work and
-always completes.
+`timeout_seconds` bounds the drain that precedes teardown — the part that can
+hang on an unreachable collector — and defaults to the configured
+bounded-shutdown deadline. Pass the time remaining in a SIGTERM handler so the
+drain cannot overrun the orchestrator's termination grace period; teardown
+itself is local work and always completes.
 
 Provider-changing `reconfigure_telemetry()` remains intentionally rejected once
 real OpenTelemetry providers are live; restart the process before applying
@@ -88,19 +116,21 @@ provider-changing config.
 
 ### `update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig`
 
-Apply hot-reloadable runtime overrides only. Cold/provider fields are excluded from `RuntimeOverrides`. Returns the applied runtime snapshot.
-Safe logging pipeline settings are rebuilt in-process; provider-changing OTLP log settings are rejected once a global OTel log provider is installed.
+Apply hot-reloadable runtime overrides only. Cold/provider fields are excluded
+from `RuntimeOverrides`. Returns the applied runtime snapshot. Safe logging
+pipeline settings are rebuilt in-process; provider-changing OTLP log settings
+are rejected once a global OTel log provider is installed.
 
 ### `reload_runtime_from_env() -> TelemetryConfig`
 
-Reload config from environment variables, apply only hot-reloadable fields, warn on cold-field drift, and return the active snapshot.
+Reload config from environment variables, apply only hot-reloadable fields, warn
+on cold-field drift, and return the active snapshot.
 
 ### `get_runtime_config() -> TelemetryConfig`
 
 Return a defensive copy of the effective runtime config. If explicit setup or
-runtime reconfiguration has already run, this is the active in-process
-snapshot. Otherwise it is the environment-derived config that lazy-init would
-use.
+runtime reconfiguration has already run, this is the active in-process snapshot.
+Otherwise it is the environment-derived config that lazy-init would use.
 
 > **Per-language behavior before setup:** Python and TypeScript return a config
 > snapshot derived from environment variables even before `setup_telemetry()` is
@@ -137,13 +167,17 @@ Semantics:
 
 ### `reconfigure_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig`
 
-Apply hot runtime changes. Raises `RuntimeError` if provider-changing config differs and OTel providers are already installed (requires process restart), including OTLP log-provider changes after the global OTel log provider is live.
+Apply hot runtime changes. Raises `RuntimeError` if provider-changing config
+differs and OTel providers are already installed (requires process restart),
+including OTLP log-provider changes after the global OTel log provider is live.
 
 ## Logging
 
 ### `get_logger(name: str | None = None) -> structlog-compatible logger`
 
-Return a structlog-compatible wrapped logger (internally a `_TraceWrapper` around a `FilteringBoundLogger`). Auto-configures on first call if `setup_telemetry()` hasn't been called.
+Return a structlog-compatible wrapped logger (internally a `_TraceWrapper`
+around a `FilteringBoundLogger`). Auto-configures on first call if
+`setup_telemetry()` hasn't been called.
 
 The lazy-init path uses the same effective environment config as explicit setup
 for the common logging path, including `service`, `env`, `version`,
@@ -201,11 +235,10 @@ log.log(parse_level(level), message)
 
 `parse_level` is the single alias-tolerant converter. It trims whitespace,
 compares case-insensitively, accepts `WARNING` for `WARN` and `FATAL` for
-`CRITICAL`, and substitutes a caller-supplied fallback — `INFO` by default —
-for anything it does not recognise. `try_parse_level` reports non-recognition
-instead of substituting. The canonical ladder is
-`TRACE(0) DEBUG(1) INFO(2) WARN(3) ERROR(4) CRITICAL(5)`; `WARNING` and `FATAL`
-are spellings, not members.
+`CRITICAL`, and substitutes a caller-supplied fallback — `INFO` by default — for
+anything it does not recognise. `try_parse_level` reports non-recognition
+instead of substituting. The canonical ladder is `TRACE(0) DEBUG(1) INFO(2)
+WARN(3) ERROR(4) CRITICAL(5)`; `WARNING` and `FATAL` are spellings, not members.
 
 > **Per-language names:** Python `logger.log(level, event, **kw)` with
 > `LogSeverity` / `parse_level`. TypeScript `Logger.log(level, obj, msg)` with
@@ -235,12 +268,13 @@ if log.is_trace_enabled():
     log.trace("payload %s", expensive_repr(obj))
 ```
 
-Standalone `is_debug_enabled()` / `is_trace_enabled()` functions read the
-active config directly and return `True` when telemetry is unconfigured.
+Standalone `is_debug_enabled()` / `is_trace_enabled()` functions read the active
+config directly and return `True` when telemetry is unconfigured.
 
 ### `bind_context(**kwargs: Any) -> None`
 
-Bind key-value pairs into the structlog contextvars context. Available to all subsequent log events in the current async task.
+Bind key-value pairs into the structlog contextvars context. Available to all
+subsequent log events in the current async task.
 
 ### `unbind_context(*keys: str) -> None`
 
@@ -254,7 +288,8 @@ Clear all structlog contextvars context.
 
 ### `trace(name: str | None = None) -> Callable`
 
-Decorator that wraps a function in an OTel span. Works on both sync and async functions. Uses the real tracer if available, no-op otherwise.
+Decorator that wraps a function in an OTel span. Works on both sync and async
+functions. Uses the real tracer if available, no-op otherwise.
 
 ### `get_tracer(name: str | None = None) -> Tracer`
 
@@ -288,17 +323,22 @@ Create or retrieve a named histogram instrument.
 
 ### `get_meter(name: str | None = None) -> Meter | None`
 
-Return the active OTel meter if a real meter provider is available; otherwise return `None`. The in-process fallback lives in the `counter()`, `gauge()`, and `histogram()` wrapper APIs.
+Return the active OTel meter if a real meter provider is available; otherwise
+return `None`. The in-process fallback lives in the `counter()`, `gauge()`, and
+`histogram()` wrapper APIs.
 
 ## Session Context
 
 ### `bind_session_context(session_id: str) -> None`
 
-Bind a session ID to all subsequent telemetry events in the current async context. The session ID is injected into every log record, trace span, and metric attribute until cleared.
+Bind a session ID to all subsequent telemetry events in the current async
+context. The session ID is injected into every log record, trace span, and
+metric attribute until cleared.
 
 ### `get_session_id() -> str | None`
 
-Return the current session ID from contextvars, or `None` if no session is bound.
+Return the current session ID from contextvars, or `None` if no session is
+bound.
 
 ### `clear_session_context() -> None`
 
@@ -306,15 +346,23 @@ Clear the session ID from the current async context.
 
 ## Error Fingerprinting
 
-Error events automatically receive an `error_fingerprint` field — a 12-character hex digest derived from the exception type and the top three stack frames. Fingerprints are stable across deploys and process restarts, making them suitable for deduplication and alert grouping.
+Error events automatically receive an `error_fingerprint` field — a 12-character
+hex digest derived from the exception type and the top three stack frames.
+Fingerprints are stable across deploys and process restarts, making them
+suitable for deduplication and alert grouping.
 
 ## Event Schema
 
 ### `event(*segments: str) -> Event`
 
-Build a structured event from 3 or 4 segments following the DA(R)S pattern (Domain, Action, Resource, Status). Returns an `Event` — a `str` subclass that behaves as a dot-joined string and exposes typed fields.
+Build a structured event from 3 or 4 segments following the DA(R)S pattern
+(Domain, Action, Resource, Status). Returns an `Event` — a `str` subclass that
+behaves as a dot-joined string and exposes typed fields.
 
-Requires exactly 3 or 4 segments. In strict mode (`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), also validates format (lowercase, alphanumeric + hyphens); in non-strict mode (the default), only the segment count is checked.
+Requires exactly 3 or 4 segments. In strict mode
+(`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), also validates format (lowercase,
+alphanumeric + hyphens); in non-strict mode (the default), only the segment
+count is checked.
 
 ```python
 # 3-segment DAS (domain.action.status)
@@ -334,35 +382,49 @@ e.status  # "success"
 
 ### `EventRecord` (TypeScript)
 
-TypeScript equivalent for structured event creation. See the [TypeScript README](../../typescript/README.md) for usage.
+TypeScript equivalent for structured event creation. See the [TypeScript
+README](../../typescript/README.md) for usage.
 
 ## ASGI Integration
 
 ### `TelemetryMiddleware`
 
-ASGI middleware class. Extracts `x-request-id`, `x-session-id`, and W3C trace headers from incoming requests, binds them to contextvars, and clears on response.
+ASGI middleware class. Extracts `x-request-id`, `x-session-id`, and W3C trace
+headers from incoming requests, binds them to contextvars, and clears on
+response.
 
 ### `bind_websocket_context(scope: dict) -> ContextToken`
 
-Bind context fields from a WebSocket ASGI scope. Binds any of `request_id`, `session_id`, `actor_id` found in headers. Returns a `ContextToken` for cleanup — pass it to `clear_websocket_context()`.
+Bind context fields from a WebSocket ASGI scope. Binds any of `request_id`,
+`session_id`, `actor_id` found in headers. Returns a `ContextToken` for cleanup
+— pass it to `clear_websocket_context()`.
 
 ### `clear_websocket_context(token: ContextToken) -> None`
 
-Restore logger context to the state before `bind_websocket_context()` was called.
+Restore logger context to the state before `bind_websocket_context()` was
+called.
 
 ## W3C Propagation
 
 ### `extract_w3c_context(scope: dict) -> PropagationContext`
 
-Parse `traceparent`, `tracestate`, and `baggage` headers from an ASGI scope. Returns a `PropagationContext` dataclass. Invalid traceparent values are rejected silently.
+Parse `traceparent`, `tracestate`, and `baggage` headers from an ASGI scope.
+Returns a `PropagationContext` dataclass. Invalid traceparent values are
+rejected silently.
 
 ### `bind_propagation_context(context: PropagationContext) -> None`
 
-Push propagation fields into structlog context and trace context. Stackable — supports nested bind/clear pairs.
+Push propagation fields into structlog context and trace context. Stackable —
+supports nested bind/clear pairs.
 
 ### `inject_traceparent(headers: MutableMapping[str, str]) -> MutableMapping[str, str]`
 
-Write the current trace context into an outbound headers mapping as W3C `traceparent`/`tracestate`. Prefers the live OTel span context (SDK propagator injection); without OTel it falls back to the facade contextvars mirrored by `@trace`/`span()` and inbound extraction, emitting a version-00 header with the sampled flag. No-ops (returns `headers` unchanged) when no valid context is current. Returns the same mapping so it composes at call sites:
+Write the current trace context into an outbound headers mapping as W3C
+`traceparent`/`tracestate`. Prefers the live OTel span context (SDK propagator
+injection); without OTel it falls back to the facade contextvars mirrored by
+`@trace`/`span()` and inbound extraction, emitting a version-00 header with the
+sampled flag. No-ops (returns `headers` unchanged) when no valid context is
+current. Returns the same mapping so it composes at call sites:
 
 ```python
 await client.post(url, json=payload, headers=inject_traceparent({"authorization": token}))
@@ -381,7 +443,8 @@ class SamplingPolicy:
 
 ### `set_sampling_policy(signal: str, policy: SamplingPolicy) -> None`
 
-Set the sampling policy for a signal (`"logs"`, `"traces"`, or `"metrics"`). Rates are clamped to 0.0-1.0.
+Set the sampling policy for a signal (`"logs"`, `"traces"`, or `"metrics"`).
+Rates are clamped to 0.0-1.0.
 
 ### `get_sampling_policy(signal: str) -> SamplingPolicy`
 
@@ -389,8 +452,10 @@ Return a copy of the current sampling policy for the given signal.
 
 ### `should_sample(signal: str, key: str | None = None) -> bool`
 
-Probabilistic sampling check. Uses per-key override rate if `key` matches, else the default rate. Increments drop counter on rejection.
-Every call performs a fresh uniform random draw; `key` selects the rate bucket, not a deterministic keep/drop result.
+Probabilistic sampling check. Uses per-key override rate if `key` matches, else
+the default rate. Increments drop counter on rejection. Every call performs a
+fresh uniform random draw; `key` selects the rate bucket, not a deterministic
+keep/drop result.
 
 ## Backpressure Policies
 
@@ -425,14 +490,14 @@ if ticket == nil {
 defer telemetry.Release(ticket)
 ```
 
-`Release` consumes the returned ticket, which ties release ownership to the
-slot acquired from the queue.
+`Release` consumes the returned ticket, which ties release ownership to the slot
+acquired from the queue.
 
 ### Cross-language scope of backpressure
 
-Tickets bound the **full in-process emit path** in all five languages
-(consent → sampling → ticket → ... → release), including renderer work and
-handler/exporter I/O.
+Tickets bound the **full in-process emit path** in all five languages (consent →
+sampling → ticket → ... → release), including renderer work and handler/exporter
+I/O.
 
 | Language | Ticket released |
 |----------|-----------------|
@@ -480,10 +545,10 @@ Mode semantics are identical in all five SDKs (`spec/telemetry-api.yaml`,
 `pii_truncation` / `pii_hash`):
 
 - `truncate` keeps the first `truncate_to` Unicode scalar values (code points,
-  never UTF-16 units or bytes) and appends `...` when anything was cut. An
-  unset limit is `8`; `0` keeps only the suffix; a negative limit is clamped to
-  `0`. Go's zero-value `TruncateTo` means "unset" and is normalised to `8` when
-  the rule is registered.
+  never UTF-16 units or bytes) and appends `...` when anything was cut. An unset
+  limit is `8`; `0` keeps only the suffix; a negative limit is clamped to `0`.
+  Go's zero-value `TruncateTo` means "unset" and is normalised to `8` when the
+  rule is registered.
 - `hash` is the first 12 lowercase hex characters of SHA-256. A string hashes
   its own UTF-8 bytes; any other value hashes its RFC 8785 canonical JSON (the
   same canonicaliser receipts use), so `True` → `"true"`, `None` → `"null"`,
@@ -505,11 +570,19 @@ Return the current PII rules as an immutable tuple.
 
 ### `register_secret_pattern(name: str, pattern: re.Pattern[str]) -> None`
 
-Register a custom regex used by the value-based secret detector. Built-in patterns cover AWS access keys, JWTs, GitHub tokens, and long hex/base64 runs; this hook lets callers add organization-specific token shapes (e.g. internal API key prefixes). Registered patterns apply to both structured payload values and the free-form log message string when `sanitize=true`. Re-registering an existing `name` replaces the previous pattern. Mirrored in TypeScript (`registerSecretPattern`), Go (`telemetry.RegisterSecretPattern`), Rust (`pii::register_secret_pattern`), and C# (`Pii.RegisterSecretPattern`).
+Register a custom regex used by the value-based secret detector. Built-in
+patterns cover AWS access keys, JWTs, GitHub tokens, and long hex/base64 runs;
+this hook lets callers add organization-specific token shapes (e.g. internal API
+key prefixes). Registered patterns apply to both structured payload values and
+the free-form log message string when `sanitize=true`. Re-registering an
+existing `name` replaces the previous pattern. Mirrored in TypeScript
+(`registerSecretPattern`), Go (`telemetry.RegisterSecretPattern`), Rust
+(`pii::register_secret_pattern`), and C# (`Pii.RegisterSecretPattern`).
 
 ### `get_secret_patterns() -> tuple[tuple[str, re.Pattern[str]], ...]`
 
-Return a thread-safe snapshot of `(name, pattern)` pairs — built-in patterns first, then custom ones in registration order.
+Return a thread-safe snapshot of `(name, pattern)` pairs — built-in patterns
+first, then custom ones in registration order.
 
 ## Cardinality Guards
 
@@ -524,7 +597,8 @@ class CardinalityLimit:
 
 ### `register_cardinality_limit(key: str, max_values: int, ttl_seconds: float = 300.0) -> None`
 
-Register a cardinality limit for an attribute key. Values beyond `max_values` are replaced with `"__overflow__"`.
+Register a cardinality limit for an attribute key. Values beyond `max_values`
+are replaced with `"__overflow__"`.
 
 ### `get_cardinality_limits() -> dict[str, CardinalityLimit]`
 
@@ -540,16 +614,20 @@ Remove all cardinality limits and reset seen-value tracking.
 
 NamedTuple with per-signal counters:
 
-Canonical 26-field layout (8 per signal × 3 signals + 2 global), shared across Python, TypeScript, Go, Rust, and C#:
+Canonical 26-field layout (8 per signal × 3 signals + 2 global), shared across
+Python, TypeScript, Go, Rust, and C#:
 
 - `emitted_{logs,traces,metrics}` — events accepted and forwarded
 - `dropped_{logs,traces,metrics}` — events dropped by sampling or backpressure
 - `export_failures_{logs,traces,metrics}` — failed export attempts
 - `retries_{logs,traces,metrics}` — exporter retry count
 - `export_latency_ms_{logs,traces,metrics}` — latest export latency in ms
-- `async_blocking_risk_{logs,traces,metrics}` — calls where retry/backoff ran inside an event loop
-- `circuit_state_{logs,traces,metrics}` — circuit breaker state: `"closed"`, `"open"`, or `"half-open"` (hyphen, per `spec/telemetry-api.yaml`)
-- `circuit_open_count_{logs,traces,metrics}` — number of times circuit has opened
+- `async_blocking_risk_{logs,traces,metrics}` — calls where retry/backoff ran
+  inside an event loop
+- `circuit_state_{logs,traces,metrics}` — circuit breaker state: `"closed"`,
+  `"open"`, or `"half-open"` (hyphen, per `spec/telemetry-api.yaml`)
+- `circuit_open_count_{logs,traces,metrics}` — number of times circuit has
+  opened
 - `setup_error` — error message from `setup_telemetry()`, or `None`
 - `receipt_failures` — redaction receipts the sink refused or faulted on
 
@@ -565,15 +643,20 @@ Return a point-in-time snapshot of all health counters. Thread-safe.
 
 ### `record_red_metrics(route: str, method: str, status_code: int, duration_ms: float) -> None`
 
-Emit RED (Rate/Error/Duration) metrics for an HTTP request. Always executes when called directly; the `PROVIDE_SLO_ENABLE_RED_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
+Emit RED (Rate/Error/Duration) metrics for an HTTP request. Always executes when
+called directly; the `PROVIDE_SLO_ENABLE_RED_METRICS` flag only controls whether
+`TelemetryMiddleware` calls this automatically.
 
 ### `record_use_metrics(resource: str, utilization_percent: int) -> None`
 
-Emit USE (Utilization) metrics for a resource. Always executes when called directly; the `PROVIDE_SLO_ENABLE_USE_METRICS` flag only controls whether `TelemetryMiddleware` calls this automatically.
+Emit USE (Utilization) metrics for a resource. Always executes when called
+directly; the `PROVIDE_SLO_ENABLE_USE_METRICS` flag only controls whether
+`TelemetryMiddleware` calls this automatically.
 
 ### `classify_error(exc_name: str, status_code: int | None = None) -> dict[str, str]`
 
-Return `{"error_type": ..., "error_code": ..., "error_name": ...}` classification. Server (500+), client (400-499), or internal.
+Return `{"error_type": ..., "error_code": ..., "error_name": ...}`
+classification. Server (500+), client (400-499), or internal.
 
 ## Exceptions
 
@@ -583,31 +666,41 @@ Base exception for all provide.telemetry errors.
 
 ### `ConfigurationError`
 
-Raised for invalid configuration. Inherits from both `TelemetryError` and `ValueError`.
+Raised for invalid configuration. Inherits from both `TelemetryError` and
+`ValueError`.
 
 ### `EventSchemaError`
 
-Raised when an event name or required keys violate schema policy. Inherits from both `TelemetryError` and `ValueError`.
+Raised when an event name or required keys violate schema policy. Inherits from
+both `TelemetryError` and `ValueError`.
 
 ## Config Dataclasses
 
-All config models are `@dataclass(slots=True)` and are constructed via `TelemetryConfig.from_env()`:
+All config models are `@dataclass(slots=True)` and are constructed via
+`TelemetryConfig.from_env()`:
 
 - **`TelemetryConfig`** — top-level container with nested sub-configs
-- **`LoggingConfig`** — log level, format, caller info, sanitization, pretty renderer settings
+- **`LoggingConfig`** — log level, format, caller info, sanitization, pretty
+  renderer settings
 - **`TracingConfig`** — tracing enabled, sample rate, OTLP endpoint
 - **`MetricsConfig`** — metrics enabled, OTLP endpoint
 - **`SchemaConfig`** — strict event name, required keys
 - **`SamplingConfig`** — per-signal sampling rates
 - **`BackpressureConfig`** — per-signal queue max sizes
-- **`ExporterPolicyConfig`** — per-signal retries, backoff, timeout, fail-open, async blocking
+- **`ExporterPolicyConfig`** — per-signal retries, backoff, timeout, fail-open,
+  async blocking
 - **`SLOConfig`** — RED/USE metrics toggles, error taxonomy
-- **`SecurityConfig`** — secret detection patterns, header size guards, protocol limits
+- **`SecurityConfig`** — secret detection patterns, header size guards, protocol
+  limits
 
-See [Configuration Reference](configuration.md) for the environment variables that drive each field.
+See [Configuration Reference](configuration.md) for the environment variables
+that drive each field.
 
 ## Rust Notes
 
-- `bind_context`, `unbind_context`, `clear_context`, `bind_session_context`, `clear_session_context`, `set_trace_context`, and `bind_propagation_context` return guard objects in Rust. Drop restores the previous snapshot.
+- `bind_context`, `unbind_context`, `clear_context`, `bind_session_context`,
+  `clear_session_context`, `set_trace_context`, and `bind_propagation_context`
+  return guard objects in Rust. Drop restores the previous snapshot.
 - `trace` is exposed as a wrapper function in Rust rather than a decorator.
-- `get_meter()` returns a fallback meter wrapper in Rust; fallback `counter()`, `gauge()`, and `histogram()` remain callable without OTel setup.
+- `get_meter()` returns a fallback meter wrapper in Rust; fallback `counter()`,
+  `gauge()`, and `histogram()` remain callable without OTel setup.
