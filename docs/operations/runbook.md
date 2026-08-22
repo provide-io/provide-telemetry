@@ -126,8 +126,11 @@ uv run python scripts/run_mutation_gate.py --python-version 3.11 --retries 1 --m
 uv run python scripts/run_performance_smoke.py --iterations 300000
 ```
 
-Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut subprocesses to avoid known segfault behavior on some hosts.
-Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) should continue to pass `--no-cov` because the strict 100% coverage gate applies only to the default `pytest` run.
+Note: `run_mutation_gate.py` injects a no-op `setproctitle` shim for mutmut
+subprocesses to avoid known segfault behavior on some hosts.
+Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, and
+the like) should keep passing `--no-cov`: the strict 100% coverage gate applies
+only to the default `pytest` run.
 
 ## Mutation Policy Files
 
@@ -138,7 +141,8 @@ Marker-specific runs (`-m otel`, `-m e2e`, `tests/fuzz`/`tests/property`, etc.) 
   `--min-mutation-score` floor (configured in `scripts/run_mutation_gate.py` and
   `.github/workflows/ci-mutation.yml`) is a second guard against an implausibly
   short run, not the threshold to aim for.
-- If mutation roots or test selection changes, rerun the local mutation gate before declaring policy status to avoid stale baseline assumptions.
+- If mutation roots or test selection change, rerun the local mutation gate
+  before declaring policy status, so the baseline is not stale.
 
 ## Docs Quality
 
