@@ -233,7 +233,7 @@ def _stub_context_runtime(monkeypatch: Any, install: object) -> None:
     import types
 
     module = types.ModuleType("provide.telemetry.tracing.context_runtime")
-    module.install_safe_runtime_context = install  # type: ignore[attr-defined]
+    module.install_safe_runtime_context = install  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     monkeypatch.setitem(sys.modules, "provide.telemetry.tracing.context_runtime", module)
 
 
