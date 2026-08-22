@@ -45,8 +45,8 @@ func TestTaggedModuleConsumerProbe(t *testing.T) {
 	if cfg == nil || cfg.ServiceName == "" {
 		t.Fatal("expected default telemetry config")
 	}
-	if logger.GetLogger(context.Background(), "release.probe") == nil {
-		t.Fatal("expected logger package to be importable from the root module")
+	if telemetry.GetLogger(context.Background(), "release.probe") == nil {
+		t.Fatal("expected GetLogger to be usable from the root module")
 	}
 	// The tracer lives in the root package: go/tracer was a standalone parallel
 	// copy that nothing imported, and it was removed in 0.6.0. Reach it through

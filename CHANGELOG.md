@@ -12,6 +12,12 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Fixed
 
+- The Go release consumer probe compiles again. Removing the `go/logger`
+  package dropped its import from `ci/verify-go-consumer-module.sh` but left
+  the `logger.GetLogger(...)` call behind, so `verify-go-consumer-direct`
+  failed to build on the `go/v0.8.1` tag. The module itself published and
+  resolved correctly; only the probe was broken. It now calls
+  `telemetry.GetLogger`, which is where that function lives.
 - The npm publish postcondition retries. `npm publish` succeeded for 0.8.1,
   signed its provenance and logged it to the transparency log, and then
   `npm view` answered an empty string a second later — the registry is not
