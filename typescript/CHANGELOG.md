@@ -16,6 +16,29 @@ Two things to know when reading it:
 
 ## [Unreleased]
 
+### Breaking
+
+- **`PROVIDE_CONSENT_LEVEL` is read at setup and on the lazy logger path.**
+  `loadConsentFromEnv()` was exported but never called, so an operator opt-out
+  of `NONE` left the SDK collecting at `FULL`. `setupTelemetry()`,
+  `setupTelemetryAsync()` and the first `getLogger()` in a process that never
+  called setup now apply it. An unset or blank variable leaves the current
+  level alone — it used to reset consent to `FULL`, discarding a
+  `setConsentLevel()` made in code — and a level set after setup is never
+  overwritten.
+- **Truncate mode counts Unicode code points and defaults to 8.** A rule
+  registered without `truncateTo` keeps 8 code points (was 8 already, but the
+  limit is now shared with the other SDKs as one contract); `0` keeps nothing
+  but the suffix and a negative limit clamps to `0`. Counting and slicing moved
+  from `String.prototype.slice` to code points, so a limit can no longer split
+  a surrogate pair and leave half an emoji in a log record.
+- **`hash` mode digests the RFC 8785 canonical JSON of a non-string value** —
+  the same text `canonicalJson` produces for receipts — instead of
+  `String(value)`. An object therefore hashes its key-sorted JSON rather than
+  `"[object Object]"`, and every SDK produces the same digest for the same
+  value. Strings and integers are unchanged. `canonicalJson` moved to its own
+  module (`src/canonical-json.ts`) and is still re-exported from `receipts`.
+
 ### Changed
 
 - **`PROVIDE_CONSENT_LEVEL` fails closed on a value it does not recognise.**
