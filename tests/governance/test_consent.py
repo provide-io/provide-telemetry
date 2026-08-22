@@ -79,12 +79,16 @@ def test_set_consent_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert get_consent_level() == ConsentLevel.MINIMAL
 
 
-def test_load_consent_from_env_invalid_value(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_consent_from_env_invalid_value_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A set, non-empty, unrecognised value is an opt-out the operator got wrong: NONE, not FULL."""
     monkeypatch.setenv("PROVIDE_CONSENT_LEVEL", "BOGUS")
     from provide.telemetry.consent import _load_consent_from_env
 
-    _load_consent_from_env()
-    assert get_consent_level() == ConsentLevel.FULL  # unchanged
+    with pytest.warns(
+        RuntimeWarning, match="PROVIDE_CONSENT_LEVEL='BOGUS' is not one of FULL, FUNCTIONAL, MINIMAL, NONE"
+    ):
+        _load_consent_from_env()
+    assert get_consent_level() == ConsentLevel.NONE
 
 
 def test_load_consent_from_env_functional(monkeypatch: pytest.MonkeyPatch) -> None:

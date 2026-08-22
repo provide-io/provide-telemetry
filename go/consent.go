@@ -6,9 +6,11 @@
 package telemetry
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/provide-io/provide-telemetry/go/internal/levelcore"
 )
@@ -33,9 +35,16 @@ const (
 // least severe record in the ladder.
 func _logLevelOrder(level string) int { return int(levelcore.Order(level)) }
 
+// _consentEnvVar is the operator's opt-out control; LoadConsentFromEnv reads it.
+const _consentEnvVar = "PROVIDE_CONSENT_LEVEL"
+
 var (
 	_consentMu    sync.RWMutex
 	_consentLevel = ConsentFull
+	// _consentEnvWarned is set the first time LoadConsentFromEnv sees an
+	// unrecognised value, so the operator hears about it once per process
+	// even though setup and the lazy logger both call the loader.
+	_consentEnvWarned atomic.Bool
 )
 
 // SetConsentLevel sets the active consent level.
@@ -82,10 +91,23 @@ func ShouldAllow(signal string, logLevel string) bool {
 	return false
 }
 
-// LoadConsentFromEnv reads PROVIDE_CONSENT_LEVEL and sets the consent level.
+// LoadConsentFromEnv reads PROVIDE_CONSENT_LEVEL and applies it.
+//
+// Called by SetupTelemetry and by the lazy pre-setup GetLogger path, so an
+// operator opt-out takes effect without a code change. The value is trimmed
+// and upper-cased. Unset or blank (empty or whitespace-only) is a no-op: a
+// level chosen in code survives. A set, non-empty, unrecognised value fails
+// closed: consent becomes ConsentNone on every call, and a warning naming the
+// raw value is written to os.Stderr once per process. The variable is an
+// opt-out control, and the one failure an opt-out must not have is a typo
+// that silently leaves collection on.
 func LoadConsentFromEnv() {
-	raw := strings.TrimSpace(strings.ToUpper(os.Getenv("PROVIDE_CONSENT_LEVEL")))
-	switch raw {
+	raw := os.Getenv(_consentEnvVar)
+	text := strings.ToUpper(strings.TrimSpace(raw))
+	if text == "" {
+		return
+	}
+	switch text {
 	case "FULL":
 		SetConsentLevel(ConsentFull)
 	case "FUNCTIONAL":
@@ -94,12 +116,31 @@ func LoadConsentFromEnv() {
 		SetConsentLevel(ConsentMinimal)
 	case "NONE":
 		SetConsentLevel(ConsentNone)
+	default:
+		_warnInvalidConsentEnvOnce(raw)
+		SetConsentLevel(ConsentNone)
 	}
 }
 
-// ResetConsentForTests resets consent to FULL.
+// _warnInvalidConsentEnvOnce reports an unrecognised PROVIDE_CONSENT_LEVEL on
+// os.Stderr, once per process. It deliberately bypasses Logger(): the NONE
+// that fail-closed just applied would drop the record. os.Stderr is read at
+// call time so tests can swap it for a pipe.
+func _warnInvalidConsentEnvOnce(raw string) {
+	if _consentEnvWarned.Swap(true) {
+		return
+	}
+	message := fmt.Sprintf(
+		"[provide-telemetry] %s=%q is not one of FULL, FUNCTIONAL, MINIMAL, NONE; consent set to NONE (fail-closed)",
+		_consentEnvVar, raw)
+	fmt.Fprintln(os.Stderr, message)
+}
+
+// ResetConsentForTests resets consent to FULL and re-arms the once-per-process
+// invalid-environment warning.
 func ResetConsentForTests() {
 	_consentMu.Lock()
 	_consentLevel = ConsentFull
 	_consentMu.Unlock()
+	_consentEnvWarned.Store(false)
 }

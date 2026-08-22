@@ -10,6 +10,17 @@ languages; this file covers only what shipped to NuGet.
 
 ### Breaking
 
+- **`PROVIDE_CONSENT_LEVEL` fails closed on a value it does not recognise.**
+  A set, non-empty value other than `FULL`, `FUNCTIONAL`, `MINIMAL` or `NONE`
+  (trimmed, case-insensitive) sets consent to `None` on every load and writes
+  one warning per process to `Console.Error`, naming the raw value —
+  deliberately outside the SDK logger, which the `None` it just applied would
+  silence. An unrecognised value used to be ignored, so a misspelled opt-out
+  (`PROVIDE_CONSENT_LEVEL=NOEN`) in an otherwise untouched process kept
+  collecting at `Full`. Unset and blank still leave the current level alone;
+  `SetupTelemetry` and the lazy `GetLogger` path read the variable the same
+  way and fail closed the same way. `Testing.ResetForTests()` re-arms the
+  warning.
 - **`PIIRule.TruncateTo` defaults to 8, and a limit of 0 keeps only the
   suffix.** An unset limit used to be 0, and 0 meant "no limit" — a truncate
   rule registered without `TruncateTo` passed the whole value through, which

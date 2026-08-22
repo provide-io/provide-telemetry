@@ -319,6 +319,22 @@ function caseConsentEnvNoneLazyLogger(): Record<string, unknown> {
   };
 }
 
+/**
+ * PROVIDE_CONSENT_LEVEL=NOEN — set, non-empty, unrecognised — must fail closed
+ * on the lazy path: consent becomes NONE and the record is suppressed, with no
+ * setup call at all. The once-per-process console.warn lands inside
+ * captureEmit, where console is silenced, so stdout stays one JSON line.
+ */
+function caseConsentEnvInvalidFailsClosed(): Record<string, unknown> {
+  resetTelemetryState();
+  const records = captureEmit('probe', 'info', 'log.output.parity');
+  return {
+    case: 'consent_env_invalid_fails_closed',
+    consent_none: getConsentLevel() === 'NONE',
+    record_suppressed: !hasMessage(records, 'log.output.parity'),
+  };
+}
+
 async function caseHotReloadLogLevel(): Promise<Record<string, unknown>> {
   resetTelemetryState();
   setupTelemetry({
@@ -439,6 +455,7 @@ async function main(): Promise<void> {
     strict_schema_rejection: caseStrictSchemaRejection,
     consent_env_none_at_setup: caseConsentEnvNoneAtSetup,
     consent_env_none_lazy_logger: caseConsentEnvNoneLazyLogger,
+    consent_env_invalid_fails_closed: caseConsentEnvInvalidFailsClosed,
     strict_event_name_only: caseStrictEventNameOnly,
     required_keys_rejection: caseRequiredKeysRejection,
     invalid_config: caseInvalidConfig,

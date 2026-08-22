@@ -81,10 +81,6 @@ fn consent_test_should_allow_covers_functional_and_minimal_policies() {
 
     reset_consent_for_tests();
 }
-// SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
-// SPDX-License-Identifier: Apache-2.0
-// SPDX-Comment: Part of provide-telemetry.
-//
 
 // ── PROVIDE_CONSENT_LEVEL ───────────────────────────────────────────────────
 
@@ -154,19 +150,241 @@ fn consent_test_load_from_env_leaves_level_untouched_when_unset() {
     reset_consent_for_tests();
 }
 
-/// A misspelled value is ignored, not treated as FULL: silently widening a
-/// narrowed level on a typo is the one outcome an opt-out must never produce.
+// ── PROVIDE_CONSENT_LEVEL fails closed ──────────────────────────────────────
+//
+// A set, non-empty, unrecognised value is an opt-out the operator misspelled.
+// The one failure an opt-out must not have is a typo that silently leaves
+// collection on, so it fails closed to NONE and warns once per process.
+
+const INVALID_WARNING: &str = "[provide-telemetry] PROVIDE_CONSENT_LEVEL=\"  noen \" is not one \
+                               of FULL, FUNCTIONAL, MINIMAL, NONE; consent set to NONE (fail-closed)";
+
 #[test]
-fn consent_test_load_from_env_ignores_unrecognised_value() {
+fn consent_test_classify_consent_env_covers_every_outcome() {
+    assert_eq!(classify_consent_env(""), ConsentEnv::Blank);
+    assert_eq!(classify_consent_env("  \t "), ConsentEnv::Blank);
+    assert_eq!(
+        classify_consent_env("FULL"),
+        ConsentEnv::Level(ConsentLevel::Full)
+    );
+    assert_eq!(
+        classify_consent_env(" functional "),
+        ConsentEnv::Level(ConsentLevel::Functional)
+    );
+    assert_eq!(
+        classify_consent_env("minimal"),
+        ConsentEnv::Level(ConsentLevel::Minimal)
+    );
+    assert_eq!(
+        classify_consent_env("NONE"),
+        ConsentEnv::Level(ConsentLevel::None)
+    );
+    assert_eq!(classify_consent_env("NOEN"), ConsentEnv::Invalid);
+    assert_eq!(classify_consent_env("  noen "), ConsentEnv::Invalid);
+    assert_eq!(classify_consent_env("yes"), ConsentEnv::Invalid);
+}
+
+/// Both branches of the once-flag, and the reset that re-arms it.
+#[test]
+fn consent_test_should_warn_invalid_consent_once_fires_once_until_reset() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+
+    assert!(should_warn_invalid_consent_once(), "first call warns");
+    assert!(!should_warn_invalid_consent_once(), "second call is silent");
+    assert!(!should_warn_invalid_consent_once(), "and stays silent");
+
+    reset_consent_for_tests();
+    assert!(should_warn_invalid_consent_once(), "reset re-arms it");
+
+    reset_consent_for_tests();
+}
+
+#[test]
+fn consent_test_invalid_consent_env_message_names_the_raw_value() {
+    assert_eq!(invalid_consent_env_message("  noen "), INVALID_WARNING);
+    assert_eq!(
+        invalid_consent_env_message("yes"),
+        "[provide-telemetry] PROVIDE_CONSENT_LEVEL=\"yes\" is not one of FULL, FUNCTIONAL, \
+         MINIMAL, NONE; consent set to NONE (fail-closed)"
+    );
+}
+
+/// The first invalid reading warns with the exact text, naming the value
+/// untrimmed; the second is silent but still fails closed, even after code set
+/// FULL in between.
+#[test]
+fn consent_test_apply_consent_env_invalid_value_warns_once_and_fails_closed() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+    set_consent_level(ConsentLevel::Full);
+
+    assert_eq!(
+        apply_consent_env(Some("  noen ")).as_deref(),
+        Some(INVALID_WARNING)
+    );
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    set_consent_level(ConsentLevel::Full);
+    assert_eq!(apply_consent_env(Some("  noen ")), None);
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    reset_consent_for_tests();
+}
+
+#[test]
+fn consent_test_reset_rearms_the_invalid_env_warning() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+
+    assert!(apply_consent_env(Some("BOGUS")).is_some());
+    assert!(apply_consent_env(Some("BOGUS")).is_none());
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    reset_consent_for_tests();
+    assert_eq!(get_consent_level(), ConsentLevel::Full);
+    assert!(apply_consent_env(Some("BOGUS")).is_some());
+
+    reset_consent_for_tests();
+}
+
+/// Unset, blank and recognised readings neither warn nor consume the one
+/// warning the process gets.
+#[test]
+fn consent_test_apply_consent_env_only_invalid_values_warn() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+    set_consent_level(ConsentLevel::Minimal);
+
+    assert_eq!(apply_consent_env(None), None);
+    assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+    assert_eq!(apply_consent_env(Some("")), None);
+    assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+    assert_eq!(apply_consent_env(Some("  \t ")), None);
+    assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+    assert_eq!(apply_consent_env(Some(" functional ")), None);
+    assert_eq!(get_consent_level(), ConsentLevel::Functional);
+
+    assert!(
+        should_warn_invalid_consent_once(),
+        "the warning must still be armed"
+    );
+    reset_consent_for_tests();
+}
+
+/// A misspelled value is neither ignored nor treated as FULL: it fails closed.
+#[test]
+fn consent_test_load_from_env_invalid_value_fails_closed_to_none() {
     let _guard = acquire_test_state_lock();
     reset_consent_for_tests();
     set_consent_level(ConsentLevel::Minimal);
 
     with_consent_env(Some("BOGUS"), load_consent_from_env);
-    assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    assert!(
+        !should_warn_invalid_consent_once(),
+        "the loader must have spent the one warning"
+    );
+    reset_consent_for_tests();
+}
+
+/// Fail-closed means NONE even when code had chosen the most permissive level.
+#[test]
+fn consent_test_load_from_env_invalid_value_overrides_programmatic_full() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+    set_consent_level(ConsentLevel::Full);
+
+    with_consent_env(Some("NOEN"), load_consent_from_env);
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    reset_consent_for_tests();
+}
+
+/// Silence after the first warning must not mean the level stops being applied.
+#[test]
+fn consent_test_second_invalid_load_still_fails_closed() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+
+    with_consent_env(Some("BOGUS"), load_consent_from_env);
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    set_consent_level(ConsentLevel::Full);
+    with_consent_env(Some("BOGUS"), load_consent_from_env);
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    reset_consent_for_tests();
+}
+
+/// Compose files set `VAR=` constantly; blank is "unset", not "invalid", so a
+/// level chosen in code survives an empty or whitespace-only variable.
+#[test]
+fn consent_test_load_from_env_blank_value_is_a_no_op() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+    set_consent_level(ConsentLevel::Minimal);
 
     with_consent_env(Some(""), load_consent_from_env);
     assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+
+    with_consent_env(Some("  \t "), load_consent_from_env);
+    assert_eq!(get_consent_level(), ConsentLevel::Minimal);
+
+    assert!(
+        should_warn_invalid_consent_once(),
+        "a blank value must not consume the one warning"
+    );
+    reset_consent_for_tests();
+}
+
+#[test]
+fn consent_test_load_from_env_recognised_value_is_applied() {
+    let _guard = acquire_test_state_lock();
+    reset_consent_for_tests();
+
+    with_consent_env(Some(" functional "), load_consent_from_env);
+    assert_eq!(get_consent_level(), ConsentLevel::Functional);
+
+    assert!(
+        should_warn_invalid_consent_once(),
+        "a recognised value must not consume the one warning"
+    );
+    reset_consent_for_tests();
+}
+
+/// The setup path reads the variable, so a misspelled opt-out fails closed
+/// there too.
+#[test]
+fn consent_test_setup_telemetry_fails_closed_on_invalid_env() {
+    let _guard = acquire_test_state_lock();
+    crate::setup::shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+    reset_consent_for_tests();
+    set_consent_level(ConsentLevel::Full);
+
+    with_consent_env(Some("NOEN"), || {
+        crate::setup::setup_telemetry(None).expect("setup should succeed");
+    });
+    assert_eq!(get_consent_level(), ConsentLevel::None);
+
+    crate::setup::shutdown_telemetry(None).expect("shutdown should succeed");
+    reset_consent_for_tests();
+}
+
+/// A process that never calls setup still fails closed on its first
+/// `get_logger()`.
+#[test]
+fn consent_test_lazy_get_logger_fails_closed_on_invalid_env() {
+    let _guard = acquire_test_state_lock();
+    crate::setup::shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+    reset_consent_for_tests();
+    set_consent_level(ConsentLevel::Full);
+
+    with_consent_env(Some("NOEN"), || {
+        let _ = crate::logger::get_logger(Some("consent.lazy.invalid"));
+    });
+    assert_eq!(get_consent_level(), ConsentLevel::None);
 
     reset_consent_for_tests();
 }

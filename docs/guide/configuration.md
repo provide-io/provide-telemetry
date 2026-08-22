@@ -173,7 +173,7 @@ lazy path only runs while setup has not happened).
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `PROVIDE_CONSENT_LEVEL` | str | `FULL` | Consent gate for telemetry collection: `FULL`, `FUNCTIONAL`, `MINIMAL`, or `NONE`. Parsed case-insensitively after trimming whitespace. An unset variable is a no-op — a level chosen in code survives setup. An unrecognised value is ignored rather than raised (fail-open): it leaves the current level in place, so a misspelled variable in an otherwise untouched process yields `FULL`. |
+| `PROVIDE_CONSENT_LEVEL` | str | `FULL` | Consent gate for telemetry collection: `FULL`, `FUNCTIONAL`, `MINIMAL`, or `NONE`. Parsed case-insensitively after trimming whitespace. Unset or blank (empty / whitespace-only) is a no-op — a level chosen in code survives setup. Any other value fails closed: consent becomes `NONE` and a warning naming the value is emitted once per process (Python `RuntimeWarning`, TypeScript `console.warn`, Go/Rust/C# stderr), so a misspelled opt-out stops collection rather than silently leaving it at `FULL`. Read at `setup_telemetry()` and on the first `get_logger()` before setup; a `set_consent_level()` made after setup is never overwritten by it. |
 
 ## OpenObserve (Examples and E2E Only)
 

@@ -187,11 +187,17 @@ describe('loadConsentFromEnv', () => {
     }
   });
 
-  test('ignores invalid env value and leaves the current level untouched', () => {
-    setConsentLevel('MINIMAL');
-    process.env['PROVIDE_CONSENT_LEVEL'] = 'BOGUS';
-    loadConsentFromEnv();
-    expect(getConsentLevel()).toBe('MINIMAL');
+  test('an invalid env value fails closed to NONE, overriding the current level', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      setConsentLevel('MINIMAL');
+      process.env['PROVIDE_CONSENT_LEVEL'] = 'BOGUS';
+      loadConsentFromEnv();
+      expect(getConsentLevel()).toBe('NONE');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   test('leaves the default FULL in place when env is unset', () => {
@@ -207,7 +213,7 @@ describe('loadConsentFromEnv', () => {
     expect(getConsentLevel()).toBe('MINIMAL');
   });
 
-  test('empty env value is unrecognised and leaves the level untouched', () => {
+  test('empty env value is blank, not invalid, and leaves the level untouched', () => {
     setConsentLevel('FUNCTIONAL');
     process.env['PROVIDE_CONSENT_LEVEL'] = '';
     loadConsentFromEnv();

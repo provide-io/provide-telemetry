@@ -111,7 +111,10 @@ public enum ConsentLevel
 
 public static class Consent
 {
+    private const string EnvVar = "PROVIDE_CONSENT_LEVEL";
     private static int _level = (int)ConsentLevel.Full;
+    // 0 = armed, 1 = the invalid-env warning has been written this process.
+    private static int _invalidEnvWarned;
 
     public static void SetConsentLevel(ConsentLevel level) =>
         Interlocked.Exchange(ref _level, (int)level);
@@ -151,28 +154,56 @@ public static class Consent
         }
     }
 
-    /// <summary>Reads PROVIDE_CONSENT_LEVEL and sets the consent level when recognized.</summary>
+    /// <summary>
+    /// Applies <c>PROVIDE_CONSENT_LEVEL</c> if it is set. Called by
+    /// <c>SetupTelemetry</c> and by the lazy <c>GetLogger</c> path, so an
+    /// operator opt-out takes effect without a code change. The value is
+    /// trimmed and matched case-insensitively against FULL, FUNCTIONAL,
+    /// MINIMAL and NONE. An unset or blank variable is a no-op (a level chosen
+    /// in code survives). A set, non-empty, unrecognised value fails closed:
+    /// consent becomes <see cref="ConsentLevel.None"/> on every call, and one
+    /// warning per process naming the raw value is written to
+    /// <see cref="Console.Error"/> — outside the SDK logger, which the None it
+    /// just applied would silence. The variable is an opt-out control, and the
+    /// one failure an opt-out must not have is a typo that leaves collection on.
+    /// </summary>
     public static void LoadConsentFromEnv()
     {
-        var raw = (Environment.GetEnvironmentVariable("PROVIDE_CONSENT_LEVEL") ?? "").Trim().ToUpperInvariant();
-        switch (raw)
-        {
-            case "FULL":
-                SetConsentLevel(ConsentLevel.Full);
-                break;
-            case "FUNCTIONAL":
-                SetConsentLevel(ConsentLevel.Functional);
-                break;
-            case "MINIMAL":
-                SetConsentLevel(ConsentLevel.Minimal);
-                break;
-            case "NONE":
-                SetConsentLevel(ConsentLevel.None);
-                break;
-        }
+        var raw = Environment.GetEnvironmentVariable(EnvVar);
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        SetConsentLevel(ParseLevel(raw.Trim().ToUpperInvariant()) ?? FailClosed(raw));
     }
 
-    internal static void Reset() => SetConsentLevel(ConsentLevel.Full);
+    private static ConsentLevel? ParseLevel(string text) => text switch
+    {
+        "FULL" => ConsentLevel.Full,
+        "FUNCTIONAL" => ConsentLevel.Functional,
+        "MINIMAL" => ConsentLevel.Minimal,
+        "NONE" => ConsentLevel.None,
+        _ => null,
+    };
+
+    private static ConsentLevel FailClosed(string raw)
+    {
+        WarnInvalidEnvOnce(raw);
+        return ConsentLevel.None;
+    }
+
+    private static void WarnInvalidEnvOnce(string raw)
+    {
+        if (Interlocked.Exchange(ref _invalidEnvWarned, 1) != 0) return;
+        // Console.Error is read at call time so a test can redirect it; the
+        // SDK logger is deliberately not used, because consent None would drop
+        // the very record that explains why consent is None.
+        Console.Error.WriteLine(
+            $"[provide-telemetry] {EnvVar}=\"{raw}\" is not one of FULL, FUNCTIONAL, MINIMAL, NONE; consent set to NONE (fail-closed)");
+    }
+
+    internal static void Reset()
+    {
+        SetConsentLevel(ConsentLevel.Full);
+        Interlocked.Exchange(ref _invalidEnvWarned, 0);
+    }
 
     // Resolves through the one shared table. An unrecognised level lands on
     // INFO rather than the old local default of 0/TRACE; both sit below the

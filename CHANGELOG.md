@@ -50,6 +50,20 @@ one method and relaxed in its sibling `EventName`.
 segments in every mode: that count belongs to the DAS/DARS record shape, not to
 the name.
 
+**`PROVIDE_CONSENT_LEVEL` fails closed on a value it does not recognise.** A
+set, non-empty value other than `FULL`, `FUNCTIONAL`, `MINIMAL` or `NONE`
+(trimmed, case-insensitive) now sets consent to `NONE` and warns once per
+process, naming the value — Python through `warnings.warn(RuntimeWarning)`,
+TypeScript through `console.warn`, Go, Rust and C# on stderr, deliberately
+outside the SDK's own logger so the warning cannot be dropped by the `NONE` it
+just applied. Previously every SDK ignored the value and left the current
+level in place, so a misspelled opt-out (`PROVIDE_CONSENT_LEVEL=NOEN`) in an
+otherwise untouched process kept collecting at `FULL`. That is the one failure
+an opt-out control must not have. Unset and blank (empty or whitespace-only)
+remain no-ops, so `PROVIDE_CONSENT_LEVEL=` in a compose file still changes
+nothing. `get_consent_level()` reports the applied `NONE`. A runtime probe
+(`consent_env_invalid_fails_closed`) pins it cross-language.
+
 **Go: the `go/logger` package is removed.** `github.com/provide-io/provide-telemetry/go/logger`
 duplicated the root package's API (`GetLogger`, `EventName`, PII rules, error
 fingerprinting, schema validation) behind a second import path, was imported
@@ -73,11 +87,11 @@ go with it.
   nothing called, and Rust had none, so an operator opt-out of `NONE` left
   telemetry at `FULL`; only C# applied it. All five now read the variable at
   `setup_telemetry()` and on the first `get_logger()` before setup. Loader
-  semantics are unified: unset leaves the current level untouched (Python and
-  TypeScript used to reset it to `FULL`), unrecognised values are ignored, and
-  a `set_consent_level()` made after setup is never overwritten. A runtime
-  probe (`consent_env_none_at_setup`, `consent_env_none_lazy_logger`) pins it
-  cross-language.
+  semantics are unified: unset or blank leaves the current level untouched
+  (Python and TypeScript used to reset it to `FULL`), an unrecognised value
+  fails closed (see Breaking), and a `set_consent_level()` made after setup is
+  never overwritten. A runtime probe (`consent_env_none_at_setup`,
+  `consent_env_none_lazy_logger`) pins it cross-language.
 - **PII `truncate` behaves identically everywhere.** C#'s `PIIRule.TruncateTo`
   defaulted to `0`, which returned the whole plaintext; it now defaults to `8`
   and `0` keeps only the suffix, like the other SDKs. Go clamps a negative

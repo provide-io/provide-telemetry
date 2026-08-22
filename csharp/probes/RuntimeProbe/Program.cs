@@ -25,6 +25,7 @@ object result = caseId switch
     "lazy_logger_shutdown_re_setup" => CaseLazyLoggerShutdownReSetup(),
     "consent_env_none_at_setup" => CaseConsentEnvNoneAtSetup(),
     "consent_env_none_lazy_logger" => CaseConsentEnvNoneLazyLogger(),
+    "consent_env_invalid_fails_closed" => CaseConsentEnvInvalidFailsClosed(),
     "strict_schema_rejection" => CaseStrictSchemaRejection(),
     "strict_event_name_only" => CaseStrictEventNameOnly(),
     "required_keys_rejection" => CaseRequiredKeysRejection(),
@@ -171,6 +172,23 @@ static Dictionary<string, object?> CaseConsentEnvNoneLazyLogger()
     return new()
     {
         ["case"] = "consent_env_none_lazy_logger",
+        ["consent_none"] = ProvideTelemetry.GetConsentLevel() == ConsentLevel.None,
+        ["record_suppressed"] = !HasMessage(records, "log.output.parity"),
+    };
+}
+
+static Dictionary<string, object?> CaseConsentEnvInvalidFailsClosed()
+{
+    // PROVIDE_CONSENT_LEVEL=NOEN comes from the harness: set, non-empty and
+    // unrecognised. Again no SetupTelemetry — the lazy path must fail closed
+    // to None before the record that woke it, and the one stderr warning it
+    // writes lands in CaptureEmit's buffer, where only JSON lines are parsed.
+    Testing.ResetForTests();
+    Environment.SetEnvironmentVariable("PROVIDE_LOG_FORMAT", "json");
+    var records = CaptureEmit("probe", "info", "log.output.parity");
+    return new()
+    {
+        ["case"] = "consent_env_invalid_fails_closed",
         ["consent_none"] = ProvideTelemetry.GetConsentLevel() == ConsentLevel.None,
         ["record_suppressed"] = !HasMessage(records, "log.output.parity"),
     };

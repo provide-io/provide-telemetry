@@ -115,6 +115,17 @@ def _case_consent_env_none_lazy_logger() -> dict[str, object]:
     }
 
 
+def _case_consent_env_invalid_fails_closed() -> dict[str, object]:
+    # PROVIDE_CONSENT_LEVEL=NOEN: the lazy logger path must fail closed to
+    # NONE (the RuntimeWarning it emits is not a JSON record and is ignored).
+    record = _try_capture_record("log.output.parity")
+    return {
+        "case": "consent_env_invalid_fails_closed",
+        "consent_none": get_consent_level() is ConsentLevel.NONE,
+        "record_suppressed": record == {},
+    }
+
+
 def _case_strict_schema_rejection() -> dict[str, object]:
     record = _capture_record("Bad.Event.Ok")
     shutdown_telemetry()
@@ -403,6 +414,7 @@ def main() -> int:
         "lazy_logger_shutdown_re_setup": _case_lazy_logger_shutdown_re_setup,
         "consent_env_none_at_setup": _case_consent_env_none_at_setup,
         "consent_env_none_lazy_logger": _case_consent_env_none_lazy_logger,
+        "consent_env_invalid_fails_closed": _case_consent_env_invalid_fails_closed,
         "strict_schema_rejection": _case_strict_schema_rejection,
         "strict_event_name_only": _case_strict_event_name_only,
         "required_keys_rejection": _case_required_keys_rejection,

@@ -14,6 +14,21 @@ Two things to know when reading it:
   changelog is read in. `npm view @provide-io/telemetry versions` is the
   authority on what a consumer can actually install.
 
+## [Unreleased]
+
+### Changed
+
+- **`PROVIDE_CONSENT_LEVEL` fails closed on a value it does not recognise.**
+  A set, non-empty value other than `FULL`, `FUNCTIONAL`, `MINIMAL` or `NONE`
+  (trimmed, case-insensitive) sets consent to `NONE` — overriding any level
+  chosen in code — and warns once per process through `console.warn`, naming
+  the raw value. The warning deliberately bypasses the SDK's own logger, so
+  the `NONE` it just applied cannot drop it. Unset and blank (empty or
+  whitespace-only) remain no-ops, so `PROVIDE_CONSENT_LEVEL=` in a compose
+  file still changes nothing. An unrecognised value used to be ignored, which
+  left a misspelled opt-out (`PROVIDE_CONSENT_LEVEL=NOEN`) collecting at
+  `FULL`. `resetConsentForTests()` also re-arms the once-per-process warning.
+
 ## [0.8.0] — 2026-08-19
 
 ### Breaking

@@ -47,6 +47,15 @@ cases:
       consent_none: true
       record_suppressed: true
 
+  # PROVIDE_CONSENT_LEVEL=NOEN — set, non-empty, unrecognised — must fail
+  # closed: consent becomes NONE and the record is suppressed, on the lazy
+  # logger path with no setup call at all.
+  - id: consent_env_invalid_fails_closed
+    kind: flags
+    expected:
+      consent_none: true
+      record_suppressed: true
+
   - id: strict_event_name_only
     kind: flags
     expected:

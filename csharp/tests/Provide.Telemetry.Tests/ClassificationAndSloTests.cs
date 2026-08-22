@@ -212,8 +212,7 @@ public class ConsentAndSloTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("PARTIAL")]
-    public void LoadConsentFromEnv_LeavesTheLevelAloneForUnrecognisedValues(string raw)
+    public void LoadConsentFromEnv_LeavesTheLevelAloneForBlankValues(string raw)
     {
         Consent.SetConsentLevel(ConsentLevel.Minimal);
         Environment.SetEnvironmentVariable("PROVIDE_CONSENT_LEVEL", raw);
@@ -225,6 +224,30 @@ public class ConsentAndSloTests
         }
         finally
         {
+            Environment.SetEnvironmentVariable("PROVIDE_CONSENT_LEVEL", null);
+        }
+    }
+
+    [Fact]
+    public void LoadConsentFromEnv_FailsClosedForUnrecognisedValues()
+    {
+        // A set, non-empty value the loader does not recognise is a misspelled
+        // opt-out: it must land on None, not leave the current level in place.
+        // The once-per-process warning goes to Console.Error; swap it out so
+        // this test owns what it writes.
+        Consent.SetConsentLevel(ConsentLevel.Minimal);
+        Environment.SetEnvironmentVariable("PROVIDE_CONSENT_LEVEL", "PARTIAL");
+        var orig = Console.Error;
+        Console.SetError(new StringWriter());
+        try
+        {
+            Consent.LoadConsentFromEnv();
+
+            Assert.Equal(ConsentLevel.None, Consent.GetConsentLevel());
+        }
+        finally
+        {
+            Console.SetError(orig);
             Environment.SetEnvironmentVariable("PROVIDE_CONSENT_LEVEL", null);
         }
     }

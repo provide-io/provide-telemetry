@@ -9,15 +9,33 @@ they contained.
 
 ## [Unreleased]
 
+### Breaking
+
+- **`PROVIDE_CONSENT_LEVEL` fails closed on a value it does not recognise.**
+  A set, non-empty value other than `FULL`, `FUNCTIONAL`, `MINIMAL` or `NONE`
+  (trimmed, case-insensitive) sets consent to `NONE` on every read and writes
+  one warning per process to stderr naming the value, e.g.
+  `[provide-telemetry] PROVIDE_CONSENT_LEVEL="NOEN" is not one of FULL,
+  FUNCTIONAL, MINIMAL, NONE; consent set to NONE (fail-closed)`. The warning
+  deliberately bypasses the crate's own logger, which the `NONE` it just
+  applied would silence. A process whose environment carries a misspelled
+  opt-out therefore stops collecting instead of carrying on at `FULL` -- the
+  one failure an opt-out control must not have. Unset and blank (empty or
+  whitespace-only) remain no-ops, so `PROVIDE_CONSENT_LEVEL=` in a compose
+  file still changes nothing. `reset_consent_for_tests` re-arms the warning.
+  The other four SDKs make the same change; the runtime probe
+  (`consent_env_invalid_fails_closed`) pins it cross-language.
+
 ### Added
 
 - `load_consent_from_env`, exported from the crate root. Reads
   `PROVIDE_CONSENT_LEVEL` (trimmed, case-insensitive; `FULL`, `FUNCTIONAL`,
-  `MINIMAL` or `NONE`) and applies it; an unset or unrecognised value leaves
-  the current level untouched. `setup_telemetry` calls it on its first,
-  installing pass and `get_logger` calls it before setup has run, so an
-  operator opt-out now takes effect in Rust as it already did in the other
-  four SDKs. A level set in code after setup is never clobbered.
+  `MINIMAL` or `NONE`) and applies it; an unset or blank value leaves the
+  current level untouched, and an unrecognised one fails closed (see
+  Breaking). `setup_telemetry` calls it on its first, installing pass and
+  `get_logger` calls it before setup has run, so an operator opt-out now takes
+  effect in Rust as it already did in the other four SDKs. A level set in code
+  after setup is never clobbered.
 - `DEFAULT_TRUNCATE_TO` (8) and `impl Default for PIIRule`, so
   `PIIRule { path, mode: PIIMode::Truncate, ..Default::default() }` truncates
   to the spec default rather than requiring a limit to be spelled out.

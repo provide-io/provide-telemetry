@@ -120,6 +120,21 @@ func caseConsentEnvNoneLazyLogger() map[string]any {
 	}
 }
 
+// caseConsentEnvInvalidFailsClosed pins that a set, non-empty, unrecognised
+// PROVIDE_CONSENT_LEVEL (NOEN) fails closed on the lazy pre-setup logger path:
+// consent becomes NONE and the INFO record is suppressed. The one-line stderr
+// warning the loader writes lands in the captured pipe and is not JSON, so
+// captureEmit skips it.
+func caseConsentEnvInvalidFailsClosed() map[string]any {
+	telemetry.ResetForTests()
+	records := captureEmit("probe", "info", "log.output.parity")
+	return map[string]any{
+		"case":              "consent_env_invalid_fails_closed",
+		"consent_none":      telemetry.GetConsentLevel() == telemetry.ConsentNone,
+		"record_suppressed": !hasMessage(records, "log.output.parity"),
+	}
+}
+
 func caseStrictSchemaRejection() map[string]any {
 	telemetry.ResetForTests()
 	_, _ = telemetry.SetupTelemetry()
@@ -472,6 +487,8 @@ func main() {
 		result = caseConsentEnvNoneAtSetup()
 	case "consent_env_none_lazy_logger":
 		result = caseConsentEnvNoneLazyLogger()
+	case "consent_env_invalid_fails_closed":
+		result = caseConsentEnvInvalidFailsClosed()
 	case "strict_schema_rejection":
 		result = caseStrictSchemaRejection()
 	case "strict_event_name_only":

@@ -125,7 +125,7 @@ def _probe_runners(repo: Path, cargo_bin: str, cargo_env: dict[str, str]) -> lis
             name="go",
             label="Go",
             cmd=["go", "run", str(probes / "emit_log_go" / "main.go")],
-            cwd=repo / "go" / "logger",
+            cwd=repo / "go",
         ),
         ProbeRunner(
             name="typescript",

@@ -179,14 +179,14 @@ func TestLoadConsentFromEnvNone(t *testing.T) {
 	}
 }
 
-func TestLoadConsentFromEnvInvalidIgnored(t *testing.T) {
+func TestLoadConsentFromEnvInvalidFailsClosed(t *testing.T) {
 	ResetConsentForTests()
 	t.Cleanup(ResetConsentForTests)
 	t.Setenv("PROVIDE_CONSENT_LEVEL", "BOGUS")
-	LoadConsentFromEnv()
-	// invalid value leaves level unchanged (FULL)
-	if got := GetConsentLevel(); got != ConsentFull {
-		t.Errorf("expected ConsentFull after bogus value, got %v", got)
+	_ = captureStderr(t, LoadConsentFromEnv)
+	// A set, non-empty, unrecognised value is a misspelled opt-out: NONE, not FULL.
+	if got := GetConsentLevel(); got != ConsentNone {
+		t.Errorf("expected ConsentNone after bogus value, got %v", got)
 	}
 }
 

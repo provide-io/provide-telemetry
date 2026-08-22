@@ -154,6 +154,17 @@ fn main() {
                 "record_suppressed": suppressed,
             })
         }
+        // PROVIDE_CONSENT_LEVEL=NOEN -- set, non-empty, unrecognised -- fails
+        // closed on the same lazy path: consent becomes NONE and the record is
+        // dropped. The one warning goes to stderr; the runner reads stdout.
+        "consent_env_invalid_fails_closed" => {
+            let suppressed = info_record_is_suppressed("consent.invalid.lazy");
+            json!({
+                "case": case,
+                "consent_none": consent_is_none(),
+                "record_suppressed": suppressed,
+            })
+        }
         "invalid_config" => json!({
             "case": case,
             "raised": provide_telemetry::setup_telemetry(None).is_err(),

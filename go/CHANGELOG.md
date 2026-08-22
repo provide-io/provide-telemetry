@@ -25,6 +25,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   on a `go/logger/go.mod` that never existed, so they had silently never run —
   go with it.
 
+- **`PROVIDE_CONSENT_LEVEL` fails closed on a value it does not recognise.**
+  `LoadConsentFromEnv` — called by `SetupTelemetry` and by the lazy pre-setup
+  `GetLogger` path — sets consent to `ConsentNone` when the variable is set,
+  non-empty and not one of `FULL`, `FUNCTIONAL`, `MINIMAL`, `NONE` (trimmed,
+  case-insensitive), and writes one warning per process to `os.Stderr` naming
+  the raw value: `[provide-telemetry] PROVIDE_CONSENT_LEVEL="NOEN" is not one
+  of FULL, FUNCTIONAL, MINIMAL, NONE; consent set to NONE (fail-closed)`. The
+  warning goes to stderr directly rather than through `Logger()`, which the
+  `NONE` it just applied would silence. It used to ignore the value and leave
+  the current level in place, so a misspelled opt-out in an otherwise untouched
+  process kept collecting at `FULL`. Unset and blank (empty or whitespace-only)
+  remain no-ops. `ResetConsentForTests` also re-arms the warning. The
+  `consent_env_invalid_fails_closed` runtime probe pins it cross-language.
+
 ## [0.8.0] — 2026-08-19
 
 ### Breaking
