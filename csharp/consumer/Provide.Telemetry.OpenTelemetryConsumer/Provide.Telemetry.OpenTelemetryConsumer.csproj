@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Provide.Telemetry.OpenTelemetryConsumer</AssemblyName>
-    <ProvideTelemetryVersion Condition="'$(ProvideTelemetryVersion)' == ''">0.8.0</ProvideTelemetryVersion>
+    <ProvideTelemetryVersion Condition="'$(ProvideTelemetryVersion)' == ''">0.8.1</ProvideTelemetryVersion>
   </PropertyGroup>
 
   <ItemGroup>

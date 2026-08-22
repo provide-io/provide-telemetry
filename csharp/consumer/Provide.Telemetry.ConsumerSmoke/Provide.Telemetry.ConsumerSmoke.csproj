@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <!-- Supplied by ci/verify-csharp-consumer-packages.sh so the script and the
          csproj cannot drift apart at release time. -->
-    <ProvideTelemetryVersion Condition="'$(ProvideTelemetryVersion)' == ''">0.8.0</ProvideTelemetryVersion>
+    <ProvideTelemetryVersion Condition="'$(ProvideTelemetryVersion)' == ''">0.8.1</ProvideTelemetryVersion>
   </PropertyGroup>
 
   <ItemGroup>

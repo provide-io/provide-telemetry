@@ -7,7 +7,7 @@ they contained.
 
 ---
 
-## [Unreleased]
+## [0.8.1] — 2026-08-22
 
 ### Breaking
 
