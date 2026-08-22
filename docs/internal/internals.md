@@ -1,40 +1,85 @@
 # Internals
 
-How provide-telemetry works under the hood. For contributors and advanced users who need to understand the library's mechanics.
+How provide-telemetry works under the hood. For contributors and advanced users
+who need to understand the library's mechanics.
 
 ## Polyglot Note
 
-The Python modules below remain the behavioral reference, but the repo also carries TypeScript, Go, Rust, and C# implementations. Rust preserves the same public API contracts while expressing context propagation through RAII guards rather than `contextvars` directly:
+The Python modules below remain the behavioral reference, but the repo also
+carries TypeScript, Go, Rust, and C# implementations. Rust preserves the same
+public API contracts while expressing context propagation through RAII guards
+rather than `contextvars` directly:
 
 - `bind_context(...) -> ContextGuard`
 - `bind_session_context(...) -> ContextGuard`
 - `set_trace_context(...) -> ContextGuard`
 - `bind_propagation_context(...) -> PropagationGuard`
 
-Those guards restore the previous snapshot on `Drop`, which keeps nested binds and async task isolation predictable without requiring process-global mutable context.
+Those guards restore the previous snapshot on `Drop`, which keeps nested binds
+and async task isolation predictable without requiring process-global mutable
+context.
 
-C# reaches the same place through `AsyncLocal<T>` plus `IDisposable` scopes — `Context.PushContext(...)` and `Context.PushTraceContext(...)` capture the predecessor value and restore it on dispose, so a `using` block nests the way a Rust guard does. The flat `BindContext` / `SetTraceContext` setters remain for callers that do not need restoration. C# also splits its packages rather than its features: `Provide.Telemetry` is BCL-only and names no OpenTelemetry type, and `Provide.Telemetry.OpenTelemetry` supplies delivery behind the `ITelemetryBackend` seam, registered once via `OpenTelemetryBackendRegistration.Register()`.
+C# reaches the same place through `AsyncLocal<T>` plus `IDisposable` scopes —
+`Context.PushContext(...)` and `Context.PushTraceContext(...)` capture the
+predecessor value and restore it on dispose, so a `using` block nests the way a
+Rust guard does. The flat `BindContext` / `SetTraceContext` setters remain for
+callers that do not need restoration. C# also splits its packages rather than
+its features: `Provide.Telemetry` is BCL-only and names no OpenTelemetry type,
+and `Provide.Telemetry.OpenTelemetry` supplies delivery behind the
+`ITelemetryBackend` seam, registered once via
+`OpenTelemetryBackendRegistration.Register()`.
 
 ## Structlog Processor Pipeline
 
-Every log event passes through a linear chain of structlog processors configured in `logger/core.py`. The chain runs in order — each processor transforms the event dict and returns it (or raises `DropEvent` to discard).
+Every log event passes through a linear chain of structlog processors configured
+in `logger/core.py`. The chain runs in order — each processor transforms the
+event dict and returns it (or raises `DropEvent` to discard).
 
-1. **`merge_contextvars`** — Pull all structlog contextvars bindings into the event dict.
-2. **`merge_runtime_context`** — Merge logger context (request ID, session, etc.) and inject `trace_id`/`span_id` from tracing contextvars.
+1. **`merge_contextvars`** — Pull all structlog contextvars bindings into the
+   event dict.
+2. **`merge_runtime_context`** — Merge logger context (request ID, session,
+   etc.) and inject `trace_id`/`span_id` from tracing contextvars.
 3. **`inject_logger_name`** — Stamp `logger_name` from the bound logger.
-4. **`inject_das_fields`** — When the event is an `Event` instance, copy its `domain` / `action` / `resource` / `status` parts onto the record and flatten the event back to its string name. Plain-string event names pass through untouched.
+4. **`inject_das_fields`** — When the event is an `Event` instance, copy its
+   `domain` / `action` / `resource` / `status` parts onto the record and flatten
+   the event back to its string name. Plain-string event names pass through
+   untouched.
 5. **`add_log_level`** — Stamp the log level string.
-6. **`TimeStamper(fmt="iso")`** *(conditional: `include_timestamp=true`)* — Add ISO-8601 timestamp.
-7. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`** — Enforce security limits on attribute values, count, and nesting depth.
-8. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults. If `include_error_taxonomy` is enabled and `exc_name` is present, auto-classify the error via `classify_error()`.
-9. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from the exception type plus the top three stack frames when `exc_info` is present.
-10. **`enforce_event_schema(config)`** — Validate event name format (3-5 dot-separated segments) and required keys. Annotates `_schema_error` on violation instead of dropping. Runs before sampling so `_schema_error` is set when `apply_sampling` evaluates the record.
-11. **`make_level_filter(level, module_levels)`** *(conditional: when `module_levels` is configured)* — Per-module log level filtering. Placed **before** `apply_sampling`: filtered records must not acquire a backpressure ticket, and the `DropEvent` path must not strand a ticket between `apply_sampling` (acquire) and the renderer/handler boundary (release).
-12. **`apply_sampling`** — Probabilistic sampling check via `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate events.
-13. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules then default sensitive-key redaction on the event dict.
-14. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add `filename` and `lineno` fields.
-15. **`rename_event_to_message`** *(conditional: `fmt=json`)* — Rename structlog's internal `event` key to the canonical `message` field so all five languages emit the same JSON key.
-16. **Renderer**, wrapped in `render_with_backpressure_extra` — One of: `ConsoleRenderer` (default, with `plain_traceback` pinned so frame locals cannot leak), `JSONRenderer` (`fmt=json`), or `PrettyRenderer` (`fmt=pretty`). The wrapper moves any stashed backpressure ticket off the event dict and onto the stdlib `logging` record's `extra`, so the handler releases it once the record is actually emitted.
+6. **`TimeStamper(fmt="iso")`** *(conditional: `include_timestamp=true`)* — Add
+   ISO-8601 timestamp.
+7. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`**
+   — Enforce security limits on attribute values, count, and nesting depth.
+8. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults.
+   If `include_error_taxonomy` is enabled and `exc_name` is present,
+   auto-classify the error via `classify_error()`.
+9. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from the
+   exception type plus the top three stack frames when `exc_info` is present.
+10. **`enforce_event_schema(config)`** — Validate event name format (3-5
+    dot-separated segments) and required keys. Annotates `_schema_error` on
+    violation instead of dropping. Runs before sampling so `_schema_error` is
+    set when `apply_sampling` evaluates the record.
+11. **`make_level_filter(level, module_levels)`** *(conditional: when
+    `module_levels` is configured)* — Per-module log level filtering. Placed
+    **before** `apply_sampling`: filtered records must not acquire a
+    backpressure ticket, and the `DropEvent` path must not strand a ticket
+    between `apply_sampling` (acquire) and the renderer/handler boundary
+    (release).
+12. **`apply_sampling`** — Probabilistic sampling check via
+    `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate
+    events.
+13. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules
+    then default sensitive-key redaction on the event dict.
+14. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add
+    `filename` and `lineno` fields.
+15. **`rename_event_to_message`** *(conditional: `fmt=json`)* — Rename
+    structlog's internal `event` key to the canonical `message` field so all
+    five languages emit the same JSON key.
+16. **Renderer**, wrapped in `render_with_backpressure_extra` — One of:
+    `ConsoleRenderer` (default, with `plain_traceback` pinned so frame locals
+    cannot leak), `JSONRenderer` (`fmt=json`), or `PrettyRenderer`
+    (`fmt=pretty`). The wrapper moves any stashed backpressure ticket off the
+    event dict and onto the stdlib `logging` record's `extra`, so the handler
+    releases it once the record is actually emitted.
 
 ## Setup and Shutdown Coordinator
 
@@ -43,15 +88,24 @@ Every log event passes through a linear chain of structlog processors configured
 ### Initialization Sequence
 
 1. Suppress OTel SDK export loggers (noise handled by resilience layer).
-2. `apply_runtime_config(cfg)` — snapshot config, push sampling/backpressure/exporter policies.
-3. `configure_logging(cfg, force=True)` — build structlog processor chain + handlers.
+2. `apply_runtime_config(cfg)` — snapshot config, push
+   sampling/backpressure/exporter policies.
+3. `configure_logging(cfg, force=True)` — build structlog processor chain +
+   handlers.
 4. `_refresh_otel_tracing()` — detect if OTel tracing SDK is importable.
 5. `_refresh_otel_metrics()` — detect if OTel metrics SDK is importable.
-6. `setup_tracing(cfg)` — create `TracerProvider` with OTLP exporter if tracing is enabled and OTel is available; otherwise returns without action (no-op tracer is a runtime fallback in `get_tracer()`).
-7. `setup_metrics(cfg)` — create `MeterProvider` with OTLP exporter if metrics are enabled and OTel is available; otherwise returns without action. The in-process fallback lives in the `counter()` / `gauge()` / `histogram()` wrappers.
-8. `_rebind_slo_instruments()` — clear cached SLO counter/gauge/histogram so they rebind to new providers.
+6. `setup_tracing(cfg)` — create `TracerProvider` with OTLP exporter if tracing
+   is enabled and OTel is available; otherwise returns without action (no-op
+   tracer is a runtime fallback in `get_tracer()`).
+7. `setup_metrics(cfg)` — create `MeterProvider` with OTLP exporter if metrics
+   are enabled and OTel is available; otherwise returns without action. The
+   in-process fallback lives in the `counter()` / `gauge()` / `histogram()`
+   wrappers.
+8. `_rebind_slo_instruments()` — clear cached SLO counter/gauge/histogram so
+   they rebind to new providers.
 
-If any step after `configure_logging` fails, `_rollback()` tears down completed steps in reverse order.
+If any step after `configure_logging` fails, `_rollback()` tears down completed
+steps in reverse order.
 
 ### State Machine
 
@@ -70,9 +124,12 @@ actually reports; the enum carries seven for parity with the runtimes that
 surface intermediate states. See the architecture doc for the full vocabulary.
 
 The `_setup_done` flag and `_lock` mutex ensure:
-- Concurrent `setup_telemetry()` calls are serialized; only the first performs work.
-- `shutdown_telemetry()` clears `_setup_done` before tearing down providers, preventing races.
-- After shutdown, package-local setup state is cleared. Reinstalling real OTel process-global providers still requires a full process restart.
+- Concurrent `setup_telemetry()` calls are serialized; only the first performs
+  work.
+- `shutdown_telemetry()` clears `_setup_done` before tearing down providers,
+  preventing races.
+- After shutdown, package-local setup state is cleared. Reinstalling real OTel
+  process-global providers still requires a full process restart.
 
 ## Signal Export Path
 
@@ -98,11 +155,13 @@ flowchart TD
     H --> O["Release backpressure ticket"]
 ```
 
-This flow applies to all three signals (logs, traces, metrics). Each signal has independent policies, circuit breaker state, and health counters.
+This flow applies to all three signals (logs, traces, metrics). Each signal has
+independent policies, circuit breaker state, and health counters.
 
 ## Resilience and Circuit Breaker
 
-The resilience layer wraps export operations with retry, timeout, and circuit-breaking logic.
+The resilience layer wraps export operations with retry, timeout, and
+circuit-breaking logic.
 
 **Per-language enforcement point:**
 
@@ -116,20 +175,36 @@ The resilience layer wraps export operations with retry, timeout, and circuit-br
 
 ### Timeout Execution
 
-Each signal (logs, traces, metrics) gets its own lazily-created `ThreadPoolExecutor(max_workers=2)`, isolating failure domains so a timeout storm in one signal cannot starve workers used by another. Export operations run with `future.result(timeout=...)`. On timeout, the future is cancelled (but already-running work continues on its daemon thread). When the circuit breaker trips (3 consecutive timeouts), the executor for that signal is replaced — the old pool is shut down (non-blocking) and a fresh pool is created for the next half-open probe.
+Each signal (logs, traces, metrics) gets its own lazily-created
+`ThreadPoolExecutor(max_workers=2)`, isolating failure domains so a timeout
+storm in one signal cannot starve workers used by another. Export operations run
+with `future.result(timeout=...)`. On timeout, the future is cancelled (but
+already-running work continues on its daemon thread). When the circuit breaker
+trips (3 consecutive timeouts), the executor for that signal is replaced — the
+old pool is shut down (non-blocking) and a fresh pool is created for the next
+half-open probe.
 
 ### Circuit Breaker
 
 - **Threshold**: 3 consecutive timeouts trip the breaker for a signal.
-- **Cooldown**: exponential, `min(30s × 2^open_count, 1024s)`. The first trip waits 30 seconds; each subsequent re-trip doubles the wait, capped at 1024 seconds. A successful half-open probe decays `open_count` by one, so a signal that recovers walks the cooldown back down. During cooldown, all attempts for that signal are short-circuited.
-- **Half-open probe**: After cooldown expires, the next attempt is allowed through. Success resets the timeout counter and decays `open_count`; failure re-trips and increments `open_count`.
-- **Fail-open vs fail-closed**: When the breaker is open, `fail_open=true` (default) returns `None` silently; `fail_open=false` raises `TimeoutError`.
+- **Cooldown**: exponential, `min(30s × 2^open_count, 1024s)`. The first trip
+  waits 30 seconds; each subsequent re-trip doubles the wait, capped at 1024
+  seconds. A successful half-open probe decays `open_count` by one, so a signal
+  that recovers walks the cooldown back down. During cooldown, all attempts for
+  that signal are short-circuited.
+- **Half-open probe**: After cooldown expires, the next attempt is allowed
+  through. Success resets the timeout counter and decays `open_count`; failure
+  re-trips and increments `open_count`.
+- **Fail-open vs fail-closed**: When the breaker is open, `fail_open=true`
+  (default) returns `None` silently; `fail_open=false` raises `TimeoutError`.
 
 ### Async Safety
 
-When retries or backoff are configured and the code detects an active `asyncio` event loop:
+When retries or backoff are configured and the code detects an active `asyncio`
+event loop:
 - A `RuntimeWarning` is emitted (once per signal).
-- Unless `allow_blocking_in_event_loop=true`, retries are forced to 1 and backoff to 0 (fail-fast).
+- Unless `allow_blocking_in_event_loop=true`, retries are forced to 1 and
+  backoff to 0 (fail-fast).
 
 ## Graceful Degradation
 
@@ -152,43 +227,81 @@ flowchart TD
 ```
 
 Each signal degrades independently:
-- **Tracing**: `TracerProvider` with OTLP exporter → `TracerProvider` without exporter → no-op tracer objects.
-- **Metrics**: `MeterProvider` with OTLP exporter → `MeterProvider` without exporter → in-process `Counter`/`Gauge`/`Histogram` wrappers.
-- **Logging**: Always functional via structlog. OTLP log export is additive — if the OTel logging handler fails to initialize, console/JSON output continues.
+- **Tracing**: `TracerProvider` with OTLP exporter → `TracerProvider` without
+  exporter → no-op tracer objects.
+- **Metrics**: `MeterProvider` with OTLP exporter → `MeterProvider` without
+  exporter → in-process `Counter`/`Gauge`/`Histogram` wrappers.
+- **Logging**: Always functional via structlog. OTLP log export is additive — if
+  the OTel logging handler fails to initialize, console/JSON output continues.
 
 ## PII and Cardinality Guards
 
 ### PII Engine
 
-The PII engine (`pii.py` in Python; mirrored in `pii.ts`, the `piicore` package in Go, `pii.rs` in Rust, and `Pii.cs` in C#) processes log payloads in three passes:
+The PII engine (`pii.py` in Python; mirrored in `pii.ts`, the `piicore` package
+in Go, `pii.rs` in Rust, and `Pii.cs` in C#) processes log payloads in three
+passes:
 
-1. **Custom path rules**: Each `PIIRule` specifies a `path` (tuple of key segments, with `"*"` as wildcard) and a `mode`:
+1. **Custom path rules**: Each `PIIRule` specifies a `path` (tuple of key
+   segments, with `"*"` as wildcard) and a `mode`:
    - `"drop"` — remove the value entirely
    - `"redact"` — replace with `"***"`
    - `"hash"` — replace with first 12 chars of SHA-256 hex digest
    - `"truncate"` — keep first N characters, append `"..."`
 
-2. **Default sensitive-key redaction**: Keys whose lowercased name matches any of `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `auth`, `authorization`, `credential`, `private_key`, `ssn`, `credit_card`, `creditcard`, `cvv`, `pin`, `account_number`, `cookie` are redacted with `"***"` unless a custom rule already targeted them.
+2. **Default sensitive-key redaction**: Keys whose lowercased name matches any
+   of `password`, `passwd`, `secret`, `token`, `api_key`, `apikey`, `auth`,
+   `authorization`, `credential`, `private_key`, `ssn`, `credit_card`,
+   `creditcard`, `cvv`, `pin`, `account_number`, `cookie` are redacted with
+   `"***"` unless a custom rule already targeted them.
 
-3. **Value-based secret detection**: Every string value (and the free-form log message itself) is matched against the built-in secret-pattern set (AWS access keys, JWTs, GitHub PATs, long hex / base64 runs above the `MIN_SECRET_LENGTH` threshold) plus any patterns registered via `register_secret_pattern(name, pattern)`. The message is checked separately from the attribute map so wildcard path rules (`Path: ["*"]`) cannot bypass the scrub — see `tests/regression/test_message_pii_cross_language.py` for the cross-language contract tests.
+3. **Value-based secret detection**: Every string value (and the free-form log
+   message itself) is matched against the built-in secret-pattern set (AWS
+   access keys, JWTs, GitHub PATs, long hex / base64 runs above the
+   `MIN_SECRET_LENGTH` threshold) plus any patterns registered via
+   `register_secret_pattern(name, pattern)`. The message is checked separately
+   from the attribute map so wildcard path rules (`Path: ["*"]`) cannot bypass
+   the scrub — see `tests/regression/test_message_pii_cross_language.py` for the
+   cross-language contract tests.
 
-   Pass 3 replaces **spans**, not whole values, and the span rules are load-bearing:
+   Pass 3 replaces **spans**, not whole values, and the span rules are
+   load-bearing:
 
-   - **Every match of every pattern is redacted**, not just the first. Each pattern is scanned across the whole value; the resulting spans are merged and replaced right-to-left. A value carrying two credentials loses both.
-   - **The redacted span widens to the whitespace-delimited token** containing the match. A pattern that matches only the recognisable core of a credential (a `AKIA…` prefix inside a longer opaque token, say) still takes the entire token with it, so no tail of the secret survives.
-   - **Path-shaped tokens are left alone.** A token whose shape reads as a filesystem path is not treated as a secret even when a pattern matches inside it, so log lines naming real files stay readable. A path appearing *alongside* a genuine secret does not shield that secret — each match is judged on its own token.
-   - **Values longer than `_MAX_SECRET_SCAN_LENGTH` (8192 chars) are skipped entirely**, bounding the scan cost of a pathological payload. Truncation by `harden_input` normally keeps values far below this.
-   - Redacted spans are replaced with `"***"`, the same sentinel passes 1 and 2 use. All five languages share the sentinel and the span rules; the contract is pinned by the `secret_span_redaction` cases in `spec/behavioral_fixtures.yaml`.
+   - **Every match of every pattern is redacted**, not just the first. Each
+     pattern is scanned across the whole value; the resulting spans are merged
+     and replaced right-to-left. A value carrying two credentials loses both.
+   - **The redacted span widens to the whitespace-delimited token** containing
+     the match. A pattern that matches only the recognisable core of a
+     credential (a `AKIA…` prefix inside a longer opaque token, say) still takes
+     the entire token with it, so no tail of the secret survives.
+   - **Path-shaped tokens are left alone.** A token whose shape reads as a
+     filesystem path is not treated as a secret even when a pattern matches
+     inside it, so log lines naming real files stay readable. A path appearing
+     *alongside* a genuine secret does not shield that secret — each match is
+     judged on its own token.
+   - **Values longer than `_MAX_SECRET_SCAN_LENGTH` (8192 chars) are skipped
+     entirely**, bounding the scan cost of a pathological payload. Truncation by
+     `harden_input` normally keeps values far below this.
+   - Redacted spans are replaced with `"***"`, the same sentinel passes 1 and 2
+     use. All five languages share the sentinel and the span rules; the contract
+     is pinned by the `secret_span_redaction` cases in
+     `spec/behavioral_fixtures.yaml`.
 
-Passes 1 and 2 traverse nested dicts and lists recursively up to `pii_max_depth`. Pass 3 is the gate behind `sanitize=true`; when sanitization is disabled, message and value strings flow through verbatim.
+Passes 1 and 2 traverse nested dicts and lists recursively up to
+`pii_max_depth`. Pass 3 is the gate behind `sanitize=true`; when sanitization is
+disabled, message and value strings flow through verbatim.
 
 ### Cardinality Guards
 
-The cardinality module (`cardinality.py`) prevents attribute explosion in metrics:
+The cardinality module (`cardinality.py`) prevents attribute explosion in
+metrics:
 
-- `register_cardinality_limit(key, max_values, ttl_seconds)` sets a cap on distinct values per attribute key.
-- `guard_attributes(attributes)` checks each key against its limit. Values beyond `max_values` are replaced with `"__overflow__"`.
-- Expired values (older than `ttl_seconds`, using `time.monotonic()`) are pruned on each guard call.
+- `register_cardinality_limit(key, max_values, ttl_seconds)` sets a cap on
+  distinct values per attribute key.
+- `guard_attributes(attributes)` checks each key against its limit. Values
+  beyond `max_values` are replaced with `"__overflow__"`.
+- Expired values (older than `ttl_seconds`, using `time.monotonic()`) are pruned
+  on each guard call.
 
 ## Health Self-Observability
 
@@ -197,13 +310,16 @@ The cardinality module (`cardinality.py`) prevents attribute explosion in metric
 - **Queue depth**: current backpressure queue occupancy.
 - **Dropped**: events rejected by sampling or full queues.
 - **Retries**: exporter retry attempts.
-- **Async blocking risk**: calls where retry/backoff config was active inside an event loop.
+- **Async blocking risk**: calls where retry/backoff config was active inside an
+  event loop.
 - **Export failures**: failed export attempts with last error message.
 - **Export latency**: last successful export round-trip in milliseconds.
 - **Last success**: epoch timestamp of the most recent successful export.
-- **Exemplar unsupported**: attempts to attach exemplars on instruments that don't support them.
+- **Exemplar unsupported**: attempts to attach exemplars on instruments that
+  don't support them.
 
-Call `get_health_snapshot()` for a point-in-time frozen dataclass of all counters.
+Call `get_health_snapshot()` for a point-in-time frozen dataclass of all
+counters.
 
 ## Runtime Hot-Reload
 
@@ -215,18 +331,25 @@ Call `get_health_snapshot()` for a point-in-time frozen dataclass of all counter
 - Security config (PII key sets, secret pattern registration)
 - SLO config (RED/USE metric enable flags and thresholds)
 - PII max traversal depth (`pii_max_depth`)
-- Schema strictness (`strict_schema`) and event-schema fields (`strict_event_name`, `required_keys`)
-- Safe logging pipeline rebuilds (level, format, timestamp/caller inclusion, sanitize flag, pretty settings, module levels)
+- Schema strictness (`strict_schema`) and event-schema fields
+  (`strict_event_name`, `required_keys`)
+- Safe logging pipeline rebuilds (level, format, timestamp/caller inclusion,
+  sanitize flag, pretty settings, module levels)
 
 These are applied via `update_runtime_config()` or `reload_runtime_from_env()`.
 
 ### NOT hot-reloadable (requires process restart)
 
-- OTLP log-provider/exporter settings (`logging.otlp_endpoint`, `logging.otlp_headers`, `exporter.logs_timeout_seconds`) after a global OTel log provider is installed
-- OTel `TracerProvider` / `MeterProvider` (process-global singletons in the OTel SDK)
+- OTLP log-provider/exporter settings (`logging.otlp_endpoint`,
+  `logging.otlp_headers`, `exporter.logs_timeout_seconds`) after a global OTel
+  log provider is installed
+- OTel `TracerProvider` / `MeterProvider` (process-global singletons in the OTel
+  SDK)
 - Service name, environment, version
 
-`reconfigure_telemetry()` detects whether the config change affects providers. If so and providers are already installed, it raises `RuntimeError` rather than silently producing inconsistent state.
+`reconfigure_telemetry()` detects whether the config change affects providers.
+If so and providers are already installed, it raises `RuntimeError` rather than
+silently producing inconsistent state.
 
 ## Rust Verification
 

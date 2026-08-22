@@ -2,7 +2,8 @@
 
 ## Goals
 
-- Unified telemetry facade across the repo's Python, TypeScript, Go, Rust, and C# implementations.
+- Unified telemetry facade across the repo's Python, TypeScript, Go, Rust, and
+  C# implementations.
 - Safe defaults with optional OpenTelemetry runtime integration.
 - Strict event naming and schema validation for consistent analytics.
 - Predictable behavior under async workloads.
@@ -11,11 +12,14 @@
 
 1. Public facade (`provide.telemetry`): stable imports and setup lifecycle.
 2. Configuration (`TelemetryConfig`): env-driven, strongly typed runtime config.
-3. Logging: structlog processors with contextvars-backed request/session propagation and optional OTLP log export.
+3. Logging: structlog processors with contextvars-backed request/session
+   propagation and optional OTLP log export.
 4. Tracing: OTel provider if available, no-op tracer fallback otherwise.
-5. Metrics: OTel meter provider if available, in-process fallback wrappers otherwise.
+5. Metrics: OTel meter provider if available, in-process fallback wrappers
+   otherwise.
 6. ASGI/WebSocket adapters: request context extraction and propagation.
-7. Rust crate (`rust/`): guard-based context API, fallback facades, and optional `otel` feature wiring.
+7. Rust crate (`rust/`): guard-based context API, fallback facades, and optional
+   `otel` feature wiring.
 
 ## High-Level Component Flow
 
@@ -41,31 +45,43 @@ flowchart TD
 
 - One telemetry setup per process (`setup_telemetry`) guarded by a lock.
 - Provider initialization is idempotent and lock-protected.
-- `shutdown_telemetry` is serialized with `setup_telemetry` under the same lock to prevent setup/shutdown races.
+- `shutdown_telemetry` is serialized with `setup_telemetry` under the same lock
+  to prevent setup/shutdown races.
 - `shutdown_telemetry` marks setup state as not-ready before provider teardown.
-- Runtime policy changes (`sampling`, `backpressure`, `exporter`) are hot-reloadable in-process.
-- Provider-changing reconfiguration is constrained by OpenTelemetry's process-global providers; after real OTel providers are installed, those changes require process restart rather than in-process replacement.
+- Runtime policy changes (`sampling`, `backpressure`, `exporter`) are
+  hot-reloadable in-process.
+- Provider-changing reconfiguration is constrained by OpenTelemetry's
+  process-global providers; after real OTel providers are installed, those
+  changes require process restart rather than in-process replacement.
 - Runtime policy updates snapshot runtime state before storing/applying it.
-- Active runtime state is read back via `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` rather than by mutating a caller-owned config object.
-- Python uses `contextvars` for async task safety; Rust preserves the same behavior with scoped guards over task-local/thread-local snapshots.
+- Active runtime state is read back via `get_runtime_config()` /
+  `GetRuntimeConfig()` / `getRuntimeConfig()` rather than by mutating a
+  caller-owned config object.
+- Python uses `contextvars` for async task safety; Rust preserves the same
+  behavior with scoped guards over task-local/thread-local snapshots.
 
 ## Async Safety
 
 ### Guaranteed
 
 - Request context fields are isolated per task via `contextvars`.
-- Trace context remains stable across await boundaries inside traced async callables.
-- Setup and shutdown routines are race-safe for concurrent callers in the same process.
-- Rust guard-based context bindings restore prior request/session/trace state on `Drop`.
+- Trace context remains stable across await boundaries inside traced async
+  callables.
+- Setup and shutdown routines are race-safe for concurrent callers in the same
+  process.
+- Rust guard-based context bindings restore prior request/session/trace state on
+  `Drop`.
 
 ### Scope Limits
 
-- State is process-local (multi-process workers each initialize their own providers).
+- State is process-local (multi-process workers each initialize their own
+  providers).
 - Export delivery guarantees depend on OTel exporters and backend availability.
 
 ## Failure and Fallback Strategy
 
-- Missing OTel dependencies: tracing falls back to no-op tracer objects and metrics fall back to in-process wrappers.
+- Missing OTel dependencies: tracing falls back to no-op tracer objects and
+  metrics fall back to in-process wrappers.
 - Invalid event names/required keys: deterministic schema errors.
 - Export endpoint absent: tracing/metrics providers still initialize safely.
 
@@ -137,11 +153,10 @@ stateDiagram-v2
     Stopped --> Ready: setup_telemetry() [re-setup]
 ```
 
-The `RuntimeState` enum carries the seven-state vocabulary shared with Go,
-Rust, TypeScript and C# (`local` / `starting` / `ready` / `degraded` /
-`reconfiguring` / `stopping` / `stopped`); Python's runtime reports `ready`
-and `stopped` and reserves the rest for parity with runtimes that surface
-intermediate states.
+The `RuntimeState` enum carries the seven-state vocabulary shared with Go, Rust,
+TypeScript and C# (`local` / `starting` / `ready` / `degraded` / `reconfiguring`
+/ `stopping` / `stopped`); Python's runtime reports `ready` and `stopped` and
+reserves the rest for parity with runtimes that surface intermediate states.
 
 ## Resilience Flow
 
@@ -221,10 +236,10 @@ flowchart TD
 ## Governance Modules
 
 Governance is part of the mandatory API surface in all five languages:
-`classification`, `consent`, and `receipts` are always linked and loaded by default.
-`spec/validate_conformance.py` enforces this through `_GOVERNANCE_LANGUAGES`,
-which lists Python, TypeScript, Go, Rust, and C#.
-Core signal paths (logging, tracing, metrics, schema handling, health, resilience)
+`classification`, `consent`, and `receipts` are always linked and loaded by
+default. `spec/validate_conformance.py` enforces this through
+`_GOVERNANCE_LANGUAGES`, which lists Python, TypeScript, Go, Rust, and C#. Core
+signal paths (logging, tracing, metrics, schema handling, health, resilience)
 still execute when governance policies are permissive.
 
 Governance symbols are marked `required: true` in `spec/telemetry-api.yaml`.
@@ -234,5 +249,8 @@ Governance symbols are marked `required: true` in `spec/telemetry-api.yaml`.
 - Unit tests with branch coverage for all local logic and fallback paths.
 - Optional-extras tests to validate real OTel imports.
 - Integration smoke test with local OTLP collector (manual/nightly CI).
-- Python, TypeScript, Go, Rust, and C# each validate against the shared API spec; Rust additionally runs `cargo fmt`, `cargo clippy`, `cargo test`, and `cargo test --features otel`, and C# builds its solution with `-warnaserror`.
-- Strip-governance verification artifacts were removed; this parity slice now validates governance always-on behavior.
+- Python, TypeScript, Go, Rust, and C# each validate against the shared API
+  spec; Rust additionally runs `cargo fmt`, `cargo clippy`, `cargo test`, and
+  `cargo test --features otel`, and C# builds its solution with `-warnaserror`.
+- Strip-governance verification artifacts were removed; this parity slice now
+  validates governance always-on behavior.

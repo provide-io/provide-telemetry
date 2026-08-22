@@ -1,9 +1,10 @@
 # Configuration Reference
 
 Runtime configuration is typically driven by environment variables, parsed via
-`TelemetryConfig.from_env()` / `ConfigFromEnv()`. Python and TypeScript also accept
-in-memory config at setup; Go accepts `WithConfig(*TelemetryConfig)` so hosts that
-re-exec or fork need not mutate process environment to configure telemetry.
+`TelemetryConfig.from_env()` / `ConfigFromEnv()`. Python and TypeScript also
+accept in-memory config at setup; Go accepts `WithConfig(*TelemetryConfig)` so
+hosts that re-exec or fork need not mutate process environment to configure
+telemetry.
 
 ## Core
 
@@ -63,7 +64,10 @@ re-exec or fork need not mutate process environment to configure telemetry.
 
 ## OTLP Endpoints and Headers
 
-These follow the [OpenTelemetry specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/) for environment-based configuration. Per-signal variables take precedence over the shared fallback.
+These follow the [OpenTelemetry
+specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/) for
+environment-based configuration. Per-signal variables take precedence over the
+shared fallback.
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -92,11 +96,12 @@ These follow the [OpenTelemetry specification](https://opentelemetry.io/docs/spe
 
 ### Trace sampling semantics
 
-The effective traces rate is `min(PROVIDE_SAMPLING_TRACES_RATE, PROVIDE_TRACE_SAMPLE_RATE)`.
-When a live OTel `TracerProvider` is installed, that rate is applied as
-`ParentBased(TraceIdRatioBased(rate))` on the SDK provider — so the global
-tracer, auto-instrumentation (e.g. gRPC), and the library facade share one
-sampling authority. Rate `0` drops root spans; rate `1` samples all.
+The effective traces rate is `min(PROVIDE_SAMPLING_TRACES_RATE,
+PROVIDE_TRACE_SAMPLE_RATE)`. When a live OTel `TracerProvider` is installed,
+that rate is applied as `ParentBased(TraceIdRatioBased(rate))` on the SDK
+provider — so the global tracer, auto-instrumentation (e.g. gRPC), and the
+library facade share one sampling authority. Rate `0` drops root spans; rate `1`
+samples all.
 
 When no live provider is installed (noop path), the same rate gates the facade
 `should_sample` / `ShouldSample` path only. Changing the sample rate after a
@@ -115,7 +120,9 @@ limits), not in-process hot-reload.
 
 ## Exporter Resilience
 
-Per-signal retry, backoff, timeout, and failure policy. Each variable is prefixed with `PROVIDE_EXPORTER_{SIGNAL}_` where `{SIGNAL}` is `LOGS`, `TRACES`, or `METRICS`.
+Per-signal retry, backoff, timeout, and failure policy. Each variable is
+prefixed with `PROVIDE_EXPORTER_{SIGNAL}_` where `{SIGNAL}` is `LOGS`, `TRACES`,
+or `METRICS`.
 
 <!-- BEGIN GENERATED CONFIG: exporter -->
 | Variable | Type | Default | Description |
@@ -177,7 +184,8 @@ lazy path only runs while setup has not happened).
 
 ## OpenObserve (Examples and E2E Only)
 
-These are not parsed by `TelemetryConfig.from_env()` but are used by the example scripts and E2E tests.
+These are not parsed by `TelemetryConfig.from_env()` but are used by the example
+scripts and E2E tests.
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -188,8 +196,8 @@ These are not parsed by `TelemetryConfig.from_env()` but are used by the example
 
 ## Resource Attributes
 
-Every emitted trace, metric, and log carries an OTel **Resource** identifying the
-service. Three identity attributes are populated from configuration:
+Every emitted trace, metric, and log carries an OTel **Resource** identifying
+the service. Three identity attributes are populated from configuration:
 
 | Resource attribute        | Config field / env var                          | Default           |
 |---------------------------|-------------------------------------------------|-------------------|
@@ -198,9 +206,9 @@ service. Three identity attributes are populated from configuration:
 | `service.version`         | `PROVIDE_TELEMETRY_VERSION`                      | `0.0.0`           |
 
 The standard OTel resource env vars — `OTEL_SERVICE_NAME` and
-`OTEL_RESOURCE_ATTRIBUTES` (e.g. `host.name=web-1,service.instance.id=abc,k8s.pod.name=…`) —
-are also honored, so deployment/ops can attach attributes without a custom
-provider.
+`OTEL_RESOURCE_ATTRIBUTES` (e.g.
+`host.name=web-1,service.instance.id=abc,k8s.pod.name=…`) — are also honored, so
+deployment/ops can attach attributes without a custom provider.
 
 ### Precedence
 
@@ -211,10 +219,10 @@ framework default  <  OTEL_* env  <  explicit config
 ```
 
 - **Explicit config wins.** An identity attribute is treated as *explicitly set*
-  only when its configured value differs from the framework default. Such a value
-  overrides any `OTEL_*` env value, so an app that names itself `checkout` is
-  never silently renamed by an ambient `OTEL_RESOURCE_ATTRIBUTES` injected by a
-  platform.
+  only when its configured value differs from the framework default. Such a
+  value overrides any `OTEL_*` env value, so an app that names itself `checkout`
+  is never silently renamed by an ambient `OTEL_RESOURCE_ATTRIBUTES` injected by
+  a platform.
 - **Env fills the unset.** If an identity attribute is left at its default,
   `OTEL_SERVICE_NAME` / `OTEL_RESOURCE_ATTRIBUTES` fills it.
 - **Additive env keys always merge.** Non-identity keys (`host.name`,
@@ -233,14 +241,20 @@ that every implementation applies. C#'s builder is
 
 ### Boolean Parsing
 
-Boolean environment variables are parsed case-insensitively. The following values are treated as **true**: `1`, `true`, `yes`, `on`. The following values are treated as **false**: `0`, `false`, `no`, `off`. Empty or whitespace-only values resolve to the field default. Any other non-empty value is rejected as invalid configuration.
+Boolean environment variables are parsed case-insensitively. The following
+values are treated as **true**: `1`, `true`, `yes`, `on`. The following values
+are treated as **false**: `0`, `false`, `no`, `off`. Empty or whitespace-only
+values resolve to the field default. Any other non-empty value is rejected as
+invalid configuration.
 
 ### OTLP Header Format
 
-OTLP header variables use comma-separated `key=value` pairs following the OTel spec:
+OTLP header variables use comma-separated `key=value` pairs following the OTel
+spec:
 
 ```
 OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20token123,X-Custom=value"
 ```
 
-Keys and values are URL-decoded. Malformed pairs (missing `=`) are silently ignored with a warning.
+Keys and values are URL-decoded. Malformed pairs (missing `=`) are silently
+ignored with a warning.
