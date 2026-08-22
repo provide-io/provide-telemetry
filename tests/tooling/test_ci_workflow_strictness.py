@@ -240,3 +240,29 @@ def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:
         "metrics:",
     ]:
         assert expected in config
+
+
+def test_jobs_running_repo_scripts_check_out_the_repo() -> None:
+    """A job that runs a file from this repo must first check the repo out.
+
+    The 0.8.1 npm publish failed here: `publish-npm` ran `./ci/publish-npm.sh`
+    with no checkout step, so the release job exited 127 on a file that exists
+    in the tree. Nothing caught it because the script itself has tests and the
+    workflow parses fine — the missing piece was the wiring between them.
+    """
+    import yaml
+
+    offenders: list[str] = []
+    for workflow_path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        for job_name, job in (workflow.get("jobs") or {}).items():
+            steps = job.get("steps") or []
+            checked_out = any("actions/checkout" in str(step.get("uses", "")) for step in steps)
+            if checked_out:
+                continue
+            for step in steps:
+                run = str(step.get("run", ""))
+                if "./ci/" in run or "./scripts/" in run:
+                    offenders.append(f"{workflow_path.name}:{job_name}")
+                    break
+    assert offenders == [], f"jobs run repo files without checking the repo out: {offenders}"

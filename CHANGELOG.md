@@ -10,6 +10,14 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [0.8.1] — 2026-08-22
 
+### Fixed
+
+- The npm publish job checks the repository out. `publish-npm` runs
+  `ci/publish-npm.sh`, but the job set up Node and downloaded the built tarball
+  without ever fetching the tree, so the 0.8.1 release exited 127 on a script
+  that exists. A tooling test now fails any workflow job that runs a repo file
+  without an `actions/checkout` step.
+
 All five languages.
 
 ### Breaking

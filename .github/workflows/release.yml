@@ -266,6 +266,10 @@ jobs:
       name: npm
       url: https://www.npmjs.com/package/@provide-io/telemetry
     steps:
+      # ci/publish-npm.sh lives in the repo, so this job needs the tree even
+      # though it publishes a tarball built elsewhere. Without it the publish
+      # step dies with "./ci/publish-npm.sh: No such file or directory".
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v4
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           # Node 24 ships npm 11+ which supports Trusted Publishing OIDC.
