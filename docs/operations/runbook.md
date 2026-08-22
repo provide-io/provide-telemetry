@@ -22,20 +22,84 @@ Operationally, keep strict validation enabled unless you are in an explicit migr
 
 ## Failure Behavior
 
-- Missing OTel dependencies: tracing falls back to no-op tracer objects and metrics use in-process fallback wrappers.
-- Invalid event names with strict event mode enabled: log processors annotate `_schema_error`; direct schema helpers like `event()`, `event_name()`, and `validate_event_name()` raise `EventSchemaError`.
-- Missing required keys: log processors annotate `_schema_error` whenever `PROVIDE_TELEMETRY_REQUIRED_KEYS` is set (always enforced, regardless of strict schema mode); `validate_required_keys()` raises directly.
-- Async services: keep exporter retries/backoff at zero (default). Non-zero values can block request handlers. **Python and Go** carry a runtime guard: a retry/backoff that would block an event loop is refused (fail-fast) unless `PROVIDE_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP=true`, and each suppressed call is counted in `async_blocking_risk_*`. **TypeScript and Rust** have no such variable — `spec/telemetry-api.yaml` scopes it to Python and Go — and no blocking guard; they only count `async_blocking_risk_*` (Node: a drain that would have blocked; Rust: a flush/shutdown drain). **C# has neither the variable nor a guard**: `ExporterPolicy` has no `AllowBlockingInEventLoop` field, `async_blocking_risk_*` is always zero, and its drains run on the thread pool via `ResilientExporter.DrainAsync`, so the practical exposure is different from a blocked event loop.
-- Exporter timeouts: `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` are enforced at exporter construction and per-batch export across four of the five runtimes (Python, TypeScript, Go, Rust). See `docs/internal/internals.md` Resilience table for the per-language module references. Timed-out attempts count as failures and follow the retry/fail-open policy. **C# bounds exports differently**: the OTLP exporters are built without an explicit timeout (`Endpoints.Apply` sets endpoint, protocol and headers only), and the per-attempt budget comes from the absolute deadline `FlushTelemetry(timeout)` / `ShutdownTelemetry()` computes — default ten seconds, shared by every signal so three installed providers cost one budget, not three. `TimeoutSeconds` in C# survives only as the gate that decides whether the circuit breaker is consulted at all (`ResilienceExecutor`, matching Python's `TimeoutSeconds > 0` rule). To bound a C# export, pass the timeout to `FlushTelemetry`; setting `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` will not do it.
-- Trace context: invalid W3C `traceparent` values (including all-zero IDs, reserved version `ff`, or invalid flags/version tokens) are rejected and not bound into propagation context.
+Symptom first. The three rows that carry per-language nuance link to a section
+below; the rest are self-contained.
+
+| Symptom | Cause | What to check |
+|---|---|---|
+| Nothing is emitted at all, and one warning naming an env value appeared at startup | `PROVIDE_CONSENT_LEVEL` was set to a value the SDK does not recognise, so consent failed closed to `NONE` | [Consent gate](#consent-gate) |
+| Logs still flow, but no spans and no OTel metrics | OTel packages are missing; tracing falls back to no-op tracers and metrics to in-process wrappers | Install the `otel` extra for your language |
+| Records carry a `_schema_error` field | An invalid event name under strict event mode, or a key listed in `PROVIDE_TELEMETRY_REQUIRED_KEYS` is absent | Required keys are enforced whenever the variable is set, regardless of strict schema mode. The direct helpers — `event()`, `event_name()`, `validate_event_name()`, `validate_required_keys()` — raise `EventSchemaError` instead of annotating |
+| Log records have no trace IDs after propagation | The inbound W3C `traceparent` was rejected: all-zero IDs, reserved version `ff`, or an invalid flags/version token. Rejected values are never bound | The caller's header |
+| A request handler stalls during export | Exporter retries/backoff are running on the event loop | [Async services](#async-services-and-the-blocking-guard) |
+| An export runs past `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` | Four runtimes enforce that variable; C# does not | [Exporter timeouts](#exporter-timeouts) |
+
+### Consent gate
+
+A set, non-empty `PROVIDE_CONSENT_LEVEL` that is not `FULL`, `FUNCTIONAL`,
+`MINIMAL` or `NONE` (trimmed, case-insensitive) sets consent to `NONE` and
+writes one warning per process naming the value. Collection stops: an opt-out
+control must not keep collecting because the operator misspelled it.
+
+Unset and blank (empty or whitespace-only) are no-ops, so `PROVIDE_CONSENT_LEVEL=`
+in a compose file changes nothing. The warning is deliberately written outside
+the SDK's own logger — Python `RuntimeWarning`, TypeScript `console.warn`, Go,
+Rust and C# on stderr — because the `NONE` it just applied would silence a log
+record. Confirm the applied level with `get_consent_level()` /
+`GetConsentLevel()` / `getConsentLevel()`.
+
+Every SDK reads the variable at `setup_telemetry()` and on the first
+`get_logger()` in a process that never called setup. A `set_consent_level()`
+made after setup is never overwritten by the environment.
+
+### Async services and the blocking guard
+
+Keep exporter retries and backoff at zero, the default. Non-zero values can
+block request handlers, and what happens then differs by runtime:
+
+- **Python and Go** carry a runtime guard. A retry/backoff that would block an
+  event loop is refused (fail-fast) unless
+  `PROVIDE_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP=true`, and each suppressed call
+  increments `async_blocking_risk_*`.
+- **TypeScript and Rust** have no such variable — `spec/telemetry-api.yaml`
+  scopes it to Python and Go — and no blocking guard. They only count
+  `async_blocking_risk_*`: in Node a drain that would have blocked, in Rust a
+  flush/shutdown drain.
+- **C# has neither the variable nor a guard.** `ExporterPolicy` has no
+  `AllowBlockingInEventLoop` field and `async_blocking_risk_*` is always zero.
+  Its drains run on the thread pool via `ResilientExporter.DrainAsync`, so the
+  practical exposure differs from a blocked event loop.
+
+### Exporter timeouts
+
+`PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` is enforced at exporter construction and
+per-batch export in Python, TypeScript, Go and Rust. Timed-out attempts count
+as failures and follow the retry/fail-open policy. Per-language module
+references are in the Resilience table of
+[`docs/internal/internals.md`](../internal/internals.md).
+
+**C# bounds exports differently.** Its OTLP exporters are built without an
+explicit timeout (`Endpoints.Apply` sets endpoint, protocol and headers only).
+The per-attempt budget comes from the absolute deadline that
+`FlushTelemetry(timeout)` / `ShutdownTelemetry()` computes — ten seconds by
+default, shared by every signal, so three installed providers cost one budget
+rather than three. `TimeoutSeconds` survives only as the gate deciding whether
+the circuit breaker is consulted at all (`ResilienceExecutor`, matching
+Python's `TimeoutSeconds > 0` rule). To bound a C# export, pass the timeout to
+`FlushTelemetry`; setting the environment variable will not do it.
 
 ## Lifecycle
 
 - Call `setup_telemetry()` once during process startup.
 - Call `shutdown_telemetry()` during graceful shutdown to flush providers.
 - `setup_telemetry()` and `shutdown_telemetry()` are lock-serialized; concurrent calls are safe.
-- After `shutdown_telemetry()`, package-local setup state is cleared. If real OTel providers had been installed, provider-changing lifecycle transitions still require a full process restart before `setup_telemetry()`.
-- Runtime reconfiguration APIs mutate internal process state only. Read back the active snapshot via `get_runtime_config()` / `GetRuntimeConfig()` / `getRuntimeConfig()` rather than assuming the caller still owns a live config object.
+- After `shutdown_telemetry()`, package-local setup state is cleared. If real
+  OTel providers had been installed, provider-changing lifecycle transitions
+  still require a full process restart before `setup_telemetry()`.
+- Runtime reconfiguration APIs mutate internal process state only. Read the
+  active snapshot back via `get_runtime_config()` / `GetRuntimeConfig()` /
+  `getRuntimeConfig()` rather than assuming the caller still owns a live config
+  object.
 
 ## Local Health Check
 
