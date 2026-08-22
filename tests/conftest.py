@@ -14,6 +14,7 @@ import structlog
 from provide.telemetry.backpressure import reset_queues_for_tests
 from provide.telemetry.cardinality import clear_cardinality_limits
 from provide.telemetry.consent import _reset_consent_for_tests
+from provide.telemetry.logger.context import clear_context
 from provide.telemetry.logger.core import _reset_logging_for_tests
 from provide.telemetry.resilience import reset_resilience_for_tests
 from provide.telemetry.runtime import reset_runtime_for_tests
@@ -68,6 +69,12 @@ def reset_logger_state() -> None:
     reset_queues_for_tests()
     _reset_consent_for_tests()
     clear_cardinality_limits()
+    # Bound log context is a contextvar, so a test that binds request_id or
+    # session_id and does not clear it leaks into every later test in the same
+    # worker. merge_runtime_context does event_dict.update(get_context()), so
+    # the stale value *overwrites* the later test's own field — which is how a
+    # macOS CI worker turned request_id="abc" into "rid" four tests later.
+    clear_context()
 
 
 @pytest.fixture(autouse=True)
