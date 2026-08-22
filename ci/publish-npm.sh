@@ -54,7 +54,25 @@ npm publish --access public --provenance --ignore-scripts
 
 # Postcondition. A publish that exits 0 without the version appearing is a
 # failure we would otherwise ship as a release.
-confirmed="$(npm view "${name}@${version}" version 2>/dev/null || true)"
+#
+# Retried, because the registry is not read-your-writes: the 0.8.1 publish
+# succeeded, printed its provenance attestation, and still answered an empty
+# string when asked about itself a second later. One immediate query turns that
+# lag into a red release for a package that is already live, which is worse
+# than waiting.
+readonly CONFIRM_ATTEMPTS="${PUBLISH_NPM_CONFIRM_ATTEMPTS:-10}"
+readonly CONFIRM_DELAY_SECONDS="${PUBLISH_NPM_CONFIRM_DELAY_SECONDS:-6}"
+confirmed=""
+for (( attempt = 1; attempt <= CONFIRM_ATTEMPTS; attempt++ )); do
+  confirmed="$(npm view "${name}@${version}" version 2>/dev/null || true)"
+  if [[ "${confirmed}" == "${version}" ]]; then
+    break
+  fi
+  if (( attempt < CONFIRM_ATTEMPTS )); then
+    echo "publish-npm: ${name}@${version} not visible yet (saw '${confirmed}'), retrying in ${CONFIRM_DELAY_SECONDS}s"
+    sleep "${CONFIRM_DELAY_SECONDS}"
+  fi
+done
 if [[ "${confirmed}" != "${version}" ]]; then
   echo "publish-npm: ${name}@${version} not present after publish (saw '${confirmed}')" >&2
   exit 1

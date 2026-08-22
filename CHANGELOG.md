@@ -12,6 +12,12 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Fixed
 
+- The npm publish postcondition retries. `npm publish` succeeded for 0.8.1,
+  signed its provenance and logged it to the transparency log, and then
+  `npm view` answered an empty string a second later — the registry is not
+  read-your-writes — so the job failed a release that was already live. The
+  check now polls for up to a minute before giving up, and still fails a
+  publish that genuinely never lands.
 - The npm publish job checks the repository out. `publish-npm` runs
   `ci/publish-npm.sh`, but the job set up Node and downloaded the built tarball
   without ever fetching the tree, so the 0.8.1 release exited 127 on a script

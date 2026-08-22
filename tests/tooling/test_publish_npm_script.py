@@ -135,3 +135,71 @@ def test_missing_package_json_is_fatal(tmp_path: Path) -> None:
     result = _run(tmp_path, tmp_path / "nope", bin_dir)
     assert result.returncode != 0
     assert "no package.json" in result.stderr
+
+
+def test_postcondition_tolerates_registry_propagation_lag(tmp_path: Path) -> None:
+    """A publish the registry has not indexed yet must be retried, not failed.
+
+    This is what broke the 0.8.1 npm release: `npm publish` succeeded and signed
+    its provenance, then `npm view` answered an empty string a second later and
+    the job went red on a package that was already live.
+    """
+    package_dir = _package(tmp_path)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "npm"
+    # `view` stays empty for the first post-publish query and answers on the second.
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "$@" >> "{tmp_path}/npm-calls.txt"\n'
+        'case "$1" in\n'
+        "  view)\n"
+        f'    if [[ -f "{tmp_path}/published" ]]; then\n'
+        f'      if [[ -f "{tmp_path}/lag-done" ]]; then printf "1.2.3"; exit 0; fi\n'
+        f'      touch "{tmp_path}/lag-done"; exit 1\n'
+        "    fi\n"
+        "    exit 1 ;;\n"
+        f'  publish) touch "{tmp_path}/published"; exit 0 ;;\n'
+        "  *) exit 0 ;;\n"
+        "esac\n"
+    )
+    stub.chmod(0o755)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["PACKAGE_DIR"] = _bash_path(package_dir)
+    env["PUBLISH_NPM_CONFIRM_DELAY_SECONDS"] = "0"
+    result = subprocess.run(  # nosec B603 — fixed argv, no shell
+        [_bash_executable(), _bash_path(_SCRIPT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "published @scope/pkg@1.2.3" in result.stdout
+    assert "retrying" in result.stdout
+    assert _calls(tmp_path).count("publish") == 1
+
+
+def test_postcondition_still_fails_when_the_version_never_appears(tmp_path: Path) -> None:
+    """Retrying must not turn a publish that truly did not land into a pass."""
+    package_dir = _package(tmp_path)
+    bin_dir = _stub_npm(tmp_path, view_before="", view_after="")
+
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["PACKAGE_DIR"] = _bash_path(package_dir)
+    env["PUBLISH_NPM_CONFIRM_DELAY_SECONDS"] = "0"
+    env["PUBLISH_NPM_CONFIRM_ATTEMPTS"] = "3"
+    result = subprocess.run(  # nosec B603 — fixed argv, no shell
+        [_bash_executable(), _bash_path(_SCRIPT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "not present after publish" in result.stderr
