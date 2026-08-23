@@ -34,7 +34,9 @@ jobs:
   fuzz:
     name: go test -fuzz
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Five targets at FUZZTIME, plus room for ci/run-go-fuzz.sh to retry one
+    # of them after the end-of-run deadline race: 5 x 12m + 12m = 72m.
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: go
@@ -55,5 +57,5 @@ jobs:
 
       - name: Fuzz config/endpoint/header targets
         env:
-          FUZZTIME: ${{ github.event_name == 'pull_request' && '2m' || github.event.inputs.fuzztime || '15m' }}
+          FUZZTIME: ${{ github.event_name == 'pull_request' && '2m' || github.event.inputs.fuzztime || '12m' }}
         run: make fuzz FUZZTIME="${FUZZTIME}"

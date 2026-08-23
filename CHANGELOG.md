@@ -12,6 +12,16 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Fixed
 
+- The Go fuzz gate tolerates Go's end-of-run deadline race and has room to
+  retry. `go test -fuzz` reports `context deadline exceeded` as a FAIL when
+  `-fuzztime` expires mid-exchange between coordinator and worker; it happened
+  to `FuzzValidatedSignalEndpointURL` at 900.10s of a 15m budget after three
+  targets had each run 900.09s green, with no input minimised and nothing
+  written to `testdata/fuzz`. `ci/run-go-fuzz.sh` now runs the targets and
+  retries only that shape of failure, once — a corpus entry or any other
+  failure is fatal immediately. Scheduled runs drop to 12m per target so five
+  targets plus one retry fit inside the job budget, which moves to 120
+  minutes; a tooling test pins that arithmetic and the runner's target list.
 - The Go release consumer probe compiles again. Removing the `go/logger`
   package dropped its import from `ci/verify-go-consumer-module.sh` but left
   the `logger.GetLogger(...)` call behind, so `verify-go-consumer-direct`
