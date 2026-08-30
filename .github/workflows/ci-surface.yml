@@ -54,7 +54,7 @@ permissions:
 
 jobs:
   # Verify each language exports exactly the symbols declared in spec/telemetry-api.yaml.
-  conformance:
+  surface-conformance:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
@@ -66,7 +66,7 @@ jobs:
         run: python spec/validate_conformance.py
 
   # Ensure all five languages share the same major.minor version from VERSION.
-  version-sync:
+  surface-version-sync:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
