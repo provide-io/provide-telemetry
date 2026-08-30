@@ -137,7 +137,7 @@ jobs:
         if: always()
         run: docker logs openobserve-local || true
 
-  otlp-integration:
+  typescript-otlp-integration:
     runs-on: ubuntu-24.04
     defaults:
       run:

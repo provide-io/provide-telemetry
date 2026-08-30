@@ -160,7 +160,7 @@ Use the checked-in wrapper for local `act` runs:
 
 ```bash
 scripts/act_local.sh push -W .github/workflows/ci-mutation.yml -j changes
-scripts/act_local.sh push -W .github/workflows/ci-typescript.yml -j otlp-integration
+scripts/act_local.sh push -W .github/workflows/ci-typescript.yml -j typescript-otlp-integration
 ```
 
 The wrapper clones third-party actions into `.provide/act-actions`, checks out the exact

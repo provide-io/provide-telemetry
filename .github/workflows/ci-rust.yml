@@ -123,7 +123,7 @@ jobs:
       - name: Check advisory exception expiry
         run: uv run python scripts/check_advisory_expiry.py
 
-  conformance:
+  rust-conformance:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
@@ -133,7 +133,7 @@ jobs:
       - name: Validate Rust conformance
         run: uv run python spec/validate_conformance.py --lang rust
 
-  otlp-integration:
+  rust-otlp-integration:
     runs-on: ubuntu-24.04
     defaults:
       run:
