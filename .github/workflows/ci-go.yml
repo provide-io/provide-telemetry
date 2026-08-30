@@ -9,14 +9,9 @@ on:
       - ".github/workflows/ci-go.yml"
       - "baselines/perf-go.json"
       - "scripts/perf_check.py"
+  # No paths filter: this workflow owns required status contexts, so it must
+  # always run. The per-area gating lives on the jobs -- see the changes job.
   pull_request:
-    paths:
-      - "go/**"
-      - "ci/**"
-      - "VERSION"
-      - ".github/workflows/ci-go.yml"
-      - "baselines/perf-go.json"
-      - "scripts/perf_check.py"
   workflow_dispatch:
 
 permissions:
@@ -26,6 +21,23 @@ env:
   GOWORK: off
 
 jobs:
+  # Which areas this change touches. This workflow owns required status
+  # contexts, so it must always run: a workflow that never runs reports
+  # nothing, and a context that never reports blocks the merge forever. A job
+  # skipped by `if:` reports as skipped, which GitHub counts as satisfied.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      go: ${{ steps.detect.outputs.go }}
+    steps:
+      # Full history so the base of the comparison is present
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          fetch-depth: 0
+      # Decide which areas the diff touches; an undetectable diff reports every area
+      - id: detect
+        run: ci/changed-areas.sh "${{ github.event.pull_request.base.sha || github.event.before }}" "${{ github.sha }}"
+
   test:
     runs-on: ubuntu-latest
     defaults:
@@ -101,6 +113,8 @@ jobs:
           fi
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -140,6 +154,8 @@ jobs:
         working-directory: go/otel
 
   security:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -194,6 +210,8 @@ jobs:
         run: govulncheck ./...
 
   vet:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -285,6 +303,8 @@ jobs:
           fi
 
   otlp-integration:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

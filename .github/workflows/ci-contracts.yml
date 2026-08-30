@@ -15,27 +15,38 @@ on:
       - "rust/examples/contract_probe.rs"
       - "VERSION"
       - ".github/workflows/ci-contracts.yml"
+  # No paths filter: this workflow owns required status contexts, so it must
+  # always run. The per-area gating lives on the jobs -- see the changes job.
   pull_request:
     branches: [main]
-    paths:
-      - "spec/**"
-      - "ci/**"
-      - "src/provide/telemetry/**"
-      - "typescript/src/**"
-      - "go/**"
-      - "rust/src/**"
-      - "rust/examples/contract_probe.rs"
-      - "VERSION"
-      - ".github/workflows/ci-contracts.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # Which areas this change touches. This workflow owns required status
+  # contexts, so it must always run: a workflow that never runs reports
+  # nothing, and a context that never reports blocks the merge forever. A job
+  # skipped by `if:` reports as skipped, which GitHub counts as satisfied.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      contracts: ${{ steps.detect.outputs.contracts }}
+    steps:
+      # Full history so the base of the comparison is present
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          fetch-depth: 0
+      # Decide which areas the diff touches; an undetectable diff reports every area
+      - id: detect
+        run: ci/changed-areas.sh "${{ github.event.pull_request.base.sha || github.event.before }}" "${{ github.sha }}"
+
   # Cross-language log output format parity — runs all 4 language parity suites
   # then compares canonical JSON fields (message, level, service, env, version, trace_id).
   output-parity:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
@@ -79,6 +90,8 @@ jobs:
   # public APIs (setup, bind_propagation, emit_log, clear_propagation, etc.) and
   # cross-compare observable outputs across all five languages.
   contract-probes:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
