@@ -334,11 +334,11 @@ def clear_propagation_context() -> None:
     raw_keys = previous.get(
         _BAGGAGE_KEYS_FIELD, ()
     )  # pragma: no mutate — empty-tuple default; for-loop below is a no-op when absent
-    keys_seq: tuple[str, ...] = raw_keys if isinstance(raw_keys, tuple) else ()  # ty: ignore[invalid-assignment]
+    keys_seq: tuple[str, ...] = raw_keys if isinstance(raw_keys, tuple) else ()
     raw_prior = previous.get(
         _BAGGAGE_PRIOR_FIELD, {}
     )  # pragma: no mutate — empty-dict default; membership check below is a no-op when absent
-    prior_map: dict[str, object] = raw_prior if isinstance(raw_prior, dict) else {}  # ty: ignore[invalid-assignment]
+    prior_map: dict[str, object] = raw_prior if isinstance(raw_prior, dict) else {}
     for bkey in keys_seq:
         if bkey in prior_map:
             bind_context(**{bkey: prior_map[bkey]})
