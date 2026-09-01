@@ -5,7 +5,6 @@ package telemetry
 
 import (
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 )
@@ -52,14 +51,6 @@ type LoggingConfig struct {
 	PrettyValueColor  string            // default ""
 	PrettyFields      []string          // default []
 	ModuleLevels      map[string]string // default {}
-	// Output receives every rendered log record. It has no environment
-	// variable — a writer is a handle, not a string — so it is set
-	// programmatically and passed to SetupTelemetry via WithConfig. nil means
-	// os.Stderr. Consumers that interleave this SDK's output with another
-	// process or another language runtime wrap the stream here; tests that
-	// want silence use io.Discard, and tests that want to assert on records
-	// use a *bytes.Buffer.
-	Output io.Writer
 }
 
 // TracingConfig holds all tracing-related configuration.

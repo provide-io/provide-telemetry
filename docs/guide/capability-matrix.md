@@ -117,8 +117,11 @@ Notes:
   `PROVIDE_LOG_FORMAT=pretty` with an ANSI renderer. Python's lives in
   `src/provide/telemetry/logger/pretty.py`, TypeScript's in
   `typescript/src/pretty.ts`, Go's in `go/logger_pretty.go`, and Rust's
-  in `rust/src/logger/pretty.rs`. All four gate ANSI output on stderr
-  being a TTY, honour `PROVIDE_LOG_PRETTY_KEY_COLOR` and
+  in `rust/src/logger/pretty.rs`. All four gate ANSI output on the log
+  destination being a TTY — stderr in Python, TypeScript and Rust, which
+  always render there; in Go, whichever writer `WithLogOutput` installed,
+  which is stderr unless a host says otherwise. All four honour
+  `PROVIDE_LOG_PRETTY_KEY_COLOR` and
   `PROVIDE_LOG_PRETTY_VALUE_COLOR`, honour `PROVIDE_LOG_PRETTY_FIELDS`,
   and emit the same standard field set (timestamp, level, message, kv
   pairs). The Go row covers the root
