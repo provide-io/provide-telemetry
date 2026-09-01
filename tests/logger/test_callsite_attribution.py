@@ -44,6 +44,14 @@ from provide.telemetry.logger import core as logger_core
 _THIS_FILE = Path(__file__)
 _SOURCE_LINES = _THIS_FILE.read_text(encoding="utf-8").splitlines()
 
+# mutmut runs the suite against a rewritten copy of the package under
+# ``mutants/``, where every function is a trampoline that calls the original.
+# That trampoline is the nearest frame outside logger.core, so exact callsite
+# attribution is not observable there. Detected by where the package was
+# imported from rather than by an environment variable, because stats
+# collection runs before mutmut sets one.
+_UNDER_MUTMUT = "mutants" in Path(logger_core.__file__).parts
+
 
 def _configure() -> None:
     """Install a TRACE-level JSON pipeline with callsite parameters on."""
@@ -83,7 +91,18 @@ def _emit(body: Callable[[], None], capsys: Any) -> dict[str, Any]:
 
 
 def _assert_callsite_is_here(record: dict[str, Any], marker: str) -> None:
-    """The record must name this test file and the very line holding *marker*."""
+    """The record must name this test file and the very line holding *marker*.
+
+    Under mutmut only the first half is checked. mutmut rewrites every function
+    into a trampoline that calls the original, so the nearest frame outside
+    ``logger.core`` is ``mutmut/mutation/trampoline.py`` rather than the caller,
+    and no ignore list this package could ship would change that. The part that
+    matters for the mutation gate still runs everywhere: a mutant that drops
+    ``additional_ignores`` puts ``core.py`` back in that slot and is killed.
+    """
+    assert record["filename"] != "core.py", record
+    if _UNDER_MUTMUT:
+        return
     assert record["filename"] == _THIS_FILE.name, record
     source_line = _SOURCE_LINES[record["lineno"] - 1]
     assert marker in source_line, (record["lineno"], source_line)
@@ -178,6 +197,39 @@ def test_lazy_logger_log_reports_the_caller(capsys: Any) -> None:
     """_LazyLogger.log -> _TraceWrapper.log -> structlog."""
     record = _emit(lambda: logger_core.logger.log("warn", "callsite.lazy_log"), capsys)
     _assert_callsite_is_here(record, "callsite.lazy_log")
+
+
+# ── only the two parameters the spec asks for ───────────────────────────────
+
+
+def test_only_filename_and_lineno_are_added(capsys: Any) -> None:
+    """Exactly two callsite parameters, not structlog's whole default set.
+
+    ``CallsiteParameterAdder`` defaults to every parameter it knows —
+    ``pathname``, ``module``, ``func_name``, thread and process ids among them.
+    The spec asks for a filename and a line number
+    (``PROVIDE_LOG_INCLUDE_CALLER``: "Add filename and line number to each log
+    event"), and the other SDKs emit those two. Dropping the explicit
+    ``parameters`` list would silently widen every record in the process.
+
+    This holds under mutmut too, unlike the attribution assertions: it depends
+    on which keys are present, not on which frame supplied them.
+    """
+    record = _emit(lambda: _log().info("callsite.parameters"), capsys)
+
+    assert "filename" in record, record
+    assert "lineno" in record, record
+    unexpected = {
+        "func_name",
+        "module",
+        "pathname",
+        "process",
+        "process_name",
+        "repr_rv",
+        "thread",
+        "thread_name",
+    } & record.keys()
+    assert not unexpected, (unexpected, record)
 
 
 # ── the library's own structlog logs still point at the library ─────────────
