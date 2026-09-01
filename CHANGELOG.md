@@ -12,6 +12,14 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Fixed
 
+- **Go: a log record the destination refuses is counted as an export failure.**
+  `log/slog` discards a handler's returned error, so a failing writer lost every
+  record silently while `LogsEmitted` kept climbing — the SDK's own health
+  snapshot asserting a delivery that never happened. The failure now lands in
+  `LogsExportFailures`; `LogsDropped` stays reserved for records refused before
+  export, and `LogsEmitted` keeps counting records that pass the admission
+  gates.
+
 - **Go: the package logger keeps exporting to OTLP after a reconfigure.** The
   log bridge was attached only during setup, while every reload path rebuilds
   the handler chain through a constructor that omitted it — so `Logger()` and

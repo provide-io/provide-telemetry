@@ -9,6 +9,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A log record the destination refuses is counted as an export failure.**
+  `log/slog` discards whatever a handler returns, so a writer that fails — a
+  pipe whose reader exited, a full disk, a closed file, a dropped network sink —
+  lost every record silently while `GetHealthSnapshot().LogsEmitted` kept
+  climbing. The SDK's own self-observability asserted a delivery that never
+  happened. `WithLogOutput` makes an arbitrary destination ordinary, so a
+  failing one is no longer exotic.
+
+  The failure lands in `LogsExportFailures`, the canonical bucket for an export
+  attempt that returned an error. `LogsDropped` is reserved for records refused
+  *before* export — by consent, sampling or backpressure — and a record must
+  never count as both emitted and dropped. `LogsEmitted` keeps its meaning:
+  incremented once per record that passes the admission gates.
+
 - **The package logger keeps exporting to OTLP after a reconfigure.** The log
   bridge was attached only during setup, by `_wireBackendBindingsLocked`. Every
   reload path — `ReconfigureTelemetry`, `UpdateRuntimeConfig`,

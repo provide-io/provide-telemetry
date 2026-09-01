@@ -109,7 +109,21 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
-	return h.next.Handle(ctx, r)
+
+	// log/slog discards whatever a handler returns, so a destination that
+	// refuses the write is invisible to the caller: the record is gone and
+	// LogsEmitted has already counted it. Recording the failure is what keeps
+	// the health snapshot from asserting a delivery that never happened.
+	//
+	// export_failures is the canonical bucket for "an export attempt returned
+	// an error"; dropped is reserved for records refused before export, by
+	// consent, sampling or backpressure, and a record must never count as both
+	// emitted and dropped.
+	err := h.next.Handle(ctx, r)
+	if err != nil {
+		_incLogsExportErrors()
+	}
+	return err
 }
 
 // clone returns a shallow copy of the handler. The step slice is copied because
