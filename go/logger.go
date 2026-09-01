@@ -20,11 +20,21 @@ import (
 // _telemetryHandler is a slog.Handler middleware that implements the full processor chain:
 // context-field merge → standard fields → trace/span IDs → sampling → schema → PII → base handler.
 type _telemetryHandler struct {
-	next   slog.Handler
-	cfg    *TelemetryConfig
-	name   string
-	attrs  []slog.Attr
-	groups []string
+	next  slog.Handler
+	cfg   *TelemetryConfig
+	name  string
+	bound []_boundStep
+}
+
+// _boundStep is one WithAttrs or WithGroup call, kept in call order.
+//
+// The order is the whole point: slog nests an attribute under the groups that
+// were open when it was bound, so With(a).WithGroup("g").With(b) puts a at the
+// top level and b inside g. Two separate attrs and groups fields cannot express
+// that interleaving.
+type _boundStep struct {
+	group string      // non-empty: opens a group
+	attrs []slog.Attr // non-empty: attributes bound at this level
 }
 
 // Enabled reports whether the handler should process records at the given level.
@@ -34,23 +44,39 @@ func (h *_telemetryHandler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 // WithAttrs returns a new handler with the given attributes pre-attached.
+//
+// The attributes are recorded here and folded into each record by Handle. They
+// are deliberately NOT passed to h.next: the base handler formats what it is
+// given straight to the output, which would carry them past sanitization and
+// past schema validation — a credential bound once at a request boundary would
+// then appear in the clear on every record.
 func (h *_telemetryHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	if len(attrs) == 0 {
+		return h
+	}
 	cp := h.clone()
-	cp.attrs = append(cp.attrs, attrs...)
-	cp.next = h.next.WithAttrs(attrs)
+	cp.bound = append(cp.bound, _boundStep{attrs: slices.Clone(attrs)})
 	return cp
 }
 
-// WithGroup returns a new handler scoped to the named group.
+// WithGroup returns a new handler scoped to the named group. Like WithAttrs it
+// is applied when the record is built rather than delegated, so the nesting it
+// implies is present before any processor runs.
 func (h *_telemetryHandler) WithGroup(name string) slog.Handler {
+	if name == "" {
+		return h
+	}
 	cp := h.clone()
-	cp.groups = append(cp.groups, name)
-	cp.next = h.next.WithGroup(name)
+	cp.bound = append(cp.bound, _boundStep{group: name})
 	return cp
 }
 
 // Handle executes the processor chain and forwards to the base handler.
 func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
+	// Bound attributes join the record first, so schema validation and PII see
+	// them. Fields this middleware adds below stay at the top level rather than
+	// landing inside whatever group the caller happened to leave open.
+	r = h.applyBoundAttrs(r)
 	r = h.applyContextFields(ctx, r)
 	r = h.applyLoggerName(r)
 	r = h.applyStandardFields(r)
@@ -86,12 +112,47 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.next.Handle(ctx, r)
 }
 
-// clone returns a shallow copy of the handler.
+// clone returns a shallow copy of the handler. The step slice is copied because
+// sibling loggers append to it independently; each step's own attrs are cloned
+// when the step is created and never mutated after.
 func (h *_telemetryHandler) clone() *_telemetryHandler {
 	cp := *h
-	cp.attrs = append([]slog.Attr(nil), h.attrs...)
-	cp.groups = append([]string(nil), h.groups...)
+	cp.bound = slices.Clone(h.bound)
 	return &cp
+}
+
+// applyBoundAttrs folds attributes bound with With/WithGroup into the record so
+// every processor downstream sees them, rebuilding the nesting the steps imply.
+//
+// Walking the steps in reverse turns each open group into a single group-valued
+// attribute wrapping everything bound after it, which is exactly slog's rule.
+func (h *_telemetryHandler) applyBoundAttrs(r slog.Record) slog.Record {
+	if len(h.bound) == 0 {
+		return r
+	}
+
+	cur := make([]slog.Attr, 0, r.NumAttrs())
+	r.Attrs(func(a slog.Attr) bool {
+		cur = append(cur, a)
+		return true
+	})
+
+	for i := len(h.bound) - 1; i >= 0; i-- {
+		step := h.bound[i]
+		if step.group == "" {
+			cur = append(slices.Clone(step.attrs), cur...)
+			continue
+		}
+		// slog ignores a group that ends up with no attributes.
+		if len(cur) == 0 {
+			continue
+		}
+		cur = []slog.Attr{{Key: step.group, Value: slog.GroupValue(cur...)}}
+	}
+
+	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	nr.AddAttrs(cur...)
+	return nr
 }
 
 // applyLoggerName adds the canonical logger_name field when a named logger is in use.
@@ -250,16 +311,38 @@ func _customPIIPatterns() map[string]*regexp.Regexp {
 func _attrsToMap(r slog.Record) map[string]any {
 	m := make(map[string]any)
 	r.Attrs(func(a slog.Attr) bool {
-		m[a.Key] = a.Value.Any()
+		m[a.Key] = _attrValue(a.Value)
 		return true
 	})
 	return m
 }
 
-// _mapToAttrs converts a map[string]any back into a []slog.Attr slice.
+// _attrValue unwraps a group into a nested map. Value.Any() hands back a
+// []slog.Attr, which the PII rule engine cannot see into — it walks
+// map[string]any and []any — and which JSON renders as the exported half of
+// each Attr struct, destroying the values it was asked to log.
+func _attrValue(v slog.Value) any {
+	if v.Kind() != slog.KindGroup {
+		return v.Any()
+	}
+	group := v.Group()
+	m := make(map[string]any, len(group))
+	for _, a := range group {
+		m[a.Key] = _attrValue(a.Value)
+	}
+	return m
+}
+
+// _mapToAttrs converts a map[string]any back into a []slog.Attr slice,
+// restoring nested maps as the groups they came from so the rendered shape
+// matches what the caller logged.
 func _mapToAttrs(m map[string]any) []slog.Attr {
 	attrs := make([]slog.Attr, 0, len(m))
 	for k, v := range m {
+		if nested, ok := v.(map[string]any); ok {
+			attrs = append(attrs, slog.Attr{Key: k, Value: slog.GroupValue(_mapToAttrs(nested)...)})
+			continue
+		}
 		attrs = append(attrs, slog.Any(k, v))
 	}
 	return attrs

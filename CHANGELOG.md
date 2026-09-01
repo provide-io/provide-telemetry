@@ -10,6 +10,32 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Go: attributes bound with `logger.With(...)` are sanitized and validated.**
+  `WithAttrs` passed them to the base handler as well as recording them, and
+  the base handler formats what it is given straight to the output — so bound
+  attributes bypassed both the PII engine and schema validation. A credential
+  bound once at a request boundary appeared in the clear on every record after
+  it, while the same key passed inline was redacted. Bound attributes now join
+  the record before any processor runs.
+
+  Go alone was affected. Python folds `.bind()` into the same `event_dict`
+  every processor reads, TypeScript re-parses pino's serialized line before
+  redacting, and Rust and C# expose no per-logger binding API — only the
+  context helpers, which are merged ahead of PII.
+
+- **Go: a `slog.Group` passed as a record attribute keeps its contents.** The
+  chain converted attributes to a map with `Value.Any()`, which returns
+  `[]slog.Attr` for a group — invisible to the PII engine, and rendered by the
+  JSON handler as the exported half of each `Attr`. Groups round-trip as
+  nested maps now, so they render correctly and sanitization reaches inside
+  them.
+
+- **Go: `service.*` and trace fields stay at the top level** instead of landing
+  inside whatever group the caller left open, and an empty group is elided
+  again.
+
 ### Added
 
 - **Go: `WithLogOutput(w io.Writer)` selects where rendered log records go.**
