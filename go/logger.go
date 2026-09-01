@@ -468,12 +468,38 @@ func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger 
 
 var _preTelemetryLogger *slog.Logger
 
+// _baseHandlerWithBridge returns the base renderer, fanned out to the backend's
+// log bridge when one is installed.
+//
+// The bridge sits *below* the telemetry handler rather than beside it, so a
+// record reaches it only after consent, module level, schema, sampling,
+// backpressure, hardening and PII redaction have run. As a sibling it would
+// receive the record the caller passed in, and a password masked in the local
+// log would leave the process in the clear.
+//
+// Every construction of the logging chain goes through here. Three of them once
+// built it independently, and the two that rebuild on reload quietly lost the
+// bridge — the package logger stopped exporting while the config still reported
+// the endpoint as enabled.
+func _baseHandlerWithBridge(cfg *TelemetryConfig, name string) slog.Handler {
+	base := _baseLogHandler(cfg)
+	backend := _activeBackend()
+	if backend == nil {
+		return base
+	}
+	bridge := backend.LoggerHandler(cmp.Or(name, cfg.ServiceName))
+	if bridge == nil {
+		return base
+	}
+	return newMultiHandler(base, bridge)
+}
+
 // _configureLogger builds the Logger package var from cfg and sets it as slog's default.
 func _configureLogger(cfg *TelemetryConfig) {
 	if Logger() == nil {
 		_preTelemetryLogger = slog.Default()
 	}
-	SetLogger(slog.New(_newTelemetryHandler(_baseLogHandler(cfg), cfg, "")))
+	SetLogger(slog.New(_newTelemetryHandler(_baseHandlerWithBridge(cfg, ""), cfg, "")))
 	slog.SetDefault(Logger())
 }
 
@@ -520,18 +546,7 @@ func GetLogger(ctx context.Context, name string) *slog.Logger {
 			cfg = liveCfg
 		}
 	}
-	// The OTel bridge is fanned out to from *below* the telemetry handler, not
-	// beside it. As a sibling it received the record the caller passed in, so
-	// every record exported to OTel bypassed consent, schema, sampling,
-	// backpressure, hardening and PII redaction — a password masked in the
-	// local log left the process in the clear.
-	base := _baseLogHandler(cfg)
-	if backend := _activeBackend(); backend != nil {
-		bridgeName := cmp.Or(name, cfg.ServiceName)
-		if bridge := backend.LoggerHandler(bridgeName); bridge != nil {
-			base = newMultiHandler(base, bridge)
-		}
-	}
+	base := _baseHandlerWithBridge(cfg, name)
 	return _attachTraceContext(slog.New(_newTelemetryHandler(base, cfg, name)), ctx)
 }
 
