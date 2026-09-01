@@ -8,6 +8,29 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Go: `LoggingConfig.Output` selects where rendered log records go.** All
+  three renderers — `console`, `json` and `pretty` — write to it, and a nil
+  `Output` means `os.Stderr`. No environment variable names it: a writer is a
+  handle, not a string, so it is set programmatically and reaches the runtime
+  through `SetupTelemetry(WithConfig(cfg))`. `ReconfigureTelemetry` treats it
+  as cold and preserves it, because an env-sourced reconfigure carries a nil
+  `Output` and applying that would return the process to `os.Stderr` behind
+  the caller's back.
+
+  This is the surface a host needs to wrap the SDK's log stream — to prefix it
+  when several language runtimes share one stream, to tee it, or to drop it.
+  `Output: io.Discard` silences logging in a test suite and
+  `Output: &bytes.Buffer{}` captures records to assert on; those two replace
+  `NewNullLogger` and `NewBufferLogger` from the removed `go/logger` package.
+
+  Go only. Whether an output sink belongs in the cross-language spec is
+  tracked separately; the other four SDKs route their output through their own
+  native logging stacks today.
+
 ## [0.8.1] — 2026-08-22
 
 ### Fixed

@@ -101,6 +101,36 @@ contract instead, which depends on the schema mode:
   `EventName("user", "", "ok")` and `ValidateEventName("a..b")` all return an
   error.
 
+#### Log output
+
+Rendered records go to `os.Stderr`. To send them somewhere else, set
+`Logging.Output` and pass the config to `SetupTelemetry`:
+
+```go
+cfg, err := telemetry.ConfigFromEnv()
+if err != nil {
+    return err
+}
+cfg.Logging.Output = newPrefixWriter("🐹 ", os.Stderr)
+_, err = telemetry.SetupTelemetry(telemetry.WithConfig(cfg))
+```
+
+Every renderer honours it — `console`, `json` and `pretty` alike. A nil
+`Output` means `os.Stderr`.
+
+The writer is a handle rather than a string, so no environment variable names
+it and `ReconfigureTelemetry` leaves it alone: an env-sourced reconfigure
+carries a nil `Output`, and applying that would return the process to
+`os.Stderr` behind your back. Change the destination by shutting down and
+setting up again.
+
+Two recipes this covers:
+
+```go
+cfg.Logging.Output = io.Discard      // silence logging, e.g. in a test suite
+cfg.Logging.Output = &bytes.Buffer{} // capture records to assert on them
+```
+
 ### Tracing
 
 ```go
