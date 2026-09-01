@@ -9,25 +9,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **`LoggingConfig.Output` selects where rendered log records go.** All three
-  renderers — `console`, `json` and `pretty` — write to it, and a nil `Output`
-  means `os.Stderr`:
+- **`WithLogOutput(w io.Writer)` selects where rendered log records go.** All
+  three renderers — `console`, `json` and `pretty` — write to it:
 
   ```go
-  cfg, err := telemetry.ConfigFromEnv()
-  cfg.Logging.Output = newPrefixWriter("🐹 ", os.Stderr)
-  _, err = telemetry.SetupTelemetry(telemetry.WithConfig(cfg))
+  _, err := telemetry.SetupTelemetry(telemetry.WithLogOutput(sink))
   ```
-
-  No environment variable names it: a writer is a handle, not a string, so it
-  is set programmatically and reaches the runtime through `WithConfig`.
-  `ReconfigureTelemetry` treats it as cold and preserves it, because an
-  env-sourced reconfigure carries a nil `Output` and applying that would return
-  the process to `os.Stderr` behind the caller's back. Change the destination
-  by shutting down and setting up again.
 
   This is the surface a host needs to wrap the SDK's log stream — to prefix it
   when several language runtimes share one stream, to tee it, or to drop it.
+
+  A writer is a handle rather than a string, so no environment variable names
+  it and it is not part of `TelemetryConfig`; it sits beside
+  `WithTracerProvider`, `WithMeterProvider` and `WithLoggerProvider`. Keeping
+  it out of the config is what makes it durable: `ReconfigureTelemetry`,
+  `UpdateRuntimeConfig` and `ReloadRuntimeFromEnv` all rebuild the handler
+  chain from a config, and a writer that is not in one cannot be dropped by any
+  of them. It is installed for the life of the runtime; change the destination
+  by shutting down and setting up again.
+
+  The option carries three guarantees. Writes are serialized, so the writer
+  need not be safe for concurrent use even though `GetLogger` builds a handler
+  per call. `ShutdownTelemetry` calls `Flush() error` when the writer has one,
+  so a `bufio.Writer` keeps its tail. A nil writer — including a nil pointer
+  inside a non-nil interface, which passes an ordinary nil check and would
+  panic on the first record — is a `ConfigurationError`.
+
+  Pretty-format colors follow the destination: an `*os.File` is probed for a
+  terminal, and any other writer is asked, getting colors only if it implements
+  `IsTerminal() bool`.
 
   Root-package equivalents for the names that lived only in `go/logger`:
 
@@ -36,10 +46,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   | `Configure(LogConfig{...})` | `SetupTelemetry(WithConfig(cfg))` |
   | `LogConfig` | `TelemetryConfig` / `LoggingConfig` |
   | `DefaultLogConfig()` | `DefaultTelemetryConfig()` |
-  | `GetDefaultLogger()` | `Logger()` |
+  | `GetDefaultLogger()` | `GetLogger(ctx, name)` |
   | `IsEnabled(level)` | `slog.Logger.Enabled(ctx, level)`, or `IsDebugEnabled()` / `IsTraceEnabled()` |
-  | `NewNullLogger()` | `cfg.Logging.Output = io.Discard` |
-  | `NewBufferLogger()` | `cfg.Logging.Output = &bytes.Buffer{}` |
+  | `NewNullLogger()` | `SetupTelemetry(WithLogOutput(io.Discard))` |
+  | `NewBufferLogger()` | `SetupTelemetry(WithLogOutput(&bytes.Buffer{}))` |
+
+  `GetLogger(ctx, name)` rather than `Logger()`: `Logger()` returns nil before
+  setup, and it carries no logger name, so `PROVIDE_LOG_MODULE_LEVELS` stops
+  matching. `io.Discard` silences the rendered stream only — a configured OTLP
+  logs exporter is a separate sink and keeps shipping records until
+  `PROVIDE_LOG_OTLP_ENABLED=false`.
 
 ## [0.8.1] — 2026-08-22
 

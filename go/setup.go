@@ -6,6 +6,7 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"io"
 	"maps"
 	"sync"
 	"time"
@@ -21,6 +22,10 @@ type _setupState struct {
 	meterProvider  any
 	loggerProvider any
 	config         *TelemetryConfig // when set via WithConfig, replaces ConfigFromEnv
+	logOutput      io.Writer        // when set via WithLogOutput, replaces os.Stderr
+	// logOutputSet distinguishes WithLogOutput(nil) — a mistake worth an error
+	// — from the option never being passed, which the zero value cannot.
+	logOutputSet bool
 }
 
 // WithConfig supplies an in-memory TelemetryConfig instead of reading the process
@@ -52,6 +57,33 @@ func WithMeterProvider(mp any) SetupOption {
 // WithLoggerProvider injects a logger provider at setup time.
 func WithLoggerProvider(lp any) SetupOption {
 	return func(s *_setupState) { s.loggerProvider = lp }
+}
+
+// WithLogOutput sends every rendered log record to w instead of os.Stderr.
+// All three renderers honour it — console, json and pretty alike.
+//
+// This is a handle rather than a value, so no environment variable names it and
+// it is not part of TelemetryConfig; it lives beside the provider options above.
+// A host wraps its log stream here — to prefix it when several language runtimes
+// share one stream, to tee it, or to drop it with io.Discard.
+//
+// The writer is installed for the life of the runtime. Reconfiguring does not
+// disturb it, and nothing short of ShutdownTelemetry removes it; a host that
+// needs a different destination shuts down and sets up again.
+//
+// Writes are serialized, so a writer need not be safe for concurrent use. The
+// pretty renderer emits ANSI only when w is a terminal: an *os.File is probed,
+// and any other writer is asked, if it implements IsTerminal() bool.
+//
+// ShutdownTelemetry flushes w when it implements Flush() error, so a bufio.Writer
+// does not lose its tail. A nil writer — including a nil pointer in a non-nil
+// interface — is a configuration error rather than a silent fall back to
+// os.Stderr.
+func WithLogOutput(w io.Writer) SetupOption {
+	return func(s *_setupState) {
+		s.logOutput = w
+		s.logOutputSet = true
+	}
 }
 
 // Package-level setup state — protected by _setupMu.
@@ -142,6 +174,13 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 		fn(state)
 	}
 
+	// Reject a nil writer here rather than panicking on the first log line.
+	// Installation waits until the config resolves, so a setup that fails
+	// leaves logging where it found it.
+	if state.logOutputSet && _writerIsNil(state.logOutput) {
+		return nil, NewConfigurationError("WithLogOutput: writer is nil")
+	}
+
 	var cfg *TelemetryConfig
 	if state.config != nil {
 		if err := validateTelemetryConfig(state.config); err != nil {
@@ -154,6 +193,10 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if state.logOutputSet {
+		_installLogSink(state.logOutput)
 	}
 
 	// Honour PROVIDE_CONSENT_LEVEL before any gate is published. Unset or
@@ -324,7 +367,13 @@ func ShutdownTelemetry(ctx context.Context) error {
 
 	err := _shutdownBackendLocked(ctx)
 	SetDefaultTracer(&_noopTracer{})
+	// Drain the host's writer before letting go of it: a buffered writer holds
+	// its tail, and shutdown is the last moment a host can expect its records
+	// to have landed. The flush error is deliberately not merged into err,
+	// which reports provider shutdown.
+	_ = _flushLogSink()
 	_resetLogger()
+	_clearLogSink()
 	if libraryBounded && errors.Is(err, context.DeadlineExceeded) {
 		return nil
 	}
@@ -360,4 +409,8 @@ func _resetSetup() {
 	_resetBackendsLocked()
 	SetDefaultTracer(&_noopTracer{})
 	_resetLogger()
+	// The sink outlives the config, so returning the logger to its prior state
+	// without dropping the sink would leave the next setup writing into the
+	// previous host's writer.
+	_clearLogSink()
 }

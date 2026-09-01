@@ -121,12 +121,15 @@ type _prettyHandler struct {
 	groups           []string
 }
 
-// newPrettyHandler builds a _prettyHandler for cfg. Colors are gated on w being
-// a TTY when w is an *os.File; otherwise colors are disabled.
+// newPrettyHandler builds a _prettyHandler for cfg. Colors are gated on the
+// destination being a terminal. An installed sink decided that once, when the
+// host handed over its writer; anything else is probed here.
 func newPrettyHandler(w io.Writer, cfg *TelemetryConfig) *_prettyHandler {
 	colors := false
-	if f, ok := w.(*os.File); ok {
-		colors = _isTerminalFile(f)
+	if sink, ok := w.(*_logSink); ok {
+		colors = sink.colors
+	} else {
+		colors = _isTerminalWriter(w)
 	}
 	return newPrettyHandlerWithColors(w, cfg, colors)
 }

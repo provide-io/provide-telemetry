@@ -378,18 +378,17 @@ func _applyHotFields(current, fresh *TelemetryConfig) {
 	current.EventSchema = fresh.EventSchema
 	// Logging is hot except the fields baked into an installed log exporter:
 	// the OTLP endpoint, headers, and enable flag keep their live values.
-	// Output is baked for a different reason — no environment variable names a
-	// writer, so an env-sourced `fresh` always carries a nil one, and applying
-	// it would return the process to os.Stderr behind the caller's back.
 	// Everything else — level, format, renderer options — must apply, or
 	// Reconfigure validates a level change and then silently discards it while
 	// UpdateConfig on the same runtime applies it.
+	//
+	// The log destination is not here to be lost: WithLogOutput keeps it out of
+	// the config entirely (see logger_sink.go).
 	baked := current.Logging
 	current.Logging = fresh.Logging
 	current.Logging.OTLPEndpoint = baked.OTLPEndpoint
 	current.Logging.OTLPEnabled = baked.OTLPEnabled
 	current.Logging.OTLPHeaders = baked.OTLPHeaders
-	current.Logging.Output = baked.Output
 	// Cloned, not aliased: `fresh` can be a caller-supplied config (WithConfig),
 	// and sharing these with the live runtime hands a caller the ability to
 	// mutate it concurrently with the emit path. See applyRuntimeOverrides.

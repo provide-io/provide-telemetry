@@ -72,6 +72,7 @@ func main() {
 |--------|-------------|
 | `SetupTelemetry(opts...)` | Idempotent init from env (default) or `WithConfig(cfg)`. Returns `*TelemetryConfig`. |
 | `WithConfig(cfg)` | In-memory config; prefer over mutating `os.Environ` for re-exec/fork hosts. |
+| `WithLogOutput(w)` | Send rendered log records to `w` instead of `os.Stderr`. Installed for the life of the runtime. |
 | `FlushTelemetry(ctx)` | Drain every installed provider and leave them installed. Returns the drain error; an expired deadline is not suppressed. |
 | `ShutdownTelemetry(ctx)` | Flush and shut down all OTel providers. |
 | `ConfigFromEnv()` | Parse environment variables into a `*TelemetryConfig`. |
@@ -103,33 +104,72 @@ contract instead, which depends on the schema mode:
 
 #### Log output
 
-Rendered records go to `os.Stderr`. To send them somewhere else, set
-`Logging.Output` and pass the config to `SetupTelemetry`:
+Rendered records go to `os.Stderr`. `WithLogOutput` sends them somewhere else:
 
 ```go
-cfg, err := telemetry.ConfigFromEnv()
-if err != nil {
-    return err
+// prefixWriter tags each line so a host interleaving several language
+// runtimes on one stream can tell them apart.
+type prefixWriter struct {
+    prefix string
+    w      io.Writer
 }
-cfg.Logging.Output = newPrefixWriter("🐹 ", os.Stderr)
-_, err = telemetry.SetupTelemetry(telemetry.WithConfig(cfg))
+
+func (p prefixWriter) Write(b []byte) (int, error) {
+    if _, err := p.w.Write(append([]byte(p.prefix), b...)); err != nil {
+        return 0, err
+    }
+    return len(b), nil
+}
+
+// IsTerminal keeps pretty-format colors alive through the wrapper.
+func (p prefixWriter) IsTerminal() bool { return true }
+
+func main() {
+    sink := prefixWriter{prefix: "🐹 ", w: os.Stderr}
+    if _, err := telemetry.SetupTelemetry(telemetry.WithLogOutput(sink)); err != nil {
+        log.Fatal(err)
+    }
+    defer telemetry.ShutdownTelemetry(context.Background())
+
+    telemetry.GetLogger(context.Background(), "launcher").Info("startup.begin.ok")
+}
 ```
 
-Every renderer honours it — `console`, `json` and `pretty` alike. A nil
-`Output` means `os.Stderr`.
+Every renderer honours it — `console`, `json` and `pretty` alike.
 
-The writer is a handle rather than a string, so no environment variable names
-it and `ReconfigureTelemetry` leaves it alone: an env-sourced reconfigure
-carries a nil `Output`, and applying that would return the process to
-`os.Stderr` behind your back. Change the destination by shutting down and
-setting up again.
+A writer is a handle rather than a string, so no environment variable names it
+and it is not part of `TelemetryConfig`. It sits beside `WithTracerProvider`
+and friends, and it is installed for the life of the runtime: no reload path —
+`ReconfigureTelemetry`, `UpdateRuntimeConfig`, `ReloadRuntimeFromEnv` — can
+disturb it, because none of them carries a writer to lose. Change the
+destination by shutting down and setting up again.
 
-Two recipes this covers:
+Three things the option guarantees:
+
+- **Writes are serialized.** `GetLogger` builds a handler per call and each one
+  owns a private mutex, so the SDK locks around the shared writer for you. Your
+  writer need not be safe for concurrent use.
+- **`Flush() error` is called on shutdown**, so a `bufio.Writer` does not lose
+  its tail.
+- **A nil writer is a `ConfigurationError`**, including a nil pointer inside a
+  non-nil interface. Falling back to `os.Stderr` would put your records
+  somewhere you did not ask for.
+
+Pretty-format colors need a terminal. An `*os.File` is probed directly; any
+other writer is asked, and gets colors only if it implements
+`IsTerminal() bool`. Without that method a wrapper renders uncolored, which is
+the safe default when the destination might be a file someone parses.
+
+Two recipes:
 
 ```go
-cfg.Logging.Output = io.Discard      // silence logging, e.g. in a test suite
-cfg.Logging.Output = &bytes.Buffer{} // capture records to assert on them
+telemetry.SetupTelemetry(telemetry.WithLogOutput(io.Discard))      // drop rendered records
+telemetry.SetupTelemetry(telemetry.WithLogOutput(&bytes.Buffer{})) // capture them to assert on
 ```
+
+`io.Discard` silences the rendered stream only. When an OTLP logs endpoint is
+configured, the exporter is a separate sink and keeps shipping records — set
+`PROVIDE_LOG_OTLP_ENABLED=false` to stop that too.
 
 ### Tracing
 
@@ -275,7 +315,9 @@ func TestMyThing(t *testing.T) {
 
 ## Configuration
 
-All options can be set via environment variables:
+Every configuration value is an environment variable. The one setup-time input
+that is not is the log destination, which is a writer rather than a string —
+see [`WithLogOutput`](#log-output).
 
 | Env var | Default | Description |
 |---------|---------|-------------|

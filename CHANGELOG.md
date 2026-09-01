@@ -12,20 +12,26 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Added
 
-- **Go: `LoggingConfig.Output` selects where rendered log records go.** All
-  three renderers — `console`, `json` and `pretty` — write to it, and a nil
-  `Output` means `os.Stderr`. No environment variable names it: a writer is a
-  handle, not a string, so it is set programmatically and reaches the runtime
-  through `SetupTelemetry(WithConfig(cfg))`. `ReconfigureTelemetry` treats it
-  as cold and preserves it, because an env-sourced reconfigure carries a nil
-  `Output` and applying that would return the process to `os.Stderr` behind
-  the caller's back.
+- **Go: `WithLogOutput(w io.Writer)` selects where rendered log records go.**
+  All three renderers — `console`, `json` and `pretty` — write to it. This is
+  the surface a host needs to wrap the SDK's log stream: to prefix it when
+  several language runtimes share one stream, to tee it, or to drop it with
+  `io.Discard`.
 
-  This is the surface a host needs to wrap the SDK's log stream — to prefix it
-  when several language runtimes share one stream, to tee it, or to drop it.
-  `Output: io.Discard` silences logging in a test suite and
-  `Output: &bytes.Buffer{}` captures records to assert on; those two replace
-  `NewNullLogger` and `NewBufferLogger` from the removed `go/logger` package.
+  A writer is a handle rather than a string, so no environment variable names
+  it and it is not part of `TelemetryConfig` — it sits beside the provider
+  options. That placement is what makes it durable. `TelemetryConfig` is the
+  cross-language wire shape Rust deserializes on the far side of a
+  `ReconfigureResult`, and the type callers receive as a deep copy that cannot
+  reach live runtime state; a handle survives neither. Keeping the writer out
+  of it also means no reload path can lose it, since every one of them rebuilds
+  from a config.
+
+  Writes are serialized, `ShutdownTelemetry` flushes a writer that implements
+  `Flush() error`, and a nil writer is a `ConfigurationError` rather than a
+  silent fall back to `os.Stderr`. Pretty-format colors follow the destination:
+  an `*os.File` is probed for a terminal, any other writer is asked via
+  `IsTerminal() bool`.
 
   Go only. Whether an output sink belongs in the cross-language spec is
   tracked separately; the other four SDKs route their output through their own
