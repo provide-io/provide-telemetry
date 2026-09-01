@@ -7,6 +7,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Attributes bound with `logger.With(...)` are sanitized, validated, and
+  rendered.** `WithAttrs` handed them to the base handler as well as recording
+  them, and the base handler formats what it is given straight to the output —
+  so bound attributes reached the log past both the PII engine and schema
+  validation. A credential bound once at a request boundary appeared in the
+  clear on every subsequent record:
+
+  ```go
+  logger.Info("rec", "password", "hunter2")              // "password":"***"
+  logger.With("password", "hunter2").Info("rec")         // "password":"hunter2"
+  ```
+
+  Bound attributes now join the record before any processor runs, so one code
+  path sees everything. The same fix resolves the mirror defect in schema
+  validation, where a required key satisfied via `With` still produced
+  `_schema_error`.
+
+  Of the five SDKs this affected Go alone. Python folds `.bind()` into the same
+  `event_dict` every processor reads, TypeScript re-parses pino's serialized
+  line before redacting, and Rust and C# have no per-logger binding API — only
+  the context helpers, which are merged ahead of PII.
+
+- **A `slog.Group` passed as a record attribute keeps its contents.** The
+  processor chain converts attributes to a map and back, and took
+  `Value.Any()` on a group — which returns `[]slog.Attr`. The PII engine walks
+  `map[string]any` and `[]any`, so it could not see inside; and the JSON
+  renderer serialized the exported half of each `Attr`, so
+  `slog.Group("g", slog.String("password", "hunter2"))` rendered as
+  `"g":[{"Key":"password","Value":{}}]` — every value destroyed, redacted or
+  not. Groups round-trip as nested maps now, which both renders them correctly
+  and lets sanitization reach inside them.
+
+- **Fields this SDK adds stay at the top level.** `service.name`,
+  `service.env`, `service.version`, `trace.id` and `span.id` were appended
+  after a caller's `WithGroup` had been delegated to the base handler, so they
+  landed inside the caller's group. An empty group is elided again, as slog
+  specifies.
+
 ### Added
 
 - **`WithLogOutput(w io.Writer)` selects where rendered log records go.** All
