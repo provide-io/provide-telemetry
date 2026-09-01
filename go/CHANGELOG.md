@@ -5,6 +5,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`LoggingConfig.Output` selects where rendered log records go.** All three
+  renderers — `console`, `json` and `pretty` — write to it, and a nil `Output`
+  means `os.Stderr`:
+
+  ```go
+  cfg, err := telemetry.ConfigFromEnv()
+  cfg.Logging.Output = newPrefixWriter("🐹 ", os.Stderr)
+  _, err = telemetry.SetupTelemetry(telemetry.WithConfig(cfg))
+  ```
+
+  No environment variable names it: a writer is a handle, not a string, so it
+  is set programmatically and reaches the runtime through `WithConfig`.
+  `ReconfigureTelemetry` treats it as cold and preserves it, because an
+  env-sourced reconfigure carries a nil `Output` and applying that would return
+  the process to `os.Stderr` behind the caller's back. Change the destination
+  by shutting down and setting up again.
+
+  This is the surface a host needs to wrap the SDK's log stream — to prefix it
+  when several language runtimes share one stream, to tee it, or to drop it.
+
+  Root-package equivalents for the names that lived only in `go/logger`:
+
+  | `go/logger` | Root package |
+  |---|---|
+  | `Configure(LogConfig{...})` | `SetupTelemetry(WithConfig(cfg))` |
+  | `LogConfig` | `TelemetryConfig` / `LoggingConfig` |
+  | `DefaultLogConfig()` | `DefaultTelemetryConfig()` |
+  | `GetDefaultLogger()` | `Logger()` |
+  | `IsEnabled(level)` | `slog.Logger.Enabled(ctx, level)`, or `IsDebugEnabled()` / `IsTraceEnabled()` |
+  | `NewNullLogger()` | `cfg.Logging.Output = io.Discard` |
+  | `NewBufferLogger()` | `cfg.Logging.Output = &bytes.Buffer{}` |
+
 ## [0.8.1] — 2026-08-22
 
 ### Breaking

@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"regexp"
@@ -333,6 +334,15 @@ func _newTelemetryHandler(base slog.Handler, cfg *TelemetryConfig, name string) 
 	}
 }
 
+// _logOutput is where rendered records go: the writer the caller installed on
+// Logging.Output, or os.Stderr when it left the field nil.
+func _logOutput(cfg *TelemetryConfig) io.Writer {
+	if cfg.Logging.Output != nil {
+		return cfg.Logging.Output
+	}
+	return os.Stderr
+}
+
 // _baseLogHandler builds the base slog.Handler (JSON or text) for the given config.
 func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 	opts := &slog.HandlerOptions{
@@ -357,13 +367,14 @@ func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 			return a
 		},
 	}
+	out := _logOutput(cfg)
 	if cfg.Logging.Format == LogFormatJSON {
-		return slog.NewJSONHandler(os.Stderr, opts)
+		return slog.NewJSONHandler(out, opts)
 	}
 	if cfg.Logging.Format == LogFormatPretty {
-		return newPrettyHandler(os.Stderr, cfg)
+		return newPrettyHandler(out, cfg)
 	}
-	return slog.NewTextHandler(os.Stderr, opts)
+	return slog.NewTextHandler(out, opts)
 }
 
 // _attachTraceContext adds trace.id / span.id from ctx to logger when present.
@@ -401,6 +412,9 @@ func _resetLogger() {
 		_preTelemetryLogger = nil
 		return
 	}
+	// os.Stderr, not Logging.Output: teardown hands logging back to the
+	// standard library, whose own default writes there. A caller's writer is
+	// scoped to the telemetry runtime that is being torn down.
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{})))
 }
 
