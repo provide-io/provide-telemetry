@@ -55,26 +55,26 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-2025]
     runs-on: ${{ matrix.os }}
+    # No workspace. The root module resolves everything through its own go.mod
+    # — go/otel reaches back with a relative `replace`, not through go.work —
+    # so this job never needed one, and generating one only exposed it to a
+    # path-translation bug that appears on Windows and nowhere else
+    # (ci/init-go-workspace.sh, tracked separately). workspace-integration and
+    # examples still build the workspace, on Linux, which is what covers the
+    # generator.
+    env:
+      GOWORK: "off"
     defaults:
       run:
         working-directory: go
-        # The workspace generator and the coverage gate are POSIX shell; without
-        # this the Windows leg would run them under PowerShell. Git Bash on the
-        # runner supplies awk and cygpath, which is what init-go-workspace.sh
-        # uses to hand Go a path it understands.
+        # The coverage gate is POSIX shell; without this the Windows leg would
+        # run it under PowerShell.
         shell: bash
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
         with:
           go-version: "1.26"
-      - name: Generate temporary go.work
-        run: |
-          WORKFILE="$("$GITHUB_WORKSPACE/ci/init-go-workspace.sh" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/provide-telemetry-go-work")"
-          echo "GOWORK=${WORKFILE}" >> "$GITHUB_ENV"
-          export GOWORK="${WORKFILE}"
-          echo "Using workspace: ${WORKFILE}"
-          go env GOWORK
       # -race needs cgo everywhere except macOS; the windows-2025 image ships
       # gcc on PATH, so the detector runs on both legs.
       - name: Run tests with coverage
