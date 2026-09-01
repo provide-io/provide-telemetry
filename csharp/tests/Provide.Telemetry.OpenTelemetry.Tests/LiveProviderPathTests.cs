@@ -20,7 +20,23 @@ public class LiveProviderPathTests : IDisposable
         OpenTelemetryBackendRegistration.Register();
     }
 
-    public void Dispose() => Testing.ResetForTests();
+    /// <summary>Drain the installed backend before health is reset, never after.</summary>
+    /// <remarks>
+    /// <c>Testing.ResetForTests</c> disposes the backend, and
+    /// <c>OpenTelemetryBackend.Dispose</c> shuts down against an already-expired
+    /// deadline: <c>ProviderDrains.Run</c> starts each drain on the thread pool
+    /// and then waits zero for it. The abandoned drain outlives the reset and
+    /// writes the process-global <see cref="Health"/> counters from inside
+    /// whichever test runs next, which is how these tests used to leave an
+    /// export failure behind for a sibling to trip over.
+    /// <c>ShutdownTelemetry</c> drains against a real budget first, so the reset
+    /// finds no backend left to abandon.
+    /// </remarks>
+    public void Dispose()
+    {
+        ProvideTelemetry.ShutdownTelemetry();
+        Testing.ResetForTests();
+    }
 
     /// <summary>A config whose providers install against the discard port.</summary>
     private static TelemetryConfig LiveConfig()
