@@ -12,6 +12,15 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Fixed
 
+- **Go: the package logger keeps exporting to OTLP after a reconfigure.** The
+  log bridge was attached only during setup, while every reload path rebuilds
+  the handler chain through a constructor that omitted it — so `Logger()` and
+  `slog.Default()` silently stopped reaching the collector after any
+  reconfigure, with the config still reporting the endpoint as enabled.
+  `GetLogger(ctx, name)` was unaffected. Three independent constructions of the
+  same chain are now one, so a reload cannot build a chain that differs from
+  the one setup installed.
+
 - **Go: attributes bound with `logger.With(...)` are sanitized and validated.**
   `WithAttrs` passed them to the base handler as well as recording them, and
   the base handler formats what it is given straight to the output — so bound

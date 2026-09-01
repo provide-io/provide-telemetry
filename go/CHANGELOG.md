@@ -9,6 +9,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The package logger keeps exporting to OTLP after a reconfigure.** The log
+  bridge was attached only during setup, by `_wireBackendBindingsLocked`. Every
+  reload path — `ReconfigureTelemetry`, `UpdateRuntimeConfig`,
+  `ReloadRuntimeFromEnv` — rebuilds the handler chain through
+  `_configureLogger`, which built a bare renderer with no bridge. So after any
+  reconfigure, `Logger()` and `slog.Default()` silently stopped reaching the
+  collector while the config still reported the endpoint as enabled.
+  `GetLogger(ctx, name)` was unaffected: it attaches the bridge itself.
+
+  The cause was three independent constructions of the same chain, two of which
+  drifted. There is now one — `_baseHandlerWithBridge` — and all three sites
+  call it, so a reload cannot produce a chain that differs from the one setup
+  installed.
+
 - **Attributes bound with `logger.With(...)` are sanitized, validated, and
   rendered.** `WithAttrs` handed them to the base handler as well as recording
   them, and the base handler formats what it is given straight to the output —
