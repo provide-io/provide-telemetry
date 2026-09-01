@@ -48,7 +48,10 @@ jobs:
   # `--features otel` to Linux.
   test:
     strategy:
-      fail-fast: true
+      # false, not true: on an OS matrix a cancelled sibling hides whether the
+      # other platform is healthy, which is the one thing a cross-platform run
+      # exists to tell you.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-2025]
     runs-on: ${{ matrix.os }}

@@ -96,4 +96,14 @@ fi
   fi
 } > "${workspace_dir_shell}/go.work"
 
+# Echo the result to stderr, never stdout: the caller captures stdout as the
+# workspace path. Go reports a path mismatch only as "current directory is
+# contained in a module that is not one of the workspace modules", without
+# saying what it read, so the generated file is the one piece of evidence that
+# makes such a failure diagnosable from a CI log alone.
+{
+  echo "generated ${workspace_dir_shell}/go.work:"
+  sed 's/^/  /' "${workspace_dir_shell}/go.work"
+} >&2
+
 printf '%s\n' "${workspace_dir_go}/go.work"
