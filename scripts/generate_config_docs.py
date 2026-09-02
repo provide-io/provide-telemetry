@@ -38,7 +38,7 @@ MARKER_RE = re.compile(
 
 def load_config_defaults(path: Path) -> dict[str, list[dict[str, str]]]:
     """Load config_defaults from the spec YAML."""
-    with path.open() as fh:
+    with path.open(encoding="utf-8") as fh:
         spec: dict[str, Any] = yaml.safe_load(fh)
     defaults: dict[str, list[dict[str, str]]] | None = spec.get("config_defaults")
     if defaults is None:
@@ -111,14 +111,14 @@ def process_configuration_md(
     check: bool,
 ) -> bool:
     """Update docs/guide/configuration.md. Returns True if content changed."""
-    content = path.read_text()
+    content = path.read_text(encoding="utf-8")
     updated = content
     for section, vars_list in defaults.items():
         table = render_table(vars_list)
         updated = replace_markers(updated, section, table)
     changed = updated != content
     if changed and not check:
-        path.write_text(updated)
+        path.write_text(updated, encoding="utf-8")
     return changed
 
 
@@ -129,12 +129,12 @@ def process_typescript_readme(
     check: bool,
 ) -> bool:
     """Update typescript/README.md. Returns True if content changed."""
-    content = path.read_text()
+    content = path.read_text(encoding="utf-8")
     table = render_ts_table(defaults)
     updated = replace_markers(content, "typescript_summary", table)
     changed = updated != content
     if changed and not check:
-        path.write_text(updated)
+        path.write_text(updated, encoding="utf-8")
     return changed
 
 

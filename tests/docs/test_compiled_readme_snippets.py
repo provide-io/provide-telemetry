@@ -73,9 +73,10 @@ def test_rust_quick_start_compiles(tmp_path: Path) -> None:
         f'provide-telemetry = {{ path = "{(_REPO_ROOT / "rust").as_posix()}" }}\n'
         # The quick start builds a structured-field map, whose values are
         # serde_json::Value — a consumer following the README needs this too.
-        'serde_json = "1"\n'
+        'serde_json = "1"\n',
+        encoding="utf-8",
     )
-    (crate / "src" / "main.rs").write_text(snippet)
+    (crate / "src" / "main.rs").write_text(snippet, encoding="utf-8")
     result = subprocess.run(["cargo", "build", "--quiet"], cwd=crate, capture_output=True, text=True, check=False)
     assert result.returncode == 0, f"rust/README.md quick start does not compile:\n{result.stderr}"
 
@@ -85,11 +86,12 @@ def test_go_quick_start_compiles(tmp_path: Path) -> None:
     snippet = _first_main_snippet(_REPO_ROOT / "go" / "README.md", "go", "func main")
     module = tmp_path / "snippet"
     module.mkdir()
-    (module / "main.go").write_text(snippet)
+    (module / "main.go").write_text(snippet, encoding="utf-8")
     (module / "go.mod").write_text(
         "module snippet\n\ngo 1.26.0\n\n"
         "require github.com/provide-io/provide-telemetry/go v0.0.0\n\n"
-        f"replace github.com/provide-io/provide-telemetry/go => {(_REPO_ROOT / 'go').as_posix()}\n"
+        f"replace github.com/provide-io/provide-telemetry/go => {(_REPO_ROOT / 'go').as_posix()}\n",
+        encoding="utf-8",
     )
     tidy = subprocess.run(["go", "mod", "tidy"], cwd=module, capture_output=True, text=True, check=False)
     assert tidy.returncode == 0, f"go mod tidy failed:\n{tidy.stderr}"

@@ -159,7 +159,7 @@ def test_parity_event_name_contract_covers_every_fixture_case() -> None:
         raise FileNotFoundError(f"Could not locate repo root from {start}")  # pragma: no cover
 
     repo_root = _repo_root(Path(__file__))
-    fixtures = yaml.safe_load((repo_root / "spec" / "behavioral_fixtures.yaml").read_text())
+    fixtures = yaml.safe_load((repo_root / "spec" / "behavioral_fixtures.yaml").read_text(encoding="utf-8"))
     cases = fixtures["event_name_contract"]
 
     module = globals()

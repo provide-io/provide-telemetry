@@ -128,7 +128,7 @@ def main() -> int:
 
     lines.append("")
 
-    report_path.write_text("\n".join(lines))
+    report_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"Report written to {report_path}")
     print(f"Flamegraphs generated: {len(flamegraphs)}")
 

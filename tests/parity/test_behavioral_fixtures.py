@@ -436,7 +436,7 @@ def test_parity_secret_span_redaction_matches_fixture() -> None:
     from provide.telemetry.pii import redact_secret_spans
 
     repo_root = _find_repo_root_from(Path(__file__))
-    fixtures = _yaml.safe_load((repo_root / "spec" / "behavioral_fixtures.yaml").read_text())
+    fixtures = _yaml.safe_load((repo_root / "spec" / "behavioral_fixtures.yaml").read_text(encoding="utf-8"))
     cases = fixtures["secret_span_redaction"]["cases"]
     assert cases, "secret_span_redaction fixture must not be empty"
 
@@ -494,7 +494,7 @@ def test_parity_fixture_yaml_coverage() -> None:
     # test-file relocation into mutants/ (where __file__ resolves to mutants/tests/…).
     repo_root = _find_repo_root_from(Path(__file__))
     fixtures_path = repo_root / "spec" / "behavioral_fixtures.yaml"
-    all_categories: list[str] = list(_yaml.safe_load(fixtures_path.read_text()).keys())
+    all_categories: list[str] = list(_yaml.safe_load(fixtures_path.read_text(encoding="utf-8")).keys())
 
     # Collect test_parity_* names from all Python modules inside tests/parity/.
     parity_dir = repo_root / "tests" / "parity"

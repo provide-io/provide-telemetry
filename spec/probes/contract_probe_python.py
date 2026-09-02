@@ -218,7 +218,7 @@ _DISPATCH: dict[str, Any] = {
 def main() -> int:
     case_id = os.environ["PROVIDE_CONTRACT_CASE"]
     fixtures_path = _REPO_ROOT / "spec" / "contract_fixtures.yaml"
-    with open(fixtures_path) as f:
+    with open(fixtures_path, encoding="utf-8") as f:
         fixtures = yaml.safe_load(f)
 
     cases = fixtures["contract_cases"]

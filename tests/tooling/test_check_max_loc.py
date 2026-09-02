@@ -127,8 +127,8 @@ def test_node_modules_and_target_excluded(tmp_path: Path) -> None:
 def test_filenames_without_extension_are_scanned(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
-    (root / "Makefile").write_text("\n".join(["x"] * 12))
-    (root / "notes.txt").write_text("\n".join(["x"] * 12))
+    (root / "Makefile").write_text("\n".join(["x"] * 12), encoding="utf-8")
+    (root / "notes.txt").write_text("\n".join(["x"] * 12), encoding="utf-8")
     offenders, _ = find_loc_offenders(
         [root], max_lines=10, extensions=DEFAULT_EXTENSIONS, allowlist={}, repo_root=tmp_path, filenames=("Makefile",)
     )
@@ -140,8 +140,8 @@ def test_explicit_file_list_replaces_root_walk(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     root.mkdir()
     tracked = root / "tracked.py"
-    tracked.write_text("\n".join(["x"] * 12))
-    (root / "untracked.py").write_text("\n".join(["x"] * 12))
+    tracked.write_text("\n".join(["x"] * 12), encoding="utf-8")
+    (root / "untracked.py").write_text("\n".join(["x"] * 12), encoding="utf-8")
     offenders, _ = find_loc_offenders(
         [root], max_lines=10, extensions=DEFAULT_EXTENSIONS, allowlist={}, repo_root=tmp_path, files=[tracked]
     )
@@ -152,9 +152,9 @@ def test_explicit_file_list_still_filters_by_extension_and_exclusion(tmp_path: P
     root = tmp_path / "repo"
     (root / "node_modules").mkdir(parents=True)
     vendored = root / "node_modules" / "big.js"
-    vendored.write_text("\n".join(["x"] * 12))
+    vendored.write_text("\n".join(["x"] * 12), encoding="utf-8")
     readme = root / "README.md"
-    readme.write_text("\n".join(["x"] * 12))
+    readme.write_text("\n".join(["x"] * 12), encoding="utf-8")
     offenders, _ = find_loc_offenders(
         [root], max_lines=10, extensions=DEFAULT_EXTENSIONS, allowlist={}, repo_root=tmp_path, files=[vendored, readme]
     )
@@ -167,8 +167,8 @@ def test_git_tracked_files_lists_the_repo(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    (repo / "a.py").write_text("print()\n")
-    (repo / "b.py").write_text("print()\n")
+    (repo / "a.py").write_text("print()\n", encoding="utf-8")
+    (repo / "b.py").write_text("print()\n", encoding="utf-8")
     subprocess.run(["git", "add", "a.py"], cwd=repo, check=True)
     tracked = _MODULE.git_tracked_files(repo)
     assert tracked == [repo / "a.py"]
