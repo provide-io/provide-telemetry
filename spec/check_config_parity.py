@@ -27,6 +27,7 @@ import shutil
 import subprocess  # nosec B404 — fixed probe commands, no user-supplied shell
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,52 @@ def _probes() -> dict[str, Probe]:
             ROOT / "csharp",
         ),
     }
+
+
+def _honoured_gaps(language: str) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Variables this SDK parses but does not act on, keyed by env var.
+
+    Applicability here is decided differentially — set the variable, rebuild the
+    config, call it supported when the config changes — which answers "does this
+    SDK parse it" and never "does this SDK honour it". A variable read into a
+    field nothing else reads passes exactly like one that works, and two of them
+    did. spec/config_honoured_gaps.yaml is where that is declared rather than
+    discovered.
+
+    Returns (gaps, errors); a malformed entry is an error rather than a silently
+    ignored line, because an unreadable register is indistinguishable from an
+    empty one.
+    """
+    path = ROOT / "spec" / "config_honoured_gaps.yaml"
+    if not path.exists():
+        return {}, []
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    entries = data.get("honoured_gaps") or []
+    if not isinstance(entries, list):
+        return {}, [f"{path.name}: honoured_gaps must be a list"]
+
+    gaps: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            errors.append(f"{path.name}: entry #{index} is not a mapping")
+            continue
+        missing = [field for field in ("lang", "env", "reason", "owner", "expires_on") if not entry.get(field)]
+        if missing:
+            errors.append(f"{path.name}: entry #{index} is missing {missing}")
+            continue
+        if entry["lang"] != language:
+            continue
+        expiry = entry["expires_on"]
+        parsed = expiry if isinstance(expiry, date) else None
+        if parsed is None:
+            try:
+                parsed = date.fromisoformat(str(expiry))
+            except ValueError:
+                errors.append(f"{path.name}: {entry['env']} has a malformed expires_on {expiry!r}")
+                continue
+        gaps[entry["env"]] = {**entry, "expires_on": parsed}
+    return gaps, errors
 
 
 def _expected(language: str) -> dict[str, dict[str, str]]:
@@ -200,22 +247,45 @@ def compare(language: str, expected: dict[str, dict[str, str]], observed: dict[s
     return errors
 
 
-def check_language(language: str, *, allow_missing: bool, timeout: int) -> tuple[str, list[str]]:
-    """Return (status, errors) where status is pass | fail | skip."""
+def check_language(
+    language: str, *, allow_missing: bool, timeout: int, strict_expiry: bool = False
+) -> tuple[str, list[str], list[str]]:
+    """Return (status, errors, notes) where status is pass | fail | skip."""
     probe = _probes()[language]
     if shutil.which(probe.runtime) is None:
         if allow_missing:
-            return "skip", []
-        return "fail", [
-            f"required config-probe runtime unavailable: {probe.runtime} (install it, or pass --allow-missing-runtimes)"
-        ]
+            return "skip", [], []
+        return (
+            "fail",
+            [
+                f"required config-probe runtime unavailable: {probe.runtime} (install it, or pass --allow-missing-runtimes)"
+            ],
+            [],
+        )
     expected = _expected(language)
+    gaps, gap_errors = _honoured_gaps(language)
     try:
         observed = _run_probe(probe, sorted(expected), timeout=timeout)
     except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
-        return "fail", [str(exc)]
-    errors = compare(language, expected, observed)
-    return ("fail" if errors else "pass"), errors
+        return "fail", [str(exc), *gap_errors], []
+
+    errors = [*compare(language, expected, observed), *gap_errors]
+    notes: list[str] = []
+    today = date.today()
+    for env_var, gap in sorted(gaps.items()):
+        # A gap for a variable the spec does not apply to this SDK is stale:
+        # either the entry outlived the divergence or the applicability is
+        # wrong. Both are edits, so neither should sit here reading as tracked.
+        if not expected.get(env_var, {}).get("applicable"):
+            errors.append(f"{env_var}: declared an honoured-gap for {language}, but the spec does not apply it there")
+            continue
+        expired = today >= gap["expires_on"]
+        detail = f"{env_var}: parsed but not honoured (expires {gap['expires_on']}, owner {gap['owner']})"
+        if expired and strict_expiry:
+            errors.append(f"{detail} — EXPIRED")
+        else:
+            notes.append(f"{detail}{' — EXPIRED' if expired else ''}")
+    return ("fail" if errors else "pass"), errors, notes
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -229,7 +299,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--strict",
         action="store_true",
         default=False,
-        help="Accepted for compatibility; strictness is already the default",
+        help="Also fail on an expired entry in spec/config_honoured_gaps.yaml",
     )
     parser.add_argument(
         "--allow-missing-runtimes",
@@ -251,12 +321,19 @@ def main(argv: list[str] | None = None) -> int:
 
     failed = False
     for language in selected:
-        status, errors = check_language(language, allow_missing=args.allow_missing_runtimes, timeout=args.timeout)
+        status, errors, notes = check_language(
+            language,
+            allow_missing=args.allow_missing_runtimes,
+            timeout=args.timeout,
+            strict_expiry=args.strict,
+        )
         if status == "skip":
             print(f"  [{language:11s}] SKIP  (runtime not installed)")
             continue
         if status == "pass":
             print(f"  [{language:11s}] PASS")
+            for note in notes:
+                print(f"      ~ {note}")
             continue
         failed = True
         print(f"  [{language:11s}] FAIL", file=sys.stderr)

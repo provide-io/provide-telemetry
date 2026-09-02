@@ -700,6 +700,53 @@ config_defaults:
       description: "Maximum nesting depth for dict/list attribute values"
       applicability: [python, go, rust]
 
+callsite_fields:
+  description: >
+    Where a log record says it came from. Two independent outputs, both
+    derived from one callsite capture: plain record fields, and OTel
+    attributes. Naming is canonical because the fields drifted once —
+    Python emitted filename/lineno while TypeScript emitted
+    caller_file/caller_line, and nothing compared them, because every
+    parity harness sets PROVIDE_LOG_INCLUDE_CALLER=false for determinism.
+  record_fields:
+    gate: PROVIDE_LOG_INCLUDE_CALLER
+    fields:
+      filename:
+        type: str
+        description: >
+          Base name of the source file holding the call, never a full path:
+          an absolute path leaks the build machine's layout into every
+          record.
+      lineno:
+        type: int
+        description: "1-based line number of the call"
+    note: >
+      The reported frame is the caller's, not the SDK's. Every SDK puts
+      wrapper frames between user code and its renderer, and each is
+      responsible for skipping its own.
+  otel_attributes:
+    gate: PROVIDE_LOG_CODE_ATTRIBUTES
+    fields:
+      code.file.path:
+        type: str
+        description: "Source file path, OpenTelemetry semantic conventions"
+      code.function.name:
+        type: str
+        description: "Enclosing function name"
+      code.line.number:
+        type: int
+        description: "1-based line number of the call"
+    note: >
+      Current semantic conventions. code.filepath and code.lineno were
+      deprecated in semconv 1.27 and are not canonical here; code.namespace
+      is not emitted, having no cross-language meaning.
+  independence: >
+    The two gates are independent. PROVIDE_LOG_CODE_ATTRIBUTES does not
+    require PROVIDE_LOG_INCLUDE_CALLER: they select different outputs from
+    the same capture, and capture happens when either is enabled. An SDK
+    that derives its OTel attributes from the record fields couples them by
+    accident, which is a defect rather than a contract.
+
 health_snapshot:
   description: >
     Typed, canonical health surface. Every SDK serializes exactly these

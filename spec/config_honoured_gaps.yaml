@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Configuration variables an SDK parses but does not act on.
+#
+# check_config_parity.py determines applicability *differentially*: it sets a
+# variable, rebuilds the config, and reports the variable as supported when the
+# config object changes. That answers "does this SDK parse it", never "does this
+# SDK honour it". A variable read into a struct that nothing else ever reads
+# passes the gate exactly like one that works.
+#
+# Two of them did. PROVIDE_LOG_INCLUDE_CALLER is parsed by Go and by C# and
+# applied by neither; PROVIDE_LOG_CODE_ATTRIBUTES is parsed by Go and applied by
+# nobody there. Five gates were green over both.
+#
+# This file is where that divergence is admitted, dated, and owned, so it reads
+# as debt rather than as parity.
+#
+# Format:
+#   - lang: <language>         # python | typescript | go | rust | csharp
+#     env: <VARIABLE>          # must appear in telemetry-api.yaml config_defaults
+#     reason: >                # what is missing, specifically enough to fix
+#       ...
+#     owner: <github-handle>   # who is responsible for closing it
+#     expires_on: YYYY-MM-DD   # REQUIRED — review/renew/remove on or before this
+#     tracking: <issue-url>    # optional but expected
+#
+# Behaviour:
+#   - An entry naming a (lang, env) pair the spec marks not-applicable is an
+#     error: the gap is stale, or the applicability is wrong.
+#   - An entry for an unknown language or an env absent from the spec is an
+#     error.
+#   - expires_on is REQUIRED; a missing or malformed date is an error.
+#   - Past expiry warns by default and fails under --strict, matching
+#     check_fixture_coverage.py.
+#
+# What this does NOT do: prove that a variable *without* an entry here is
+# honoured. Nothing here can — the config probe only ever sees the config
+# object. Positive proof needs a behavioural probe that sets the variable and
+# compares emitted output, which arrives with the caller-field fixtures. Until
+# then this narrows the problem from "invisible" to "declared".
+
+honoured_gaps:
+  - lang: go
+    env: PROVIDE_LOG_INCLUDE_CALLER
+    reason: >
+      Parsed into LoggingConfig.IncludeCaller and stored, but nothing reads it:
+      AddSource and slog.SourceKey appear nowhere in go/. No Go log record
+      carries a filename or a line number, while the spec declares the variable
+      applicable to Go and defaulted on.
+    owner: livingstaccato
+    expires_on: 2026-12-31
+    tracking: https://github.com/provide-io/provide-telemetry/issues/57
+
+  - lang: csharp
+    env: PROVIDE_LOG_INCLUDE_CALLER
+    reason: >
+      Parsed in ConfigEnv.cs and copied through Config.cs, but Logger.Emit never
+      captures a callsite. Implementing it means [CallerFilePath] and
+      [CallerLineNumber] on the public log methods, which changes their
+      signatures and needs PublicApi.cs regenerated.
+    owner: livingstaccato
+    expires_on: 2026-12-31
+    tracking: https://github.com/provide-io/provide-telemetry/issues/57
+
+  - lang: go
+    env: PROVIDE_LOG_CODE_ATTRIBUTES
+    reason: >
+      Parsed into LoggingConfig.LogCodeAttributes and stored; no code.* attribute
+      is ever attached to a record. Python emits the current semconv names and
+      TypeScript the pre-1.27 ones, so closing this also settles which spelling
+      is canonical.
+    owner: livingstaccato
+    expires_on: 2026-12-31
+    tracking: https://github.com/provide-io/provide-telemetry/issues/57
