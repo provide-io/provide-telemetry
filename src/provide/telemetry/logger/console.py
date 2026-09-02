@@ -46,10 +46,13 @@ __all__ = ["ansi_supported", "structlog_colors", "utf8_writer"]
 # configured; a hyphen and an underscore are the same separator to it.
 _UTF8_NAMES = frozenset({"utf8", "utf_8"})
 
+# Hoisted to its own statement rather than written at the call site: "utf-8" and
+# "UTF-8" name the same codec, because Python's lookup normalises case, so that
+# mutation cannot be observed — and a pragma at the call site does not survive
+# ruff format re-wrapping the line it sits on.
+_UTF8_CODEC = "utf-8"  # pragma: no mutate — codec lookup is case-insensitive
 
-# Windows console API constants, used only inside _enable_virtual_terminal.
-# Nothing on a non-Windows runner can observe them, so a mutation of either is
-# undetectable by construction rather than by a gap in the tests.
+
 def _is_windows() -> bool:
     return sys.platform == "win32"
 
@@ -161,7 +164,7 @@ class _Utf8Writer:
         # the text layer is drained first: two layers over one descriptor
         # interleave in whatever order they flush.
         _quiet_flush(self._stream)
-        self._buffer.write(text.encode("utf-8", "backslashreplace"))
+        self._buffer.write(text.encode(_UTF8_CODEC, "backslashreplace"))
         return len(text)
 
     def flush(self) -> None:

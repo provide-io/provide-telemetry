@@ -104,6 +104,22 @@ def test_a_non_utf8_stream_is_wrapped_and_emits_utf8_bytes() -> None:
     assert stream.text == [], "the text layer was written to as well as the byte layer"
 
 
+def test_flushing_the_wrapper_drains_the_byte_layer() -> None:
+    """The bytes are down there; flushing anything else strands the record."""
+
+    class _CountingBuffer(io.BytesIO):
+        flushes = 0
+
+        def flush(self) -> None:
+            type(self).flushes += 1
+
+    buffer = _CountingBuffer()
+    writer = console.utf8_writer(_Stream(encoding="cp1252", tty=False, buffer=buffer))
+    writer.flush()
+
+    assert _CountingBuffer.flushes == 1
+
+
 def test_the_wrapper_flushes_the_text_layer_before_writing_bytes() -> None:
     """Ordering. Two layers over one file descriptor interleave by whoever
     flushes last, and the host writes through the text layer."""
@@ -132,9 +148,16 @@ def test_a_stream_without_a_byte_layer_is_left_alone() -> None:
 
 
 def test_a_stream_with_no_encoding_attribute_is_left_alone() -> None:
-    """io.StringIO and the capture streams tests hand in have none."""
+    """io.StringIO reports None; an arbitrary object has no such attribute.
+
+    Both shapes are handed in by hosts and by tests, and the lookup carries a
+    default so that neither raises out of a logging call.
+    """
     stream = io.StringIO()
     assert console.utf8_writer(stream) is stream
+
+    bare = object()
+    assert console.utf8_writer(bare) is bare
 
 
 def test_the_wrapper_replaces_what_it_cannot_encode_rather_than_raising() -> None:
@@ -228,6 +251,25 @@ def test_colorama_availability_is_answered_by_import(monkeypatch: pytest.MonkeyP
     monkeypatch.delitem(sys.modules, "colorama", raising=False)
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
     assert console._colorama_installed() is False
+
+
+def test_colorama_is_looked_up_by_that_exact_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Asking for the wrong name answers a different question, always "no".
+
+    A stub that ignores the name it is given cannot tell "colorama" from
+    "COLORAMA" or from None, and structlog imports it by exactly one spelling.
+    """
+    monkeypatch.delitem(sys.modules, "colorama", raising=False)
+    asked: list[object] = []
+
+    def _find_spec(name: object) -> object | None:
+        asked.append(name)
+        return object() if name == "colorama" else None
+
+    monkeypatch.setattr(importlib.util, "find_spec", _find_spec)
+
+    assert console._colorama_installed() is True
+    assert asked == ["colorama"]
 
 
 # ── streams that are gone, or were never streams ─────────────────────────────
@@ -419,3 +461,40 @@ def test_a_descriptor_that_raises_is_treated_as_absent() -> None:
 
 def test_an_object_with_no_fileno_has_no_descriptor() -> None:
     assert console._fileno(object()) is None
+
+
+def test_the_console_renderer_is_told_about_the_real_stderr(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The colour answer is about stderr, not about nothing.
+
+    `structlog_colors(None)` answers "no" in a test environment for the same
+    reason the true call does — neither is a terminal — so only a stderr that
+    *is* one can tell the two apart. fmt="console" is the default format, and
+    this is the renderer that raises on Windows without colorama.
+    """
+    import structlog
+
+    from provide.telemetry.config import TelemetryConfig
+    from provide.telemetry.logger import core
+
+    class _FakeTTY(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    monkeypatch.setattr(sys, "stderr", _FakeTTY())
+    # On Windows the answer additionally depends on colorama, which is not a
+    # dependency of this package; pin it so the assertion is about stderr.
+    monkeypatch.setattr(console, "_colorama_installed", lambda: True)
+
+    seen: list[object] = []
+    real_renderer = structlog.dev.ConsoleRenderer
+
+    def _renderer(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("colors"))
+        return real_renderer(*args, **{**kwargs, "colors": False})
+
+    monkeypatch.setattr(structlog.dev, "ConsoleRenderer", _renderer)
+
+    config = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": "console"})
+    core.configure_logging(config, force=True)
+
+    assert seen == [True], "the renderer was not asked about the stream records go to"
