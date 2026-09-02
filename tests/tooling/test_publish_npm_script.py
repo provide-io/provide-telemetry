@@ -24,7 +24,7 @@ _SCRIPT = Path(__file__).resolve().parents[2] / "ci" / "publish-npm.sh"
 def _package(tmp_path: Path, *, name: str = "@scope/pkg", version: str = "1.2.3") -> Path:
     package_dir = tmp_path / "package"
     package_dir.mkdir()
-    (package_dir / "package.json").write_text(json.dumps({"name": name, "version": version}))
+    (package_dir / "package.json").write_text(json.dumps({"name": name, "version": version}), encoding="utf-8")
     return package_dir
 
 
@@ -59,7 +59,8 @@ def _stub_npm(
         f'    [[ {publish_exit} -eq 0 ]] && touch "{tmp_path}/published"\n'
         f"    exit {publish_exit} ;;\n"
         "  *) exit 0 ;;\n"
-        "esac\n"
+        "esac\n",
+        encoding="utf-8",
     )
     stub.chmod(0o755)
     return bin_dir
@@ -84,7 +85,7 @@ def _run(tmp_path: Path, package_dir: Path, bin_dir: Path) -> subprocess.Complet
 
 def _calls(tmp_path: Path) -> str:
     path = tmp_path / "npm-calls.txt"
-    return path.read_text() if path.exists() else ""
+    return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 def test_existing_version_is_a_successful_no_op(tmp_path: Path) -> None:
@@ -161,7 +162,8 @@ def test_postcondition_tolerates_registry_propagation_lag(tmp_path: Path) -> Non
         "    exit 1 ;;\n"
         f'  publish) touch "{tmp_path}/published"; exit 0 ;;\n'
         "  *) exit 0 ;;\n"
-        "esac\n"
+        "esac\n",
+        encoding="utf-8",
     )
     stub.chmod(0o755)
 

@@ -24,7 +24,7 @@ def _find_project_root() -> Path:
 
 
 _FIXTURES_PATH = _find_project_root() / "spec" / "behavioral_fixtures.yaml"
-_FIXTURES = yaml.safe_load(_FIXTURES_PATH.read_text())
+_FIXTURES = yaml.safe_load(_FIXTURES_PATH.read_text(encoding="utf-8"))
 _EP = _FIXTURES["endpoint_validation"]
 
 

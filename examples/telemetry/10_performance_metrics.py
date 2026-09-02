@@ -117,7 +117,7 @@ def main() -> None:
 
     from provide.telemetry.logger import processors as proc_mod
 
-    src = Path(str(proc_mod.__file__)).read_text()
+    src = Path(str(proc_mod.__file__)).read_text(encoding="utf-8")
     tree = ast.parse(src)
     slo_at_top = any(isinstance(stmt, ast.ImportFrom) and stmt.module and "slo" in stmt.module for stmt in tree.body)
     if slo_at_top:

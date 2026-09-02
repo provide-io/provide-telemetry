@@ -46,7 +46,7 @@ class TestNoPytestPluginEntryPoint:
     def test_pyproject_does_not_register_pytest11_entry_point(self) -> None:
         from pathlib import Path
 
-        pyproject = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text()
+        pyproject = (Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8")
         # The entire [project.entry-points.pytest11] section must be absent.
         assert "[project.entry-points.pytest11]" not in pyproject
 

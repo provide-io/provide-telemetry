@@ -74,7 +74,7 @@ def test_check_fixture_coverage_outputs_all_yaml_categories() -> None:
     assert result.returncode == 0
 
     fixtures_path = _REPO_ROOT / "spec" / "behavioral_fixtures.yaml"
-    categories = list(yaml.safe_load(fixtures_path.read_text()).keys())
+    categories = list(yaml.safe_load(fixtures_path.read_text(encoding="utf-8")).keys())
     for cat in categories:
         assert cat in result.stdout, f"Category '{cat}' missing from coverage report output"
 
@@ -165,7 +165,7 @@ def test_run_report_missing_file_treated_as_empty(tmp_path: Path) -> None:
     coverage = module.run_report(fixtures_path, lang_files)
 
     assert "phantom" in coverage
-    categories = list(yaml.safe_load(fixtures_path.read_text()).keys())
+    categories = list(yaml.safe_load(fixtures_path.read_text(encoding="utf-8")).keys())
     for cat in categories:
         assert coverage["phantom"][cat] is False, f"Expected {cat} to be uncovered for phantom language"
 

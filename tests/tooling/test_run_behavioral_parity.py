@@ -368,7 +368,7 @@ def test_contract_fixtures_contain_all_expected_cases() -> None:
     import yaml
 
     fixtures_path = _REPO_ROOT / "spec" / "contract_fixtures.yaml"
-    data = yaml.safe_load(fixtures_path.read_text())
+    data = yaml.safe_load(fixtures_path.read_text(encoding="utf-8"))
     cases = list(data["contract_cases"].keys())
     expected = [
         "propagation_to_logger_correlation",
@@ -428,7 +428,9 @@ def test_run_runtime_probe_check_raises_when_otel_stack_missing(
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
 
     fixtures = tmp_path / "fixtures.yaml"
-    fixtures.write_text("cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n")
+    fixtures.write_text(
+        "cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n", encoding="utf-8"
+    )
 
     with pytest.raises(RuntimeError, match=r"opentelemetry-sdk\[otlp\]"):
         module.run_runtime_probe_check(
@@ -449,7 +451,9 @@ def test_run_runtime_probe_check_does_not_raise_when_python_not_selected(
     monkeypatch.setattr(importlib.util, "find_spec", lambda _name: None)
 
     fixtures = tmp_path / "fixtures.yaml"
-    fixtures.write_text("cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n")
+    fixtures.write_text(
+        "cases:\n  - id: per_signal_logs_endpoint\n    kind: summary\n    expected: {}\n", encoding="utf-8"
+    )
 
     # Should not raise — Python runner is excluded, so OTel stack is irrelevant.
     # The call may still fail for other reasons (no runners matched), but not with

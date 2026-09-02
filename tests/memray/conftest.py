@@ -53,7 +53,7 @@ def memray_output_dir() -> Path:
 def memray_baseline() -> dict[str, int]:
     """Load baseline allocation counts from baselines.json, or return empty dict if not found."""
     if _BASELINE_PATH.exists():
-        with _BASELINE_PATH.open() as f:
+        with _BASELINE_PATH.open(encoding="utf-8") as f:
             return json.load(f)  # type: ignore[no-any-return]
     return {}
 
@@ -86,10 +86,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         return
     existing: dict[str, int] = {}
     if _BASELINE_PATH.exists():
-        with _BASELINE_PATH.open() as f:
+        with _BASELINE_PATH.open(encoding="utf-8") as f:
             existing = json.load(f)
     existing.update(_baseline_updates)
-    with _BASELINE_PATH.open("w") as f:
+    with _BASELINE_PATH.open("w", encoding="utf-8") as f:
         json.dump(existing, f, indent=2, sort_keys=True)
         f.write("\n")
 

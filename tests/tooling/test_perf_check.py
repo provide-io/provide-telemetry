@@ -155,14 +155,16 @@ def test_load_baseline_missing_file_returns_empty(tmp_path: Path) -> None:
 
 def test_load_baseline_reads_valid_file(tmp_path: Path) -> None:
     p = tmp_path / "b.json"
-    p.write_text(json.dumps({"linux-x86_64": {"op": {"baseline_ns": 100, "tolerance_multiplier": 2.0}}}))
+    p.write_text(
+        json.dumps({"linux-x86_64": {"op": {"baseline_ns": 100, "tolerance_multiplier": 2.0}}}), encoding="utf-8"
+    )
     out = perf_check.load_baseline(p)
     assert out["linux-x86_64"]["op"]["baseline_ns"] == 100
 
 
 def test_load_baseline_rejects_non_object(tmp_path: Path) -> None:
     p = tmp_path / "bad.json"
-    p.write_text("[]")
+    p.write_text("[]", encoding="utf-8")
     with pytest.raises(ValueError, match="must contain a JSON object"):
         perf_check.load_baseline(p)
 
@@ -170,10 +172,10 @@ def test_load_baseline_rejects_non_object(tmp_path: Path) -> None:
 def test_find_repo_root_anchors_to_version_above_mutants(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
-    (repo_root / "VERSION").write_text("0.0.0\n")
+    (repo_root / "VERSION").write_text("0.0.0\n", encoding="utf-8")
     start = repo_root / "mutants" / "tests" / "tooling" / "test_perf_check.py"
     start.parent.mkdir(parents=True)
-    start.write_text("# sandbox copy\n")
+    start.write_text("# sandbox copy\n", encoding="utf-8")
 
     assert _find_repo_root(start) == repo_root
 
@@ -192,7 +194,7 @@ def _run_main(monkeypatch: pytest.MonkeyPatch, stdin_text: str, argv: list[str])
 
 def test_main_missing_baseline_bucket_exits_zero_with_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     baseline = tmp_path / "perf-x.json"
-    baseline.write_text(json.dumps({"other-os": {"op": {"baseline_ns": 100}}}))
+    baseline.write_text(json.dumps({"other-os": {"op": {"baseline_ns": 100}}}), encoding="utf-8")
     rc, out = _run_main(
         monkeypatch,
         '{"event_name_ns": 142.5}',
@@ -207,7 +209,8 @@ def test_main_missing_baseline_bucket_exits_zero_with_hint(tmp_path: Path, monke
 def test_main_failures_exit_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     baseline = tmp_path / "perf-x.json"
     baseline.write_text(
-        json.dumps({"linux-x86_64": {"event_name_ns": {"baseline_ns": 100.0, "tolerance_multiplier": 2.0}}})
+        json.dumps({"linux-x86_64": {"event_name_ns": {"baseline_ns": 100.0, "tolerance_multiplier": 2.0}}}),
+        encoding="utf-8",
     )
     rc, out = _run_main(
         monkeypatch,
@@ -223,7 +226,8 @@ def test_main_failures_exit_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 def test_main_report_only_never_exits_nonzero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     baseline = tmp_path / "perf-x.json"
     baseline.write_text(
-        json.dumps({"linux-x86_64": {"event_name_ns": {"baseline_ns": 100.0, "tolerance_multiplier": 2.0}}})
+        json.dumps({"linux-x86_64": {"event_name_ns": {"baseline_ns": 100.0, "tolerance_multiplier": 2.0}}}),
+        encoding="utf-8",
     )
     rc, _out = _run_main(
         monkeypatch,
@@ -243,7 +247,7 @@ def test_main_report_only_never_exits_nonzero(tmp_path: Path, monkeypatch: pytes
 
 def test_main_input_parse_error_exits_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     baseline = tmp_path / "perf-x.json"
-    baseline.write_text("{}")
+    baseline.write_text("{}", encoding="utf-8")
     rc, _ = _run_main(
         monkeypatch,
         "",  # empty stdin

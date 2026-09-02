@@ -28,7 +28,7 @@ _FIXTURE_PATH = Path(__file__).resolve().parents[2] / "spec" / "behavioral_fixtu
 if not _FIXTURE_PATH.exists():
     pytest.skip("behavioral_fixtures.yaml not available (mutmut sandbox)", allow_module_level=True)
 
-_FIXTURES = yaml.safe_load(_FIXTURE_PATH.read_text())
+_FIXTURES = yaml.safe_load(_FIXTURE_PATH.read_text(encoding="utf-8"))
 _RESOURCE = _FIXTURES["resource_precedence"]
 # Passing every identity key as "env-provided" suppresses the floor layer, so
 # _resolve_resource_attrs returns exactly the explicit (non-default) attributes.

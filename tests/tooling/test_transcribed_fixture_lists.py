@@ -37,7 +37,7 @@ def _project_root() -> Path:
 
 
 _ROOT = _project_root()
-_FIXTURES = yaml.safe_load((_ROOT / "spec" / "behavioral_fixtures.yaml").read_text())
+_FIXTURES = yaml.safe_load((_ROOT / "spec" / "behavioral_fixtures.yaml").read_text(encoding="utf-8"))
 _ENDPOINTS = _FIXTURES["endpoint_validation"]
 
 
@@ -57,7 +57,7 @@ def _strip_line_comments(source: str) -> str:
 
 def _rust_array(function: str) -> list[str]:
     """Return the string literals in the array bound inside a Rust test fn."""
-    source = (_ROOT / "rust" / "src" / "otel" / "endpoint.rs").read_text()
+    source = (_ROOT / "rust" / "src" / "otel" / "endpoint.rs").read_text(encoding="utf-8")
     body = re.search(rf"fn {function}\(\) \{{(.*?)\n    \}}", source, re.DOTALL)
     assert body is not None, f"could not find Rust fn {function}"
     literals = re.search(r"= \[(.*?)\];", body.group(1), re.DOTALL)
@@ -68,7 +68,7 @@ def _rust_array(function: str) -> list[str]:
 def _csharp_inline_data(method: str) -> list[str]:
     """Return the InlineData arguments attached to a C# test method."""
     path = _ROOT / "csharp" / "tests" / "Provide.Telemetry.Tests" / "ParityOtherTests.cs"
-    lines = path.read_text().splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     index = next(i for i, line in enumerate(lines) if f"public void {method}(" in line)
     cases: list[str] = []
     for line in reversed(lines[:index]):
@@ -115,6 +115,6 @@ def test_the_transcribed_languages_are_the_only_ones_not_reading_the_yaml() -> N
         "python": _ROOT / "tests" / "parity" / "test_parity_endpoint_validation.py",
     }
     for language, path in readers.items():
-        assert "behavioral_fixtures.yaml" in path.read_text(), (
+        assert "behavioral_fixtures.yaml" in path.read_text(encoding="utf-8"), (
             f"{language} no longer reads the fixture; it now needs a transcription check"
         )
