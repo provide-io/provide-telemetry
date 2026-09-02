@@ -33,9 +33,11 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# Generated, vendored or downloaded trees. mutants/ is mutmut's rewritten copy
-# of src/, so it mirrors whatever src/ does and fixing it separately is
-# meaningless.
+# Generated, vendored or downloaded trees, matched against the path relative to
+# the root. mutants/ is mutmut's rewritten copy of the project, so from a real
+# checkout it mirrors whatever src/ does and scanning it twice is meaningless —
+# but the suite also runs from *inside* that copy, where "mutants" is the root
+# and must not match anything.
 _SKIP_DIRS = frozenset(
     {
         ".git",
@@ -57,7 +59,20 @@ _TEXT_METHODS = frozenset({"read_text", "write_text"})
 
 
 def _python_files() -> list[Path]:
-    return [p for p in sorted(_REPO_ROOT.rglob("*.py")) if not _SKIP_DIRS.intersection(p.parts)]
+    """Every Python file under the root, skipping generated and vendored trees.
+
+    Matched on the path *relative to the root*, not the absolute one. mutmut
+    runs this suite from inside its own ``mutants/`` copy of the project, so
+    every absolute path there contains "mutants" — an absolute match skipped the
+    entire tree and the scan found nothing, which the sweep assertion below
+    caught. Relative matching skips ``mutants/`` from a real checkout and scans
+    the copy on its own terms.
+    """
+    return [
+        path
+        for path in sorted(_REPO_ROOT.rglob("*.py"))
+        if not _SKIP_DIRS.intersection(path.relative_to(_REPO_ROOT).parts)
+    ]
 
 
 def _is_binary_mode(mode: ast.expr | None) -> bool:
