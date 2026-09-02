@@ -123,6 +123,26 @@ their old two-parameter signature finds nothing and must add the two.
   `filename` got the key twice. The callsite now shadows a caller's field of the
   same name, as Python and C# do.
 
+- **Go: non-ASCII output arrived as mojibake on a Windows console, and ANSI was
+  emitted to consoles that cannot render it.** A console decodes the bytes
+  written to it with its output code page — CP437 or CP1252 by default — and Go
+  writes bytes straight to the handle, so every non-ASCII character this SDK
+  wrote was mangled. Setup sets that console to UTF-8 and shutdown restores what
+  the host had. Separately, a console handle is a character device, so the
+  terminal probe reported colour as available on every console including legacy
+  conhost; virtual-terminal processing is enabled and its success is now the
+  colour answer.
+
+  `spec/telemetry-api.yaml` carries the contract under `windows_console`, with
+  the applicability worked out rather than assumed: Go and C# write raw bytes,
+  while CPython, libuv and Rust std all convert to UTF-16 and call
+  `WriteConsoleW`, so the code page never reaches their output.
+
+  Tested against a real console screen buffer — the test allocates one, writes a
+  record through the SDK and reads the cells back. A `bytes.Buffer` cannot catch
+  this, and no CI job has a console, because GitHub Actions redirects every
+  stream to a pipe.
+
 - **Go: a log record the destination refuses is counted as an export failure.**
   `log/slog` discards a handler's returned error, so a failing writer lost every
   record silently while `LogsEmitted` kept climbing — the SDK's own health

@@ -44,6 +44,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Non-ASCII output no longer arrives as mojibake on a Windows console.**
+  Go writes bytes straight to a console handle, and a console decodes them with
+  its *output code page* — CP437 or CP1252 by default, not UTF-8. Every
+  non-ASCII character this SDK wrote was therefore mangled, which is what a host
+  prefixing its log lines with an emoji to tell two runtimes apart in one stream
+  sees. Setup now sets that console to UTF-8 and shutdown puts back what the
+  host had; a console already on UTF-8 is left alone.
+
+  Nothing is changed when the destination is not a console. A file, a pipe or a
+  writer supplied through `WithLogOutput` receives exactly the bytes it received
+  before — a host that owns the path to the terminal keeps owning it.
+
+- **ANSI is emitted to a Windows console only once it can render it.** A console
+  handle is a character device, so the terminal probe said colour was fine on
+  every one of them — including legacy conhost, which prints `←[36m` literally.
+  Setup enables `ENABLE_VIRTUAL_TERMINAL_PROCESSING`, and whether that succeeded
+  is now the answer to "does this terminal render ANSI"; before setup, and where
+  enabling fails, colour is off. Behaviour away from Windows is unchanged, down
+  to a pretty logger built before `SetupTelemetry` still being coloured.
+
+  Both changes are exercised against a real console screen buffer: the test
+  allocates one, writes a record through the whole SDK and reads the cells back.
+  A `bytes.Buffer` cannot catch this — it holds whatever bytes it is handed,
+  while the defect is in what a console *decodes* them to — and no CI job has a
+  console at all, because GitHub Actions redirects every stream to a pipe.
+
+### Fixed
+
 - **A log record the destination refuses is counted as an export failure.**
   `log/slog` discards whatever a handler returns, so a writer that fails — a
   pipe whose reader exited, a full disk, a closed file, a dropped network sink —

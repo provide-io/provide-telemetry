@@ -700,6 +700,49 @@ config_defaults:
       description: "Maximum nesting depth for dict/list attribute values"
       applicability: [python, go, rust]
 
+windows_console:
+  description: >
+    What an SDK does about a Windows console it writes to. Two problems, one
+    cause: a console is not a byte sink, it decodes and interprets what it is
+    given, and the defaults it decodes with are not the ones this SDK writes.
+  code_page:
+    problem: >
+      A console decodes the bytes written to it with its output code page,
+      which is CP437 or CP1252 on a default console, not UTF-8. An SDK whose
+      runtime writes raw bytes therefore renders every non-ASCII character as
+      mojibake — the reported failure being a host that prefixes its log lines
+      with an emoji to tell two runtimes apart in one stream.
+    contract: >
+      An SDK that writes raw bytes sets the console output code page to UTF-8
+      when it configures logging, and restores the previous value at shutdown.
+      A console already on UTF-8 is left alone and is not "restored" to
+      something it never had. Nothing is changed when the destination is not a
+      console: a file, a pipe or a writer the host supplied receives exactly
+      the bytes it would have received anyway.
+    applicability: [go, csharp]
+    note: >
+      The other three runtimes convert to UTF-16 and call WriteConsoleW, so
+      their console output never meets the code page — CPython's
+      _WindowsConsoleIO (PEP 528), libuv's uv_tty_write for Node, and Rust
+      std's windows stdio. They are excluded because they have nothing to fix,
+      not because the problem does not apply to their users.
+  virtual_terminal:
+    problem: >
+      A Windows console handle is a character device, so a terminal probe that
+      asks only that says every console renders ANSI. A console renders ANSI
+      only once ENABLE_VIRTUAL_TERMINAL_PROCESSING is set on it; legacy conhost
+      prints the escapes literally. The platform least able to render ANSI was
+      the one where colour was switched on unasked.
+    contract: >
+      An SDK that emits ANSI enables virtual-terminal processing on the console
+      it writes to, and reports the destination as colour-capable only when
+      that succeeded — before it has run, and where it failed, colour is off.
+      The mode is restored at shutdown.
+    applicability: [go, csharp, python, rust]
+    note: >
+      TypeScript is excluded because libuv already enables VT when it
+      initialises a TTY, and emulates ANSI itself where that fails.
+
 callsite_fields:
   description: >
     Where a log record says it came from. Two independent outputs, both
