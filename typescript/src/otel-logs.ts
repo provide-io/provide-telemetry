@@ -174,7 +174,7 @@ export function emitLogRecord(o: Record<string, unknown>, callsite?: Callsite): 
   // code.file.path / code.line.number / code.function.name are the current
   // spellings; code.function.name is omitted when the frame resolved no name.
   if (cfg.logCodeAttributes && callsite) {
-    attributes['code.file.path'] = callsite.filename;
+    attributes['code.file.path'] = callsite.path;
     attributes['code.line.number'] = callsite.lineno;
     if (callsite.functionName) {
       attributes['code.function.name'] = callsite.functionName;

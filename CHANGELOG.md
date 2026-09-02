@@ -25,6 +25,10 @@ old names loses it.
 | `code.namespace` | *removed — no cross-language meaning* |
 | — | `code.function.name` (new; omitted when the frame resolves no name) |
 
+`code.file.path` also changes value: it carries the whole path, as
+OpenTelemetry defines it and as Python and Go send it, rather than the base
+name `filename` carries.
+
 `PROVIDE_LOG_CODE_ATTRIBUTES` also stops depending on
 `PROVIDE_LOG_INCLUDE_CALLER`. It previously emitted nothing unless both were
 on, because the `code.*` attributes were derived from the record fields; each
@@ -33,8 +37,31 @@ knob now controls only its own output.
 **C#: the nine public log methods gain two optional parameters.** `Trace`,
 `Debug`, `Info`, `Warn`, `Warning`, `Critical`, both `Error` overloads and
 `Log` each take `[CallerFilePath]` and `[CallerLineNumber]` arguments the
-compiler supplies. Source-compatible — call sites recompile unchanged — but
-binary-breaking: an assembly built against 0.8.x must be rebuilt.
+compiler supplies.
+
+Binary-breaking: an assembly built against 0.8.x must be rebuilt, or its first
+log call raises `MissingMethodException`.
+
+Source-breaking in two shapes, both of which compiled on 0.8.x:
+
+- `log.Error("m", null)` and `log.Error("m", null, null)` become **CS0121**,
+  ambiguous between the two `Error` overloads. Overload resolution used to
+  break the tie by preferring the candidate that omitted fewer optional
+  parameters; both candidates now omit the same two, so the tie-break never
+  fires and neither `null → IReadOnlyDictionary?` nor `null → Exception` is
+  better. Name the argument (`fields: null`) or cast it.
+- A method-group conversion — `Action<string, IReadOnlyDictionary<string,
+  object?>?> h = log.Info;` — becomes **CS0123**. The conversion requires exact
+  arity, and `Info` went from two parameters to four. Wrap it in a lambda.
+
+Ordinary call sites, expression trees over them, and every call in this repo's
+examples and docs bind exactly as before.
+
+Two shapes lose the callsite silently, because `[CallerFilePath]` is a
+compile-time substitution and neither goes through the compiler: `dynamic`
+dispatch and `MethodInfo.Invoke`. Both emit a record with no `filename` or
+`lineno` rather than a wrong one. Reflection that looks the methods up by
+their old two-parameter signature finds nothing and must add the two.
 
 ### Added
 
@@ -45,11 +72,18 @@ binary-breaking: an assembly built against 0.8.x must be rebuilt.
   `code.file.path`, `code.function.name` and `code.line.number`. The two are
   independent: each selects its own output from one capture.
 
+  The two outputs have two audiences, and the spec now says so. `filename` and
+  `lineno` are ordinary log fields: every renderer carries them, and so does the
+  exported record. The `code.*` attributes are for the exported record alone —
+  they carry the full source path, so rendering them locally would print the
+  compiling machine's directory layout on every line, which is the leak
+  `filename` reports a base name to avoid.
+
   Go and C# honour both knobs for the first time — each parsed the variable into
   a config field nothing read. Go additionally implements
-  `PROVIDE_LOG_CODE_ATTRIBUTES`, and attaches the fields in the shared
+  `PROVIDE_LOG_CODE_ATTRIBUTES`, and attaches `filename`/`lineno` in the shared
   middleware rather than through `slog.HandlerOptions`, so the `console`, `json`
-  and `pretty` renderers and the OTLP log bridge all carry identical fields.
+  and `pretty` renderers and the OTLP log bridge all carry them.
 
   A cross-language pass in the behavioural parity harness runs the probes with
   capture enabled and asserts each SDK names its *caller's* file and a positive
@@ -65,6 +99,23 @@ binary-breaking: an assembly built against 0.8.x must be rebuilt.
   the compiled `logger.js`, so the walk stopped on the logger's own frame and
   every record named the SDK instead of the caller. Correct in the source tree
   and in the tests, wrong everywhere it mattered.
+
+  The walk identifies its own frames by the file the capture is in, rather than
+  by a list of file names, which also fixes three cases the list got wrong: a
+  library that logs is reported instead of whoever called it, a consumer whose
+  own module is named `logger.ts` is reported instead of skipped, and a bundle —
+  where nothing distinguishes the caller — carries no callsite rather than one
+  naming the logger. A Windows CJS frame no longer publishes its full path as
+  `filename`, a host owning `Error.prepareStackTrace` no longer costs the record
+  (in a browser it threw into the caller), and a nested-eval frame no longer
+  produces a malformed filename.
+
+- **Go rendered the `code.*` attributes locally.** They were attached to the
+  record, so every renderer printed them — including `code.file.path`, the
+  absolute path of the machine that compiled the binary, on every line. The knob
+  is specified as attaching them to OTel log records, which is what Python and
+  TypeScript do; in Go a handler wrapping the log bridge now does it, and the
+  local renderers carry `filename`/`lineno` only.
 
 - **Go could emit a duplicate `filename` or `lineno`.** Callsite attachment is
   the only step that runs after the PII pass, which is where the map round-trip

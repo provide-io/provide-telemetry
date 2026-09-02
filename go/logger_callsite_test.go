@@ -91,24 +91,24 @@ func TestCallsite_DisabledOmitsBothFields(t *testing.T) {
 // from one capture.
 func TestCallsite_CodeAttributesAreIndependentOfIncludeCaller(t *testing.T) {
 	var buf bytes.Buffer
-	logger := callsiteLogger(t, &buf, "false", "true")
+	backend, logger := callsiteBridgeLogger(t, &buf, "false", "true")
 
 	_, file, line, _ := runtime.Caller(0)
 	logger.Info("callsite-code-attrs")
 
-	rec := decodeRecord(t, &buf)
-	if rec["code.file.path"] != file {
-		t.Errorf("code.file.path is %v, want %q", rec["code.file.path"], file)
+	bridged := bridgedRecord(t, backend)
+	if bridged[_attrCodeFilePath] != file {
+		t.Errorf("code.file.path is %v, want %q", bridged[_attrCodeFilePath], file)
 	}
-	if want := float64(line + 1); rec["code.line.number"] != want {
-		t.Errorf("code.line.number is %v, want %v", rec["code.line.number"], want)
+	if bridged[_attrCodeLineNumber] != int64(line+1) {
+		t.Errorf("code.line.number is %#v, want %d", bridged[_attrCodeLineNumber], line+1)
 	}
-	fn, _ := rec["code.function.name"].(string)
+	fn, _ := bridged[_attrCodeFunctionName].(string)
 	if !strings.HasSuffix(fn, "TestCallsite_CodeAttributesAreIndependentOfIncludeCaller") {
 		t.Errorf("code.function.name is %q, want the calling function", fn)
 	}
 	for _, key := range []string{"filename", "lineno"} {
-		if _, present := rec[key]; present {
+		if _, present := bridged[key]; present {
 			t.Errorf("%s leaked in with PROVIDE_LOG_INCLUDE_CALLER=false", key)
 		}
 	}
@@ -117,38 +117,33 @@ func TestCallsite_CodeAttributesAreIndependentOfIncludeCaller(t *testing.T) {
 // The deprecated semconv spellings are never emitted.
 func TestCallsite_DeprecatedCodeAttributeNamesAreNotEmitted(t *testing.T) {
 	var buf bytes.Buffer
-	callsiteLogger(t, &buf, "true", "true").Info("callsite-semconv")
+	backend, logger := callsiteBridgeLogger(t, &buf, "true", "true")
+	logger.Info("callsite-semconv")
 
-	rec := decodeRecord(t, &buf)
+	bridged := bridgedRecord(t, backend)
 	for _, key := range []string{"code.filepath", "code.lineno", "code.namespace"} {
-		if _, present := rec[key]; present {
+		if _, present := bridged[key]; present {
 			t.Errorf("%s is emitted; only the current semconv names are canonical", key)
 		}
 	}
 }
 
-// Both knobs on yields all five fields.
+// Both knobs on yields all five fields, split across the two audiences.
 func TestCallsite_BothKnobsEmitBothShapes(t *testing.T) {
 	var buf bytes.Buffer
-	callsiteLogger(t, &buf, "true", "true").Info("callsite-both")
+	backend, logger := callsiteBridgeLogger(t, &buf, "true", "true")
+	logger.Info("callsite-both")
 
-	rec := decodeRecord(t, &buf)
-	for _, key := range []string{"filename", "lineno", "code.file.path", "code.function.name", "code.line.number"} {
-		if _, present := rec[key]; !present {
-			t.Errorf("%s missing when both knobs are enabled", key)
+	bridged := bridgedRecord(t, backend)
+	for _, key := range []string{"filename", "lineno", _attrCodeFilePath, _attrCodeFunctionName, _attrCodeLineNumber} {
+		if _, present := bridged[key]; !present {
+			t.Errorf("%s missing from the exported record when both knobs are enabled", key)
 		}
 	}
-}
-
-// Code attributes off means none of them appear even with the caller knob on.
-func TestCallsite_CodeAttributesDisabledOmitsThem(t *testing.T) {
-	var buf bytes.Buffer
-	callsiteLogger(t, &buf, "true", "false").Info("callsite-no-code")
-
 	rec := decodeRecord(t, &buf)
-	for _, key := range []string{"code.file.path", "code.function.name", "code.line.number"} {
-		if _, present := rec[key]; present {
-			t.Errorf("%s is present with PROVIDE_LOG_CODE_ATTRIBUTES=false", key)
+	for _, key := range []string{"filename", "lineno"} {
+		if _, present := rec[key]; !present {
+			t.Errorf("%s missing from the rendered record when both knobs are enabled", key)
 		}
 	}
 }
@@ -198,11 +193,10 @@ func TestCallsite_ShadowsCallerSuppliedFieldsOfTheSameName(t *testing.T) {
 	logger.Info("callsite-shadow",
 		"filename", "uploaded-by-the-user.csv",
 		"lineno", 4242,
-		"code.file.path", "/somewhere/else.go",
 	)
 
 	line := strings.TrimSpace(buf.String())
-	for _, key := range []string{`"filename"`, `"lineno"`, `"code.file.path"`} {
+	for _, key := range []string{`"filename"`, `"lineno"`} {
 		if n := strings.Count(line, key); n != 1 {
 			t.Errorf("%s appears %d times in %s, want exactly 1", key, n, line)
 		}
@@ -216,10 +210,11 @@ func TestCallsite_ShadowsCallerSuppliedFieldsOfTheSameName(t *testing.T) {
 	}
 }
 
-// PROVIDE_LOG_CODE_ATTRIBUTES exists for OTel log records, so the attributes
-// have to reach the backend bridge — which sits below the telemetry handler,
-// under multiHandler, and never sees slog.HandlerOptions.
-func TestCallsite_CodeAttributesReachTheBackendBridge(t *testing.T) {
+// callsiteBridgeLogger installs a JSON logger writing to buf *and* a fake
+// backend, so one emitted record can be inspected on both surfaces: what the
+// host sees rendered, and what leaves for the collector.
+func callsiteBridgeLogger(t *testing.T, buf *bytes.Buffer, includeCaller, codeAttributes string) (*_fakeBackend, *slog.Logger) {
+	t.Helper()
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 
@@ -232,19 +227,36 @@ func TestCallsite_CodeAttributesReachTheBackendBridge(t *testing.T) {
 	// would then all append to this fake's unsynchronized slices.
 	t.Cleanup(func() { UnregisterBackend("callsite-bridge") })
 
-	t.Setenv("PROVIDE_LOG_CODE_ATTRIBUTES", "true")
+	t.Setenv("PROVIDE_LOG_FORMAT", LogFormatJSON)
+	t.Setenv("PROVIDE_LOG_INCLUDE_CALLER", includeCaller)
+	t.Setenv("PROVIDE_LOG_CODE_ATTRIBUTES", codeAttributes)
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector:4318")
-	if _, err := SetupTelemetry(); err != nil {
+	if _, err := SetupTelemetry(WithLogOutput(buf)); err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
+	return backend, GetLogger(context.Background(), "callsite.bridge")
+}
 
-	_, file, line, _ := runtime.Caller(0)
-	GetLogger(context.Background(), "callsite.bridge").Info("callsite-bridged")
-
+// bridgedRecord returns the single record the fake backend received.
+func bridgedRecord(t *testing.T, backend *_fakeBackend) map[string]any {
+	t.Helper()
 	if len(backend.logAttrs) != 1 {
 		t.Fatalf("expected 1 bridged record, got %d", len(backend.logAttrs))
 	}
-	bridged := backend.logAttrs[0]
+	return backend.logAttrs[0]
+}
+
+// PROVIDE_LOG_CODE_ATTRIBUTES exists for OTel log records, so the attributes
+// have to reach the backend bridge — which sits below the telemetry handler,
+// under multiHandler, and never sees slog.HandlerOptions.
+func TestCallsite_CodeAttributesReachTheBackendBridge(t *testing.T) {
+	var buf bytes.Buffer
+	backend, logger := callsiteBridgeLogger(t, &buf, "false", "true")
+
+	_, file, line, _ := runtime.Caller(0)
+	logger.Info("callsite-bridged")
+
+	bridged := bridgedRecord(t, backend)
 	if bridged[_attrCodeFilePath] != file {
 		t.Errorf("bridged code.file.path is %v, want %q", bridged[_attrCodeFilePath], file)
 	}
@@ -253,6 +265,142 @@ func TestCallsite_CodeAttributesReachTheBackendBridge(t *testing.T) {
 	}
 	if _, present := bridged[_attrCodeFunctionName]; !present {
 		t.Error("bridged record carries no code.function.name")
+	}
+}
+
+// The code attributes are for the exported record and stop there.
+//
+// PROVIDE_LOG_CODE_ATTRIBUTES is specified as "attach code attributes to OTel
+// log records", and Python and TypeScript attach them to the OTLP record alone —
+// neither one's console output carries a code.* key with the knob on. Rendering
+// them locally would also print runtime.Frame.File, the absolute path the
+// *compiling* machine had, on every line: exactly the leak `filename` reports a
+// base name to avoid.
+func TestCallsite_CodeAttributesStopAtTheBridge(t *testing.T) {
+	var buf bytes.Buffer
+	backend, logger := callsiteBridgeLogger(t, &buf, "true", "true")
+	logger.Info("callsite-bridge-only")
+
+	rec := decodeRecord(t, &buf)
+	for _, key := range []string{_attrCodeFilePath, _attrCodeFunctionName, _attrCodeLineNumber} {
+		if _, present := rec[key]; present {
+			t.Errorf("%s is rendered locally; the knob attaches it to the exported record", key)
+		}
+	}
+	// The record fields are the ones that belong on every renderer, and they
+	// reach the bridge too — one capture, two audiences.
+	if rec["filename"] != _thisFile {
+		t.Errorf("filename is %v, want %q", rec["filename"], _thisFile)
+	}
+	bridged := bridgedRecord(t, backend)
+	if bridged["filename"] != _thisFile {
+		t.Errorf("bridged filename is %v, want %q", bridged["filename"], _thisFile)
+	}
+	if _, present := bridged[_attrCodeFilePath]; !present {
+		t.Error("bridged record carries no code.file.path")
+	}
+}
+
+// Attaching the code attributes to the bridge must not depend on the bridge
+// being reached through a particular constructor: the package logger, which
+// slog.Default() also serves, rebuilds the chain separately.
+func TestCallsite_CodeAttributesReachTheDefaultLoggersBridge(t *testing.T) {
+	var buf bytes.Buffer
+	backend, _ := callsiteBridgeLogger(t, &buf, "false", "true")
+
+	Logger().Info("callsite-default-bridged")
+
+	if _, present := bridgedRecord(t, backend)[_attrCodeFilePath]; !present {
+		t.Error("the package logger's bridge carries no code.file.path")
+	}
+}
+
+// With the knob off, nothing attaches them anywhere.
+func TestCallsite_CodeAttributesDisabledLeavesTheBridgeClean(t *testing.T) {
+	var buf bytes.Buffer
+	backend, logger := callsiteBridgeLogger(t, &buf, "true", "false")
+	logger.Info("callsite-bridge-no-code")
+
+	bridged := bridgedRecord(t, backend)
+	for _, key := range []string{_attrCodeFilePath, _attrCodeFunctionName, _attrCodeLineNumber} {
+		if _, present := bridged[key]; present {
+			t.Errorf("%s bridged with PROVIDE_LOG_CODE_ATTRIBUTES=false", key)
+		}
+	}
+}
+
+// The code attributes shadow a caller's own keys of the same name, the way the
+// record fields do — the bridge is where they collide.
+func TestCallsite_CodeAttributesShadowCallerSuppliedKeys(t *testing.T) {
+	var buf bytes.Buffer
+	backend, logger := callsiteBridgeLogger(t, &buf, "false", "true")
+
+	_, file, _, _ := runtime.Caller(0)
+	logger.Info("callsite-bridge-shadow", _attrCodeFilePath, "/somewhere/else.go")
+
+	if got := bridgedRecord(t, backend)[_attrCodeFilePath]; got != file {
+		t.Errorf("bridged code.file.path is %v, want the callsite's %q", got, file)
+	}
+}
+
+// The wrapper is a slog.Handler, so it has to survive With and WithGroup.
+//
+// Nothing in the chain reaches it that way today — the telemetry handler folds
+// bound attributes into the record itself rather than delegating downward — but
+// a wrapper that returned its bare `next` on either call would drop the code
+// attributes for the first caller that did, silently and only for the loggers
+// built through With.
+func TestCodeAttrsHandler_SurvivesWithAttrsAndWithGroup(t *testing.T) {
+	var buf bytes.Buffer
+	handler := (&_codeAttrsHandler{next: slog.NewJSONHandler(&buf, nil)}).
+		WithAttrs([]slog.Attr{slog.String("bound", "yes")}).
+		WithGroup("g")
+
+	ctx := context.Background()
+	if !handler.Enabled(ctx, slog.LevelInfo) {
+		t.Fatal("wrapper reports Info disabled; it must defer to the handler it wraps")
+	}
+
+	var pcs [1]uintptr
+	runtime.Callers(1, pcs[:])
+	_, file, line, _ := runtime.Caller(0)
+	if err := handler.Handle(ctx, slog.NewRecord(time.Now(), slog.LevelInfo, "wrapped", pcs[0])); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+
+	rec := decodeRecord(t, &buf)
+	if rec["bound"] != "yes" {
+		t.Errorf("bound attribute lost through WithAttrs: %#v", rec)
+	}
+	group, ok := rec["g"].(map[string]any)
+	if !ok {
+		t.Fatalf("no 'g' group in %#v — WithGroup was dropped", rec)
+	}
+	if group[_attrCodeFilePath] != file {
+		t.Errorf("code.file.path is %v, want %q", group[_attrCodeFilePath], file)
+	}
+	// runtime.Callers(1) names this line, one above the runtime.Caller pair.
+	if want := float64(line - 1); group[_attrCodeLineNumber] != want {
+		t.Errorf("code.line.number is %v, want %v", group[_attrCodeLineNumber], want)
+	}
+}
+
+// A record carrying no resolvable callsite reaches the bridge unchanged rather
+// than with an empty path and a zero line.
+func TestCallsite_BridgeAttachesNothingWithoutAFrame(t *testing.T) {
+	var buf bytes.Buffer
+	backend, _ := callsiteBridgeLogger(t, &buf, "false", "true")
+
+	record := slog.NewRecord(time.Now(), slog.LevelInfo, "callsite-bridge-no-pc", 0)
+	if err := Logger().Handler().Handle(context.Background(), record); err != nil {
+		t.Fatalf("handle failed: %v", err)
+	}
+
+	bridged := bridgedRecord(t, backend)
+	for _, key := range []string{_attrCodeFilePath, _attrCodeFunctionName, _attrCodeLineNumber} {
+		if _, present := bridged[key]; present {
+			t.Errorf("%s bridged for a record with no PC", key)
+		}
 	}
 }
 

@@ -17,23 +17,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
   `INCLUDE_CALLER` emits `filename` — the base name, never the absolute path
   `runtime.Frame` carries, which is the path the *compiling* machine had —
-  and `lineno`. `CODE_ATTRIBUTES` emits `code.file.path`,
-  `code.function.name` and `code.line.number`. The gates are independent.
+  and `lineno`, on every renderer and on the exported record.
+  `CODE_ATTRIBUTES` emits `code.file.path`, `code.function.name` and
+  `code.line.number` on the exported record only, which is what the knob
+  promises: these carry the full path, and printing that locally is the leak
+  `filename` reports a base name to avoid. The gates are independent.
 
-  The fields are attached in the telemetry handler rather than through
+  `filename`/`lineno` are attached in the telemetry handler rather than through
   `slog.HandlerOptions{AddSource: true}`. `AddSource` emits a `source` group of
   `{function, file, line}`, which is not the canonical shape, and it reaches only
   the JSON and text renderers — the pretty renderer builds no `HandlerOptions`
   and the OTLP log bridge is a sibling handler, so both would have been left
-  without a callsite.
+  without a callsite. The `code.*` attributes are attached by a thin handler
+  wrapping the bridge, which is what keeps them off the local renderers.
 
   The record's `PC` is captured by `slog.Logger.log` before any handler runs and
   survives every rebuild in the chain, so the frame is the caller's without any
   frame-skipping.
 
-  Cost, since `INCLUDE_CALLER` defaults on: roughly 5.6 to 7.2 µs per emitted
-  record, one `runtime.CallersFrames` lookup — the same one stdlib `AddSource`
-  does. Previously free only because the knob was dead.
+  Cost, since `INCLUDE_CALLER` defaults on: one `runtime.CallersFrames` lookup
+  and a record rebuild per emitted record — the same lookup stdlib `AddSource`
+  does. `BenchmarkLogEmit_WithCallsite` and `BenchmarkLogEmit_WithoutCallsite`
+  measure it against each other; they are also the first benchmarks in this
+  package to cover the emit path at all, which is why the knob could be given a
+  default of on without any gate pricing it.
 
 ### Fixed
 

@@ -511,6 +511,9 @@ func _baseHandlerWithBridge(cfg *TelemetryConfig, name string) slog.Handler {
 	if bridge == nil {
 		return base
 	}
+	if cfg.Logging.LogCodeAttributes {
+		bridge = &_codeAttrsHandler{next: bridge}
+	}
 	return newMultiHandler(base, bridge)
 }
 

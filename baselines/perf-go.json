@@ -15,7 +15,9 @@
     "BenchmarkGauge_Set":                  {"baseline_ns": 55,   "tolerance_multiplier": 5.0},
     "BenchmarkHistogram_Record":           {"baseline_ns": 49,   "tolerance_multiplier": 5.0},
     "BenchmarkCustomPIIPatterns_HotPath":          {"baseline_ns": 3,    "tolerance_multiplier": 5.0},
-    "BenchmarkCustomPIIPatterns_NoPatterns_HotPath":{"baseline_ns": 3,    "tolerance_multiplier": 5.0}
+    "BenchmarkCustomPIIPatterns_NoPatterns_HotPath":{"baseline_ns": 3,    "tolerance_multiplier": 5.0},
+    "BenchmarkLogEmit_WithCallsite":       {"baseline_ns": 3653, "tolerance_multiplier": 5.0},
+    "BenchmarkLogEmit_WithoutCallsite":    {"baseline_ns": 3113, "tolerance_multiplier": 5.0}
   },
   "linux-x86_64": {
     "BenchmarkEventName_3Segments":        {"baseline_ns": 63,   "tolerance_multiplier": 5.0},

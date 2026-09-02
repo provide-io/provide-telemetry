@@ -15,7 +15,11 @@ public sealed class LoggingConfig
     public string OtlpEndpoint { get; set; } = "";
     public bool OtlpEnabled { get; set; } = true;
     public Dictionary<string, string> OtlpHeaders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    public bool LogCodeAttributes { get; set; }
+    // No LogCodeAttributes here, for the same reason as the Pretty* properties
+    // below. config_defaults in spec/telemetry-api.yaml lists
+    // PROVIDE_LOG_CODE_ATTRIBUTES for python, typescript and go; nothing in this
+    // SDK parses it and no emitter reads it. A settable property named after a
+    // knob that does nothing is a promise the package does not keep.
     // No PrettyKeyColor/PrettyValueColor/PrettyFields here. config_defaults in
     // spec/telemetry-api.yaml lists PROVIDE_LOG_PRETTY_* for python, typescript,
     // go and rust only, and this SDK's pretty renderer emits quoted key=value
@@ -146,7 +150,6 @@ public sealed class TelemetryConfig
                 OtlpEndpoint = Logging.OtlpEndpoint,
                 OtlpEnabled = Logging.OtlpEnabled,
                 OtlpHeaders = new Dictionary<string, string>(Logging.OtlpHeaders, StringComparer.OrdinalIgnoreCase),
-                LogCodeAttributes = Logging.LogCodeAttributes,
                 ModuleLevels = new Dictionary<string, string>(Logging.ModuleLevels, StringComparer.Ordinal),
             },
             Tracing = new TracingConfig

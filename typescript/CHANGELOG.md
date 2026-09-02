@@ -14,6 +14,64 @@ Two things to know when reading it:
   changelog is read in. `npm view @provide-io/telemetry versions` is the
   authority on what a consumer can actually install.
 
+## [Unreleased]
+
+### Breaking
+
+- **The callsite fields are renamed and the code attributes move to current
+  semantic conventions.** `caller_file` → `filename`, `caller_line` → `lineno`,
+  `code.filepath` → `code.file.path`, `code.lineno` → `code.line.number`.
+  `code.namespace` is dropped, having no cross-language meaning, and
+  `code.function.name` is new — omitted when the frame resolves no name. A saved
+  query filtering on an old name stops matching.
+
+  These are the names Python already emitted; the rename is what makes the four
+  SDKs agree, and a cross-language pass in the parity harness now asserts it.
+
+- **`code.file.path` carries the whole path, not the base name.** That is what
+  OpenTelemetry defines the attribute as and what Python
+  (`record.pathname`) and Go (`runtime.Frame.File`) send. `filename` on the
+  record is still a base name.
+
+- **`logCodeAttributes` no longer depends on `logIncludeCaller`.** It used to
+  emit nothing unless both were on, because the `code.*` attributes were derived
+  from the record fields. Each knob controls only its own output.
+
+### Fixed
+
+- **The callsite named this module instead of the caller in every published
+  build.** The stack walk skipped frames whose text contained `logger.ts`, and
+  consumers run the compiled `logger.js`, so the walk stopped on this module's
+  own frame and every record reported the SDK. Correct in the source tree and in
+  the tests, wrong everywhere it mattered.
+
+  The walk now identifies its own frames by the file the capture is in, so no
+  list of file names has to keep step with the build. Three consequences:
+
+  - A consumer whose own module is called `logger.ts` is reported, not skipped.
+  - A library that logs is reported as the callsite. Skipping every frame under
+    `node_modules` attributed its records to whoever called it; pino's frames
+    are matched by path segment instead, which also stops skipping a caller
+    working under a directory named `pino` or a function named `pinoAdapter`.
+  - A bundle, where this module and the application share one file, carries no
+    callsite. Nothing there distinguishes the caller, and naming the logger's
+    own line is a wrong answer rather than a missing one.
+
+- **A Windows CJS frame published the full path as `filename`.** The base-name
+  strip handled forward slashes only, so `C:\srv\app\routes.ts` was reported
+  whole — the build machine's layout, on the platform where CJS output is still
+  common.
+
+- **A host owning `Error.prepareStackTrace` no longer costs a log record.**
+  Source-map and tracing libraries install their own formatter, and `.stack` is
+  then not a string; reading it threw. In Node pino's stream wrapper swallowed
+  the throw and the record vanished, and in a browser it reached the
+  application's log call. The capture yields no callsite instead.
+
+- **A nested-eval frame no longer produces a malformed filename.** It carries
+  two locations in one set of parentheses, which the path group swallowed whole;
+  such a frame now yields no callsite.
+
 ## [0.8.1] — 2026-08-22
 
 ### Breaking

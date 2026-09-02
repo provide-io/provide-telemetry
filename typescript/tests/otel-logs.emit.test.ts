@@ -358,11 +358,13 @@ describe('emitLogRecord — logCodeAttributes', () => {
 
     emitLogRecord(
       { level: 'INFO', message: 'test', time: 1000, name: 'my.module' },
-      { filename: 'app.ts', lineno: 42, functionName: 'handleRequest' },
+      { filename: 'app.ts', path: '/srv/app/app.ts', lineno: 42, functionName: 'handleRequest' },
     );
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
-    expect(attrs['code.file.path']).toBe('app.ts');
+    // The full path, not the base name the record field carries: OpenTelemetry
+    // defines code.file.path as the whole path, and Python and Go both send it.
+    expect(attrs['code.file.path']).toBe('/srv/app/app.ts');
     expect(attrs['code.line.number']).toBe(42);
     expect(attrs['code.function.name']).toBe('handleRequest');
     // code.namespace is not a canonical attribute and is no longer derived.
@@ -381,11 +383,11 @@ describe('emitLogRecord — logCodeAttributes', () => {
 
     emitLogRecord(
       { level: 'INFO', message: 'test', time: 1000 },
-      { filename: 'app.ts', lineno: 42 },
+      { filename: 'app.ts', path: '/srv/app/app.ts', lineno: 42 },
     );
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
-    expect(attrs['code.file.path']).toBe('app.ts');
+    expect(attrs['code.file.path']).toBe('/srv/app/app.ts');
     expect(attrs['code.line.number']).toBe(42);
     expect(attrs).not.toHaveProperty('code.function.name');
   });

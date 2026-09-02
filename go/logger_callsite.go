@@ -4,6 +4,7 @@
 package telemetry
 
 import (
+	"context"
 	"log/slog"
 	"runtime"
 	"strings"
@@ -65,8 +66,7 @@ func _callsiteBaseName(file string) string {
 	return normalized
 }
 
-// applyCallsite attaches the caller's file, line and function to the record,
-// in whichever of the two shapes the config asked for.
+// applyCallsite attaches the caller's file and line to the record.
 //
 // It runs at the end of the processor chain, after sanitization, for the same
 // reason Python appends CallsiteParameterAdder after sanitize_sensitive_fields:
@@ -83,22 +83,28 @@ func _callsiteBaseName(file string) string {
 // the record instead means all three renderers and the OTLP bridge see the same
 // fields.
 func (h *_telemetryHandler) applyCallsite(r slog.Record) slog.Record {
-	logging := h.cfg.Logging
-	if !logging.IncludeCaller && !logging.LogCodeAttributes {
+	if !h.cfg.Logging.IncludeCaller {
 		return r
 	}
 	frame, ok := _callsiteFrame(r.PC)
 	if !ok {
 		return r
 	}
-	callsite := _callsiteAttrs(frame, logging)
+	return _withCallsiteAttrs(r, []slog.Attr{
+		slog.String(_fieldFilename, _callsiteBaseName(frame.File)),
+		slog.Int(_fieldLineno, frame.Line),
+	})
+}
 
-	// The callsite shadows a caller's own attribute of the same name. This is
-	// the only processor that runs after applyPII, and applyPII is where every
-	// earlier step's duplicate keys are collapsed by its map round trip — so
-	// appending blindly is the one way this chain can emit a key twice, and
-	// `filename` is an ordinary thing for an application to log. Python resolves
-	// the same collision the same way, by assigning into the event dict.
+// _withCallsiteAttrs returns r with callsite appended, shadowing any attribute
+// the caller supplied under one of the same keys.
+//
+// applyCallsite is the only processor that runs after applyPII, and applyPII is
+// where every earlier step's duplicate keys are collapsed by its map round trip
+// — so appending blindly is the one way this chain can emit a key twice, and
+// `filename` is an ordinary thing for an application to log. Python resolves the
+// same collision the same way, by assigning into the event dict.
+func _withCallsiteAttrs(r slog.Record, callsite []slog.Attr) slog.Record {
 	shadowed := make(map[string]struct{}, len(callsite))
 	for _, a := range callsite {
 		shadowed[a.Key] = struct{}{}
@@ -115,23 +121,45 @@ func (h *_telemetryHandler) applyCallsite(r slog.Record) slog.Record {
 	return nr
 }
 
-// _callsiteAttrs renders frame into whichever of the two field shapes the
-// logging config asked for. Both, one, or — when neither gate is on, which
-// applyCallsite has already ruled out — none.
-func _callsiteAttrs(frame runtime.Frame, logging LoggingConfig) []slog.Attr {
-	attrs := make([]slog.Attr, 0, 5)
-	if logging.IncludeCaller {
-		attrs = append(attrs,
-			slog.String(_fieldFilename, _callsiteBaseName(frame.File)),
-			slog.Int(_fieldLineno, frame.Line),
-		)
+// _codeAttrsHandler attaches the OTel code.* attributes on the way to the log
+// bridge, and to nothing else.
+//
+// PROVIDE_LOG_CODE_ATTRIBUTES is specified as "attach code attributes to OTel
+// log records", and Python and TypeScript honour that literally: their console
+// output carries no code.* key with the knob on, because the attributes are
+// added where the OTLP record is built. Attaching them to the slog.Record
+// instead would fan them out to every renderer, printing runtime.Frame.File —
+// the absolute path the *compiling* machine had — on every local line, which is
+// the leak `filename` reports a base name to avoid.
+//
+// So this wraps the bridge alone. It sits above the bridge and below the
+// telemetry handler, which means the record it sees has already been through
+// consent, schema, sampling, backpressure, hardening and PII, and still carries
+// the PC slog.Logger.log captured.
+type _codeAttrsHandler struct {
+	next slog.Handler
+}
+
+func (h *_codeAttrsHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.next.Enabled(ctx, level)
+}
+
+func (h *_codeAttrsHandler) Handle(ctx context.Context, r slog.Record) error {
+	frame, ok := _callsiteFrame(r.PC)
+	if !ok {
+		return h.next.Handle(ctx, r)
 	}
-	if logging.LogCodeAttributes {
-		attrs = append(attrs,
-			slog.String(_attrCodeFilePath, frame.File),
-			slog.String(_attrCodeFunctionName, frame.Function),
-			slog.Int(_attrCodeLineNumber, frame.Line),
-		)
-	}
-	return attrs
+	return h.next.Handle(ctx, _withCallsiteAttrs(r, []slog.Attr{
+		slog.String(_attrCodeFilePath, frame.File),
+		slog.String(_attrCodeFunctionName, frame.Function),
+		slog.Int(_attrCodeLineNumber, frame.Line),
+	}))
+}
+
+func (h *_codeAttrsHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &_codeAttrsHandler{next: h.next.WithAttrs(attrs)}
+}
+
+func (h *_codeAttrsHandler) WithGroup(name string) slog.Handler {
+	return &_codeAttrsHandler{next: h.next.WithGroup(name)}
 }

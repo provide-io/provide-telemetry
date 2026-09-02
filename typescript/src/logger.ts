@@ -65,6 +65,16 @@ const CONSENT_LEVEL_MAP: Record<number, string> = {
 export interface Callsite {
   /** Basename of the source file — a full path leaks the build machine layout. */
   filename: string;
+  /**
+   * Full path as the runtime reported it.
+   *
+   * The record field is a base name; `code.file.path` is not. OpenTelemetry
+   * defines that attribute as the whole path, and Python (through
+   * `opentelemetry-instrumentation-logging`, which publishes `record.pathname`)
+   * and Go (`runtime.Frame.File`) both send it. A base name there would be a
+   * third spelling of the same attribute.
+   */
+  path: string;
   /** 1-based line number within that file. */
   lineno: number;
   /** Enclosing function name. Absent when V8 resolved no name for the frame. */
@@ -75,23 +85,21 @@ export interface Callsite {
 const NAMED_FRAME_RE = /at\s+(.+?)\s+\((.+):(\d+):\d+\)/;
 /** V8 frame with no function name: `at /dir/file.ts:12:5`. */
 const BARE_FRAME_RE = /at\s+(.+):(\d+):\d+/;
-/** Everything up to and including the last path separator. */
-const PATH_PREFIX_RE = /^.*\//;
+/**
+ * Everything up to and including the last path separator, either kind.
+ *
+ * Backslashes count: a CJS frame on Windows reads
+ * `at handleRequest (C:\srv\app\routes.ts:42:17)`, and stripping only forward
+ * slashes puts that whole path — drive letter and all — in `filename`, which is
+ * specified as a base name precisely so a record never carries one.
+ */
+const PATH_PREFIX_RE = /^.*[\\/]/;
 /** V8 prints `async` ahead of the name; it is a modifier, not part of the name. */
 const ASYNC_PREFIX_RE = /^async\s+/;
 /** V8's stand-in for a name it could not resolve, e.g. `Object.<anonymous>`. */
 const ANONYMOUS_NAME = '<anonymous>';
-/**
- * Frames that belong to the logging machinery rather than to its caller.
- *
- * Both extensions are listed because the walk has to work in both trees a
- * frame can come from: `logger.ts` in this source tree and in the tests, and
- * `logger.js` in the published build, which is the only one a consumer ever
- * runs. Matching the source name alone means the walk stops on this module's
- * own frame everywhere outside the repository, and every record names the
- * logger instead of the code that called it.
- */
-const INTERNAL_FRAME_MARKERS = ['logger.ts', 'logger.js', 'node_modules', 'pino'];
+/** V8's nested-eval frame: `at eval (eval at fn (/app/main.js:1:1), <anonymous>:1:1)`. */
+const EVAL_FRAME_MARKER = 'eval at ';
 
 /** Strip the directory part of a path. */
 function basename(path: string): string {
@@ -110,39 +118,77 @@ function basename(path: string): string {
  * Exported for direct unit testing; not part of the package's public API.
  */
 export function _parseStackFrame(frame: string): Callsite | undefined {
+  // A nested-eval frame carries two locations in one set of parentheses, and
+  // every path group here would swallow both. There is no file to report for
+  // code that has none, so report nothing.
+  if (frame.includes(EVAL_FRAME_MARKER)) return undefined;
   const named = NAMED_FRAME_RE.exec(frame);
   if (named) {
-    const site: Callsite = { filename: basename(named[2]), lineno: Number(named[3]) };
+    const site: Callsite = {
+      filename: basename(named[2]),
+      path: named[2],
+      lineno: Number(named[3]),
+    };
     const fn = named[1].replace(ASYNC_PREFIX_RE, '');
     if (!fn.includes(ANONYMOUS_NAME)) site.functionName = fn;
     return site;
   }
   const bare = BARE_FRAME_RE.exec(frame);
   if (!bare) return undefined;
-  return { filename: basename(bare[1]), lineno: Number(bare[2]) };
+  return { filename: basename(bare[1]), path: bare[1], lineno: Number(bare[2]) };
+}
+
+/** The source path a frame names, or undefined when the frame is unparseable. */
+function frameFile(frame: string): string | undefined {
+  return _parseStackFrame(frame)?.path;
 }
 
 /**
- * Walk the stack to the first frame outside the logging machinery.
+ * True for a frame belonging to pino, which sits between the caller and this
+ * module in every Node stack.
  *
- * Intentionally expensive: it builds an Error purely to read V8's stack, so it
- * runs only when logIncludeCaller or logCodeAttributes asks for a callsite.
+ * Matched on path *segments* rather than as a substring. `frame.includes('pino')`
+ * also matches a consumer working in `/home/pino/`, a function named
+ * `pinoAdapter`, and a package called `pinocchio`; `frame.includes('node_modules')`
+ * matches every library that logs, so any package wrapping this logger was
+ * attributed to whoever called *it*. Both were reported as the caller's own
+ * frame being skipped, which is a wrong answer, not a missing one.
  */
+function isPinoFrame(file: string): boolean {
+  const segments = file.split(/[\\/]/);
+  return (
+    segments.includes('node_modules') &&
+    segments.some((segment) => segment === 'pino' || segment.startsWith('pino-'))
+  );
+}
+
 /**
  * The first frame belonging to the caller rather than to the logging machinery.
  *
- * Separate from {@link captureCallsite} so the skip list is reachable from a
- * test with a synthetic stack. Building a real stack that contains a
- * `logger.js` frame is not possible from inside this source tree, and that is
- * the frame that matters: consumers run the compiled build, so a skip list
- * naming only the `.ts` file stops the walk on this module and reports the
- * logger as the callsite everywhere the package is actually used.
+ * `frames[0]` is this module's own capture frame by construction — the caller
+ * passes the stack with only the `Error` header removed — so its path is what
+ * identifies the rest of our frames, whatever the file is called. That is the
+ * whole of the rule, and it is why there is no list of file names to keep in
+ * step with the build: source tree, published `dist`, a consumer's own
+ * `logger.ts`, a renamed chunk, all behave the same.
+ *
+ * It also decides the bundled case honestly. Bundle this module and the
+ * consumer into one file and every frame shares that file, so no frame is
+ * distinguishable as the caller's and the walk returns nothing. A missing
+ * callsite is recoverable; naming the logger's own line as the caller's, which
+ * is what a file-name skip list does there, is not.
  *
  * Exported for direct unit testing; not part of the package's public API.
  */
 export function _firstCallerFrame(frames: string[]): string | undefined {
-  for (const frame of frames) {
-    if (INTERNAL_FRAME_MARKERS.some((marker) => frame.includes(marker))) continue;
+  const ownFile = frames.length > 0 ? frameFile(frames[0]) : undefined;
+  for (const frame of frames.slice(1)) {
+    const file = frameFile(frame);
+    // An unparseable frame is skipped rather than reported: `at new Promise
+    // (<anonymous>)` and the like carry no source position to publish.
+    if (file === undefined) continue;
+    if (file === ownFile) continue;
+    if (isPinoFrame(file)) continue;
     return frame;
   }
   return undefined;
@@ -150,11 +196,14 @@ export function _firstCallerFrame(frames: string[]): string | undefined {
 
 // Stryker disable all
 function captureCallsite(): Callsite | undefined {
-  const stack = new Error().stack?.split('\n');
-  /* v8 ignore next -- stack is always defined in V8 */
-  if (!stack) return undefined;
-  const frame = _firstCallerFrame(stack.slice(1));
-  /* v8 ignore next -- a V8 stack always has a frame outside the logger */
+  // `.stack` is a string only under V8's default formatting. A host that has
+  // installed its own Error.prepareStackTrace — a source-map or trace library,
+  // typically — gets whatever that returns, often an array of CallSite objects.
+  // Reading it as a string there would throw, and a logger that throws takes
+  // the record and the caller with it.
+  const stack = new Error().stack;
+  if (typeof stack !== 'string') return undefined;
+  const frame = _firstCallerFrame(stack.split('\n').slice(1));
   return frame === undefined ? undefined : _parseStackFrame(frame);
 }
 // Stryker enable all

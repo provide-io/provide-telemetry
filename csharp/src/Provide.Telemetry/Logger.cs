@@ -12,7 +12,14 @@ namespace Provide.Telemetry;
 /// Every entry point ends in two optional callsite parameters the compiler
 /// fills in — see <see cref="Emit"/>. A caller never writes them; a caller's own
 /// logging wrapper declares the same pair and forwards it, so the record blames
-/// the application rather than the wrapper.
+/// the application rather than the wrapper. Forward both or neither: forwarding
+/// only one leaves the other defaulting at the wrapper, and the record then
+/// names one file with another's line number, which nothing here can detect.
+///
+/// Two dispatch shapes lose the callsite, because the attributes are a
+/// compile-time substitution and neither goes through the compiler:
+/// <c>dynamic</c> and <see cref="System.Reflection.MethodInfo.Invoke(object, object[])"/>.
+/// Both emit a record with no callsite rather than a wrong one.
 /// </remarks>
 public sealed class Logger
 {

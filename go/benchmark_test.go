@@ -6,6 +6,8 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"testing"
 )
 
@@ -144,5 +146,34 @@ func BenchmarkHistogram_Record(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		h.Record(ctx, 3.14)
+	}
+}
+
+// ── Log emit ────────────────────────────────────────────────────────────────
+
+// The emit path, end to end: the processor chain plus the JSON renderer.
+//
+// Until this pair, nothing here measured emitting a record — the set covered
+// the pieces around it, sampling and sanitization and the instruments, and the
+// one operation every service performs on every request was unbudgeted. That is
+// how the callsite lookup could be added to a knob that defaults *on* without
+// any gate noticing the cost; the pair exists so its share is a number.
+//
+// The base handler is constructed directly rather than through
+// _baseLogHandler, so the measurement is the chain and the renderer with no
+// package-level sink or setup state in it.
+func BenchmarkLogEmit_WithCallsite(b *testing.B)    { benchmarkLogEmit(b, true) }
+func BenchmarkLogEmit_WithoutCallsite(b *testing.B) { benchmarkLogEmit(b, false) }
+
+func benchmarkLogEmit(b *testing.B, includeCaller bool) {
+	b.Helper()
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Format = LogFormatJSON
+	cfg.Logging.IncludeCaller = includeCaller
+	logger := slog.New(_newTelemetryHandler(slog.NewJSONHandler(io.Discard, nil), cfg, "bench"))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		logger.Info("bench.log.emit", "attempt", 1)
 	}
 }

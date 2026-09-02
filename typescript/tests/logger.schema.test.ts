@@ -237,6 +237,47 @@ describe('write hook — logCodeAttributes is independent of logIncludeCaller', 
     spy.mockRestore();
   });
 
+  it('emits the record with no callsite when a host owns Error.prepareStackTrace', () => {
+    // Source-map and tracing libraries install their own formatter, and then
+    // `.stack` is whatever it returns — an array of CallSite objects, usually.
+    // Reading that as a string throws, and in a browser pino has no catch
+    // around the hook, so the throw reaches the application's log call.
+    makeCfg({ logIncludeCaller: true, logCodeAttributes: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    const original = Error.prepareStackTrace;
+    Error.prepareStackTrace = (_err, frames) => frames;
+    try {
+      const obj: Record<string, unknown> = { level: 30, event: 'prepared.stack' };
+      expect(() => hook(obj)).not.toThrow();
+      expect(obj['filename']).toBeUndefined();
+      expect(obj['lineno']).toBeUndefined();
+      expect(callsiteOf(spy)).toBeUndefined();
+    } finally {
+      Error.prepareStackTrace = original;
+      spy.mockRestore();
+    }
+  });
+
+  it('emits the record with no callsite when the stack holds no caller frame', () => {
+    // Error.stackTraceLimit = 0 yields a header and nothing else, which is the
+    // same shape a bundled build produces: no frame is the caller's.
+    makeCfg({ logIncludeCaller: true, logCodeAttributes: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    const original = Error.stackTraceLimit;
+    Error.stackTraceLimit = 0;
+    try {
+      const obj: Record<string, unknown> = { level: 30, event: 'no.frames' };
+      hook(obj);
+      expect(obj['filename']).toBeUndefined();
+      expect(callsiteOf(spy)).toBeUndefined();
+    } finally {
+      Error.stackTraceLimit = original;
+      spy.mockRestore();
+    }
+  });
+
   it('resolves the enclosing function name from a named frame', () => {
     makeCfg({ logIncludeCaller: false, logCodeAttributes: true });
     const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
@@ -264,6 +305,7 @@ describe('_parseStackFrame', () => {
   it('reads file, line and function name from a named frame', () => {
     expect(_parseStackFrame('    at handleRequest (/srv/app/routes.ts:42:17)')).toEqual({
       filename: 'routes.ts',
+      path: '/srv/app/routes.ts',
       lineno: 42,
       functionName: 'handleRequest',
     });
@@ -281,19 +323,40 @@ describe('_parseStackFrame', () => {
 
   it('omits the function name for a V8 <anonymous> placeholder', () => {
     const site = _parseStackFrame('    at Object.<anonymous> (/srv/app/main.js:1:1)');
-    expect(site).toEqual({ filename: 'main.js', lineno: 1 });
+    expect(site).toEqual({ filename: 'main.js', path: '/srv/app/main.js', lineno: 1 });
     expect(site?.functionName).toBeUndefined();
   });
 
   it('omits the function name for a bare frame', () => {
     expect(_parseStackFrame('    at /srv/app/boot.ts:3:11')).toEqual({
       filename: 'boot.ts',
+      path: '/srv/app/boot.ts',
       lineno: 3,
     });
   });
 
   it('returns undefined for a frame with no source location', () => {
     expect(_parseStackFrame('    at new Promise (<anonymous>)')).toBeUndefined();
+  });
+
+  it('strips a Windows path, which a CJS frame reports with backslashes', () => {
+    // `filename` is specified as a base name. Stripping only forward slashes
+    // publishes `C:\srv\app\routes.ts` whole — the build machine's layout, on
+    // every record, on the platform where CJS output is still common.
+    expect(_parseStackFrame('    at handleRequest (C:\\srv\\app\\routes.ts:42:17)')).toEqual({
+      filename: 'routes.ts',
+      path: 'C:\\srv\\app\\routes.ts',
+      lineno: 42,
+      functionName: 'handleRequest',
+    });
+  });
+
+  it('returns undefined for a nested-eval frame', () => {
+    // Two locations inside one set of parentheses. Every path group here would
+    // swallow both and publish `main.js:1:1), <anonymous>` as a filename.
+    expect(
+      _parseStackFrame('    at eval (eval at <anonymous> (/app/main.js:1:1), <anonymous>:1:1)'),
+    ).toBeUndefined();
   });
 });
 
@@ -433,29 +496,80 @@ describe('write hook — logIncludeTimestamp toggle', () => {
 
 describe('_firstCallerFrame', () => {
   const caller = '    at handleRequest (/srv/app/routes.ts:42:17)';
+  const capture = '    at captureCallsite (/pkg/src/logger.ts:150:9)';
 
   it('skips this module in the source tree', () => {
-    expect(_firstCallerFrame(['    at write (/pkg/src/logger.ts:210:9)', caller])).toBe(caller);
+    expect(_firstCallerFrame([capture, caller])).toBe(caller);
   });
 
   it('skips this module in the published build', () => {
     // The frame consumers actually get: they import dist/logger.js, never the
-    // .ts source. A skip list naming only the source file stops the walk here
-    // and reports the logger as the callsite for every record in every build.
-    expect(_firstCallerFrame(['    at write (/pkg/dist/logger.js:210:9)', caller])).toBe(caller);
+    // .ts source. Frame 0 is this module's own by construction, whatever the
+    // file is called, so the build the consumer runs needs no separate rule.
+    expect(
+      _firstCallerFrame(['    at captureCallsite (/pkg/dist/logger.js:150:9)', caller]),
+    ).toBe(caller);
   });
 
-  it('skips dependencies and pino frames', () => {
+  it('skips every later frame from the same file as the capture frame', () => {
+    expect(_firstCallerFrame([capture, '    at hook (/pkg/src/logger.ts:410:5)', caller])).toBe(
+      caller,
+    );
+  });
+
+  it('skips pino frames, including a pnpm store path', () => {
     expect(
       _firstCallerFrame([
+        capture,
         '    at Pino.write (/pkg/node_modules/pino/lib/proto.js:210:9)',
-        '    at Object.info (/pkg/node_modules/.pnpm/pino/index.js:11:2)',
+        '    at Object.info (/pkg/node_modules/.pnpm/pino@9.5.0/node_modules/pino/index.js:11:2)',
+        '    at push (/pkg/node_modules/pino-abstract-transport/index.js:3:1)',
         caller,
       ]),
     ).toBe(caller);
   });
 
-  it('returns undefined when every frame is internal', () => {
-    expect(_firstCallerFrame(['    at write (/pkg/dist/logger.js:210:9)'])).toBeUndefined();
+  it('reports a dependency that logs, rather than whoever called it', () => {
+    // Skipping every node_modules frame made any library using this logger
+    // invisible: its records named the application file that called *it*.
+    const dependency = '    at query (/srv/app/node_modules/@acme/db/query.ts:4:3)';
+    expect(_firstCallerFrame([capture, dependency, caller])).toBe(dependency);
+  });
+
+  it('reports a caller working under a directory named pino', () => {
+    const inPinoDir = '    at handle (/home/pino/app/handler.ts:4:3)';
+    expect(_firstCallerFrame([capture, inPinoDir])).toBe(inPinoDir);
+  });
+
+  it('reports a caller whose own file is named logger.ts', () => {
+    // A consumer wrapping this SDK in their own logger.ts is the common case,
+    // and a file-name skip list attributes their records to their caller.
+    const consumerLogger = '    at log (/srv/app/src/logger.ts:12:3)';
+    expect(_firstCallerFrame([capture, consumerLogger])).toBe(consumerLogger);
+  });
+
+  it('skips a frame with no source position rather than reporting it', () => {
+    expect(_firstCallerFrame([capture, '    at new Promise (<anonymous>)', caller])).toBe(caller);
+  });
+
+  it('returns undefined when every frame shares the capture frame file', () => {
+    // A bundle. There is no way to tell the caller from the logger inside one
+    // file, and naming the logger's own line is a wrong answer, not a missing
+    // one.
+    expect(
+      _firstCallerFrame([
+        '    at captureCallsite (/srv/app/out.cjs:7125:20)',
+        '    at hook (/srv/app/out.cjs:7180:5)',
+        '    at handleRequest (/srv/app/out.cjs:7391:9)',
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined when the capture frame is the only one', () => {
+    expect(_firstCallerFrame([capture])).toBeUndefined();
+  });
+
+  it('returns undefined for an empty stack', () => {
+    expect(_firstCallerFrame([])).toBeUndefined();
   });
 });
