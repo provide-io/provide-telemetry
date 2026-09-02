@@ -138,7 +138,7 @@ export function _parseStackFrame(frame: string): Callsite | undefined {
   return { filename: basename(bare[1]), path: bare[1], lineno: Number(bare[2]) };
 }
 
-/** The source path a frame names, or undefined when the frame is unparseable. */
+/** The source path a frame names, or undefined when the frame is unparsable. */
 function frameFile(frame: string): string | undefined {
   return _parseStackFrame(frame)?.path;
 }
@@ -184,7 +184,7 @@ export function _firstCallerFrame(frames: string[]): string | undefined {
   const ownFile = frames.length > 0 ? frameFile(frames[0]) : undefined;
   for (const frame of frames.slice(1)) {
     const file = frameFile(frame);
-    // An unparseable frame is skipped rather than reported: `at new Promise
+    // An unparsable frame is skipped rather than reported: `at new Promise
     // (<anonymous>)` and the like carry no source position to publish.
     if (file === undefined) continue;
     if (file === ownFile) continue;
