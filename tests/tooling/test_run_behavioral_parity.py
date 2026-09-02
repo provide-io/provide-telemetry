@@ -496,3 +496,59 @@ def test_cli_main_prints_clean_error_and_fails_when_otel_stack_missing(
     assert exit_code != 0, "main() should return non-zero when runtime probe raises"
     assert "[runtime-probe] ERROR:" in captured.err
     assert "opentelemetry-sdk[otlp]" in captured.err
+
+
+# ── runtime detection ────────────────────────────────────────────────────────
+
+
+def _runner_for(cmd: list[str], module: ModuleType) -> object:
+    """A LanguageRunner whose only interesting field is the check command."""
+    return module.LanguageRunner(
+        name="probe",
+        label="Probe",
+        check_cmd=cmd,
+        run_cmds=[],
+        cwd=_REPO_ROOT,
+    )
+
+
+def test_a_missing_runtime_is_reported_immediately() -> None:
+    """An absent binary raises FileNotFoundError; no timeout is involved."""
+    module = _load_runner_module()
+    assert module._runtime_available(_runner_for(["definitely-not-a-real-runtime"], module)) is False
+
+
+def test_a_slow_but_present_runtime_is_not_called_missing() -> None:
+    """The case that failed a green change.
+
+    `dotnet --version` on a runner that has just installed the SDK pays for its
+    first-run initialisation, and on a machine still busy with the previous
+    language's suite it exceeded the former ten-second cap — so the harness
+    reported C# as *not installed* and failed the whole gate.
+    """
+    module = _load_runner_module()
+    slow = [sys.executable, "-c", "import time; time.sleep(0.5)"]
+
+    assert module._runtime_available(_runner_for(slow, module)) is True
+
+
+def test_the_timeout_is_what_decides_that(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The other side of the pair: a short enough cap does misreport it.
+
+    Without this the test above would pass just as well against a build with no
+    timeout at all, and would stop being about the cap.
+    """
+    module = _load_runner_module()
+    slow = [sys.executable, "-c", "import time; time.sleep(0.5)"]
+    monkeypatch.setattr(module, "_RUNTIME_CHECK_TIMEOUT_SECONDS", 0.05)
+
+    assert module._runtime_available(_runner_for(slow, module)) is False
+
+
+def test_the_timeout_stays_generous() -> None:
+    """The only thing this cap can catch is a runtime that is slow to answer."""
+    module = _load_runner_module()
+    assert module._RUNTIME_CHECK_TIMEOUT_SECONDS >= 60, (
+        "a short cap reports a slow-starting but installed runtime as missing, "
+        "which fails the parity gate on a change that is fine"
+    )
