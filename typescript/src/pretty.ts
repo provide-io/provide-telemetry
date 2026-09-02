@@ -58,18 +58,33 @@ function wrap(value: string, color: string, colors: boolean): string {
   return colors && color ? color + value + RESET : value;
 }
 
+/** Which of the process's two output streams a record is heading for. */
+export type ConsoleStream = 'stdout' | 'stderr';
+
 /**
- * Detect whether stderr supports color.
- * Returns false in browsers, CI without FORCE_COLOR, or piped output.
+ * Detect whether the given stream supports color.
+ *
+ * The stream matters, and asking the wrong one is the defect this parameter
+ * exists to fix: `console.debug` and `console.log` write to **stdout**, and
+ * those carry trace, debug and info — most records — while only warn and error
+ * reach stderr. Deciding colour from stderr alone answered for the minority and
+ * applied it to everything, so a run with one stream piped and the other a
+ * terminal was coloured wrongly in whichever direction.
+ *
+ * Defaults to stderr, which is what this returned before it could be asked
+ * about anything else.
+ *
+ * Returns false in browsers, in CI without FORCE_COLOR, and for piped output.
  */
-export function supportsColor(): boolean {
+export function supportsColor(stream: ConsoleStream = 'stderr'): boolean {
   // Stryker disable next-line ConditionalExpression,StringLiteral,BooleanLiteral -- browser-only guard
   /* v8 ignore next -- browser-only path, untestable in Node */
   if (typeof process === 'undefined') return false;
   if (process.env['FORCE_COLOR'] === '1' || process.env['FORCE_COLOR'] === 'true') return true;
   if (process.env['NO_COLOR'] !== undefined) return false;
-  // Stryker disable next-line OptionalChaining -- process.stderr is always defined in Node/test env
-  if (typeof process.stderr?.isTTY === 'boolean') return process.stderr.isTTY;
+  const target = stream === 'stdout' ? process.stdout : process.stderr;
+  // Stryker disable next-line OptionalChaining -- both streams are always defined in Node/test env
+  if (typeof target?.isTTY === 'boolean') return target.isTTY;
   return false;
 }
 

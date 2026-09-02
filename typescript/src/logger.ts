@@ -19,6 +19,7 @@ import { getContext } from './context.js';
 import { loadConsentFromEnv, shouldAllow } from './consent.js';
 import { computeErrorFingerprint } from './fingerprint.js';
 import { formatPretty, supportsColor } from './pretty.js';
+import type { ConsoleStream } from './pretty.js';
 import { _emittedField, _incrementHealth } from './health.js';
 import { emitLogRecord } from './otel-logs.js';
 import { hardenRecord } from './harden.js';
@@ -34,13 +35,34 @@ import { LogSeverity, severityFromPino, severityName, toPinoLevel } from './leve
 // and appends a stack dump, so a TRACE record emitted through it is no longer
 // a parseable line. console.debug is the same severity channel without the
 // decoration.
-const LEVEL_MAP: Record<number, string> = {
+/** The console methods this logger dispatches to. */
+type ConsoleMethod = 'debug' | 'log' | 'warn' | 'error';
+
+const LEVEL_MAP: Record<number, ConsoleMethod> = {
   10: 'debug',
   20: 'debug',
   30: 'log',
   40: 'warn',
   50: 'error',
   60: 'error',
+};
+
+/**
+ * Which stream each console method writes to.
+ *
+ * Node's `console.debug` is an alias of `console.log` and both go to stdout;
+ * `console.warn` is an alias of `console.error` and both go to stderr. So the
+ * majority of records — trace, debug and info — are not on the stream the
+ * colour probe used to ask about.
+ */
+// Total over ConsoleMethod rather than keyed by string: a partial map would
+// need a fallback arm that no level can reach, which is a branch no test can
+// cover and no reader can justify.
+const CONSOLE_STREAM: Record<ConsoleMethod, ConsoleStream> = {
+  debug: 'stdout',
+  log: 'stdout',
+  warn: 'stderr',
+  error: 'stderr',
 };
 
 /** Pino level number → semantic level string for consent checks. */
@@ -404,7 +426,7 @@ export function makeWriteHook() {
         if (cfg.logFormat === 'pretty' || cfg.logFormat === 'console') {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (console as any)[method](
-            formatPretty(o, supportsColor(), {
+            formatPretty(o, supportsColor(CONSOLE_STREAM[method]), {
               keyColor: cfg.logPrettyKeyColor,
               valueColor: cfg.logPrettyValueColor,
               fields: cfg.logPrettyFields,

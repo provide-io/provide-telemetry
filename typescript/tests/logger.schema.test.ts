@@ -573,3 +573,72 @@ describe('_firstCallerFrame', () => {
     expect(_firstCallerFrame([])).toBeUndefined();
   });
 });
+
+// ── colour follows the stream the record is actually written to ──────────────
+
+describe('write hook — colour is decided per destination stream', () => {
+  /**
+   * The wiring, not the helper. supportsColor now takes a stream, and this is
+   * what proves the level's real destination is what it is asked about:
+   * console.debug/log go to stdout and carry trace, debug and info, while only
+   * warn and error reach stderr.
+   */
+  function withStreams(stdoutTTY: boolean, stderrTTY: boolean, body: () => void): void {
+    const origProcess = globalThis.process;
+    const origForceColor = process.env['FORCE_COLOR'];
+    const origNoColor = process.env['NO_COLOR'];
+    try {
+      delete process.env['FORCE_COLOR'];
+      delete process.env['NO_COLOR'];
+      vi.stubGlobal('process', {
+        ...origProcess,
+        env: { ...origProcess.env },
+        stdout: { ...origProcess.stdout, isTTY: stdoutTTY },
+        stderr: { ...origProcess.stderr, isTTY: stderrTTY },
+      });
+      body();
+    } finally {
+      if (origForceColor === undefined) delete process.env['FORCE_COLOR'];
+      else process.env['FORCE_COLOR'] = origForceColor;
+      if (origNoColor === undefined) delete process.env['NO_COLOR'];
+      else process.env['NO_COLOR'] = origNoColor;
+      vi.unstubAllGlobals();
+    }
+  }
+
+  it('colours an info record from stdout, and an error record from stderr', () => {
+    makeCfg({ logFormat: 'pretty', consoleOutput: true });
+    const hook = makeWriteHook();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    withStreams(true, false, () => {
+      hook({ level: 30, event: 'stream.info.ok' });
+      hook({ level: 50, event: 'stream.error.ok' });
+    });
+
+    expect(String(log.mock.calls[0]?.[0])).toContain('\x1b[');
+    expect(String(err.mock.calls[0]?.[0])).not.toContain('\x1b[');
+
+    log.mockRestore();
+    err.mockRestore();
+  });
+
+  it('and the other way round when only stderr is a terminal', () => {
+    makeCfg({ logFormat: 'pretty', consoleOutput: true });
+    const hook = makeWriteHook();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    withStreams(false, true, () => {
+      hook({ level: 30, event: 'stream.info.ok' });
+      hook({ level: 50, event: 'stream.error.ok' });
+    });
+
+    expect(String(log.mock.calls[0]?.[0])).not.toContain('\x1b[');
+    expect(String(err.mock.calls[0]?.[0])).toContain('\x1b[');
+
+    log.mockRestore();
+    err.mockRestore();
+  });
+});
