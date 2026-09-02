@@ -44,6 +44,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **The PII pass dropped duplicate attribute keys and randomized attribute
+  order.** Sanitizing converts a record's attributes to a `map[string]any`, runs
+  the rule engine, and converts back — and a Go map cannot represent two things
+  slog guarantees.
+
+  Duplicate keys collapsed. slog permits them and leaves rendering to the
+  handler, so `logger.Info("m", slog.String("k", "a"), slog.String("k", "b"))` is
+  legitimate; keying a map by name meant the last write won and `"a"` was gone,
+  with nothing reporting it. Anything accumulating a repeated field in a loop
+  lost all but the final one.
+
+  Order was randomized, because Go deliberately randomizes map iteration. Six
+  emissions of one identical call produced six orders — irrelevant to a JSON
+  consumer, and visible churn for the `console` and `pretty` renderers, for
+  anyone diffing log files, and for golden-output tests.
+
+  The handler now keeps the attributes as an ordered slice and passes maps only
+  as arguments, sanitizing in rounds — one per occurrence of a repeated key, so
+  every duplicate is judged by the engine under its own key rather than smuggled
+  past it. Almost every record takes exactly one round. The engine is untouched:
+  `SanitizePayload` remains the cross-language contract the fixtures pin, and
+  splitting one map into several changes no decision it makes, because
+  `SanitizeMap` judges each entry on its own key, path and value and no rule
+  consults a sibling.
+
+  Keys are cleaned before the split, not after. Hardening strips control
+  characters from keys — a newline in one used to forge a second log line
+  through the pretty renderer — so the engine returns them under the cleaned
+  name, and a rebuild keyed on the caller's original spelling would have found
+  nothing and dropped exactly the attributes that most need to survive.
+
 - **ANSI is emitted to a Windows console only once it can render it.** A console
   handle is a character device, so the terminal probe said colour was fine on
   every one of them — including legacy conhost, which prints `←[36m` literally.
