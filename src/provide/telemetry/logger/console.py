@@ -38,21 +38,26 @@ import importlib.util
 import sys
 from typing import IO, Any
 
+from provide.telemetry.logger._windows_console import enable_virtual_terminal
+
 __all__ = ["ansi_supported", "structlog_colors", "utf8_writer"]
 
 # CPython spells the one codec several ways depending on how the stream was
 # configured; a hyphen and an underscore are the same separator to it.
 _UTF8_NAMES = frozenset({"utf8", "utf_8"})
 
+
 # Windows console API constants, used only inside _enable_virtual_terminal.
 # Nothing on a non-Windows runner can observe them, so a mutation of either is
 # undetectable by construction rather than by a gap in the tests.
-_ENABLE_VIRTUAL_TERMINAL_PROCESSING = 4  # pragma: no mutate — Windows-only constant, unobservable off Windows
-_STD_ERROR_HANDLE = -12  # pragma: no mutate — Windows-only constant, unobservable off Windows
-
-
 def _is_windows() -> bool:
     return sys.platform == "win32"
+
+
+# Bound as a module attribute so a test can substitute it: the interop it names
+# cannot run on the machine that checks this file. See _windows_console, which
+# also explains why it lives in a module of its own.
+_enable_virtual_terminal = enable_virtual_terminal
 
 
 def _colorama_installed() -> bool:
@@ -60,33 +65,6 @@ def _colorama_installed() -> bool:
     if "colorama" in sys.modules:
         return True
     return importlib.util.find_spec("colorama") is not None
-
-
-def _enable_virtual_terminal(stream: Any) -> bool:  # pragma: no cover — Windows-only interop
-    """Turn on VT processing for stream's console handle, reporting success.
-
-    Every line here is a ctypes call into kernel32 that exists only on Windows,
-    and the coverage run is Linux. The decision around it — that this is asked
-    only for a Windows terminal, and that its answer is the colour answer — is
-    in ``ansi_supported`` and is tested there with this function replaced.
-    """
-    import ctypes
-
-    # windll exists only on Windows, and neither type checker has a platform
-    # to condition on here — the whole function is behind that check already.
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
-    try:
-        fileno = stream.fileno()
-    except (AttributeError, OSError, ValueError):
-        fileno = 2
-    handle = kernel32.GetStdHandle(_STD_ERROR_HANDLE if fileno == 2 else -11)
-
-    mode = ctypes.c_uint32()
-    if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-        return False
-    if mode.value & _ENABLE_VIRTUAL_TERMINAL_PROCESSING:
-        return True
-    return bool(kernel32.SetConsoleMode(handle, mode.value | _ENABLE_VIRTUAL_TERMINAL_PROCESSING))
 
 
 def ansi_supported(stream: Any) -> bool:
