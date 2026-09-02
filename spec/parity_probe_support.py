@@ -366,6 +366,7 @@ def run_output_check(
 # this file under the 500-LOC ceiling. Re-export both the public entrypoint
 # and the private helpers that existing tests reach into directly so callers
 # (spec/run_behavioral_parity.py and tests/tooling) keep working unchanged.
+from _caller_probe import run_caller_output_check  # noqa: E402
 from _runtime_probe import (  # noqa: E402, F401
     _load_runtime_probe_fixtures,
     _run_runtime_probe,
@@ -376,6 +377,7 @@ from _runtime_probe import (  # noqa: E402, F401
 
 __all__ = [
     "ProbeRunner",
+    "run_caller_output_check",
     "run_contract_cases",
     "run_output_check",
     "run_runtime_probe_check",

@@ -4,7 +4,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config.js';
 import { _resetContext } from '../src/context.js';
-import { _resetRootLogger, getLogger, makeWriteHook } from '../src/logger.js';
+import type { Callsite } from '../src/logger.js';
+import { _parseStackFrame, _resetRootLogger, getLogger, makeWriteHook } from '../src/logger.js';
 import * as otelLogs from '../src/otel-logs.js';
 import * as schema from '../src/schema.js';
 
@@ -145,36 +146,148 @@ describe('write hook — schema validation (strictSchema)', () => {
   });
 });
 
-// ── logIncludeCaller tests ────────────────────────────────────────────────────
+// ── callsite capture tests ────────────────────────────────────────────────────
+
+/**
+ * Call the hook from a named function so the resulting V8 frame carries a
+ * function name. Calls made straight from an `it` callback produce a bare
+ * frame instead, because the callback is an anonymous arrow.
+ */
+function emitFromNamedFunction(
+  hook: ReturnType<typeof makeWriteHook>,
+  obj: Record<string, unknown>,
+): void {
+  hook(obj);
+}
+
+/** The last callsite handed to emitLogRecord by the hook. */
+function callsiteOf(spy: ReturnType<typeof vi.spyOn>): Callsite | undefined {
+  return spy.mock.calls[0][1] as Callsite | undefined;
+}
 
 describe('write hook — logIncludeCaller', () => {
-  it('injects caller_file and caller_line when logIncludeCaller is true', () => {
+  it('injects filename and lineno when logIncludeCaller is true', () => {
     makeCfg({ logIncludeCaller: true });
     const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'caller.test' };
     hook(obj);
-    expect(obj['caller_file']).toBeDefined();
-    expect(typeof obj['caller_file']).toBe('string');
-    expect(typeof obj['caller_line']).toBe('number');
+    // The logger's own frames are skipped, so this resolves to the test file.
+    expect(obj['filename']).toBe('logger.schema.test.ts');
+    expect(typeof obj['lineno']).toBe('number');
   });
 
-  it('caller_file is a basename (no full path)', () => {
+  it('filename is a basename (no full path)', () => {
     makeCfg({ logIncludeCaller: true });
     const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'caller.basename' };
     hook(obj);
-    expect(obj['caller_file']).toBeDefined();
+    expect(obj['filename']).toBeDefined();
     // Should not contain path separators — it's a basename
-    expect(String(obj['caller_file'])).not.toContain('/');
+    expect(String(obj['filename'])).not.toContain('/');
   });
 
-  it('does NOT inject caller_file when logIncludeCaller is false', () => {
+  it('does NOT inject filename when logIncludeCaller is false', () => {
     makeCfg({ logIncludeCaller: false });
     const hook = makeWriteHook();
     const obj: Record<string, unknown> = { level: 30, event: 'no.caller' };
     hook(obj);
-    expect(obj['caller_file']).toBeUndefined();
-    expect(obj['caller_line']).toBeUndefined();
+    expect(obj['filename']).toBeUndefined();
+    expect(obj['lineno']).toBeUndefined();
+  });
+});
+
+describe('write hook — logCodeAttributes is independent of logIncludeCaller', () => {
+  it('captures a callsite with logCodeAttributes alone and writes no record fields', () => {
+    makeCfg({ logIncludeCaller: false, logCodeAttributes: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 30, event: 'code.only' };
+    hook(obj);
+    expect(obj['filename']).toBeUndefined();
+    expect(obj['lineno']).toBeUndefined();
+    expect(callsiteOf(spy)).toMatchObject({ filename: 'logger.schema.test.ts' });
+    spy.mockRestore();
+  });
+
+  it('passes no callsite when logCodeAttributes is off but logIncludeCaller is on', () => {
+    makeCfg({ logIncludeCaller: true, logCodeAttributes: false });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 30, event: 'caller.only' };
+    hook(obj);
+    expect(obj['filename']).toBe('logger.schema.test.ts');
+    expect(callsiteOf(spy)).toBeUndefined();
+    spy.mockRestore();
+  });
+
+  it('skips the stack walk entirely when both knobs are off', () => {
+    makeCfg({ logIncludeCaller: false, logCodeAttributes: false });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    const obj: Record<string, unknown> = { level: 30, event: 'neither' };
+    hook(obj);
+    expect(obj['filename']).toBeUndefined();
+    expect(callsiteOf(spy)).toBeUndefined();
+    spy.mockRestore();
+  });
+
+  it('resolves the enclosing function name from a named frame', () => {
+    makeCfg({ logIncludeCaller: false, logCodeAttributes: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    emitFromNamedFunction(hook, { level: 30, event: 'named.frame' });
+    expect(callsiteOf(spy)?.functionName).toBe('emitFromNamedFunction');
+    spy.mockRestore();
+  });
+
+  it('omits the function name when the calling frame is anonymous', () => {
+    makeCfg({ logIncludeCaller: false, logCodeAttributes: true });
+    const spy = vi.spyOn(otelLogs, 'emitLogRecord').mockImplementation(() => {});
+    const hook = makeWriteHook();
+    // Called straight from this anonymous arrow — V8 emits a nameless frame.
+    hook({ level: 30, event: 'anon.frame' });
+    expect(callsiteOf(spy)).toMatchObject({ filename: 'logger.schema.test.ts' });
+    expect(callsiteOf(spy)?.functionName).toBeUndefined();
+    spy.mockRestore();
+  });
+});
+
+// ── stack frame parsing ───────────────────────────────────────────────────────
+
+describe('_parseStackFrame', () => {
+  it('reads file, line and function name from a named frame', () => {
+    expect(_parseStackFrame('    at handleRequest (/srv/app/routes.ts:42:17)')).toEqual({
+      filename: 'routes.ts',
+      lineno: 42,
+      functionName: 'handleRequest',
+    });
+  });
+
+  it('keeps the qualifying prefix of a method frame', () => {
+    expect(_parseStackFrame('    at Service.handle (/srv/app/service.ts:7:3)')?.functionName).toBe(
+      'Service.handle',
+    );
+  });
+
+  it('strips the async modifier V8 prints ahead of the name', () => {
+    expect(_parseStackFrame('    at async load (/srv/app/load.ts:9:1)')?.functionName).toBe('load');
+  });
+
+  it('omits the function name for a V8 <anonymous> placeholder', () => {
+    const site = _parseStackFrame('    at Object.<anonymous> (/srv/app/main.js:1:1)');
+    expect(site).toEqual({ filename: 'main.js', lineno: 1 });
+    expect(site?.functionName).toBeUndefined();
+  });
+
+  it('omits the function name for a bare frame', () => {
+    expect(_parseStackFrame('    at /srv/app/boot.ts:3:11')).toEqual({
+      filename: 'boot.ts',
+      lineno: 3,
+    });
+  });
+
+  it('returns undefined for a frame with no source location', () => {
+    expect(_parseStackFrame('    at new Promise (<anonymous>)')).toBeUndefined();
   });
 });
 

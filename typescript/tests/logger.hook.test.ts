@@ -207,8 +207,8 @@ describe('getLogger lazy init', () => {
       expect(record['env']).toBe('parity');
       expect(record['version']).toBe('1.2.3');
       expect(record['time']).toBeUndefined();
-      expect(record['caller_file']).toBeUndefined();
-      expect(record['caller_line']).toBeUndefined();
+      expect(record['filename']).toBeUndefined();
+      expect(record['lineno']).toBeUndefined();
     } finally {
       delete process.env['PROVIDE_TELEMETRY_SERVICE_NAME'];
       delete process.env['PROVIDE_TELEMETRY_ENV'];

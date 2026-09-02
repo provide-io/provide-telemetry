@@ -30,6 +30,9 @@
  */
 
 import { LogSeverity, parseLevel } from './levels.js';
+// Type-only import: erased at compile time, so it adds no runtime edge back to
+// logger.ts (which imports emitLogRecord from here).
+import type { Callsite } from './logger.js';
 import type { TelemetryConfig } from './config.js';
 import { getConfig } from './config.js';
 import { validateOtlpEndpoint } from './endpoint.js';
@@ -132,8 +135,12 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
  * Emit a pino log record to the OTel LoggerProvider.
  * Called from makeWriteHook() on every log line after enrichment and sanitization.
  * No-op when no provider is registered (graceful degradation).
+ *
+ * `callsite` is supplied by the write hook when logCodeAttributes is on, and is
+ * what the `code.*` attributes are built from — deliberately not the record's
+ * own filename/lineno fields, which only exist when logIncludeCaller is on.
  */
-export function emitLogRecord(o: Record<string, unknown>): void {
+export function emitLogRecord(o: Record<string, unknown>, callsite?: Callsite): void {
   if (!_otelLogger) return;
 
   const severity = parseLevel(String(o['level'] ?? ''));
@@ -163,16 +170,14 @@ export function emitLogRecord(o: Record<string, unknown>): void {
     maxDepth: cfg.piiMaxDepth,
   });
 
-  // — Code attributes: map provide-telemetry fields to OTel semantic conventions —
-  if (cfg.logCodeAttributes) {
-    if (attributes['caller_file']) {
-      attributes['code.filepath'] = attributes['caller_file'];
-    }
-    if (attributes['caller_line']) {
-      attributes['code.lineno'] = attributes['caller_line'];
-    }
-    if (attributes['name']) {
-      attributes['code.namespace'] = attributes['name'];
+  // — Code attributes: publish the callsite under OTel semantic conventions —
+  // code.file.path / code.line.number / code.function.name are the current
+  // spellings; code.function.name is omitted when the frame resolved no name.
+  if (cfg.logCodeAttributes && callsite) {
+    attributes['code.file.path'] = callsite.filename;
+    attributes['code.line.number'] = callsite.lineno;
+    if (callsite.functionName) {
+      attributes['code.function.name'] = callsite.functionName;
     }
   }
 

@@ -53,6 +53,95 @@ const CONSENT_LEVEL_MAP: Record<number, string> = {
   60: 'error',
 };
 
+/**
+ * Resolved source location of the call that produced a log record.
+ *
+ * Produced by the write hook and handed to the OTLP log exporter, which
+ * publishes it as the `code.*` semantic-convention attributes. Kept separate
+ * from the record itself so `logCodeAttributes` and `logIncludeCaller` stay
+ * independent: the site is captured for either knob, and each knob decides
+ * only whether its own output is written.
+ */
+export interface Callsite {
+  /** Basename of the source file — a full path leaks the build machine layout. */
+  filename: string;
+  /** 1-based line number within that file. */
+  lineno: number;
+  /** Enclosing function name. Absent when V8 resolved no name for the frame. */
+  functionName?: string;
+}
+
+/** V8 frame that carries a function name: `at fn (/dir/file.ts:12:5)`. */
+const NAMED_FRAME_RE = /at\s+(.+?)\s+\((.+):(\d+):\d+\)/;
+/** V8 frame with no function name: `at /dir/file.ts:12:5`. */
+const BARE_FRAME_RE = /at\s+(.+):(\d+):\d+/;
+/** Everything up to and including the last path separator. */
+const PATH_PREFIX_RE = /^.*\//;
+/** V8 prints `async` ahead of the name; it is a modifier, not part of the name. */
+const ASYNC_PREFIX_RE = /^async\s+/;
+/** V8's stand-in for a name it could not resolve, e.g. `Object.<anonymous>`. */
+const ANONYMOUS_NAME = '<anonymous>';
+/**
+ * Frames that belong to the logging machinery rather than to its caller.
+ *
+ * Both extensions are listed because the walk has to work in both trees a
+ * frame can come from: `logger.ts` in this source tree and in the tests, and
+ * `logger.js` in the published build, which is the only one a consumer ever
+ * runs. Matching the source name alone means the walk stops on this module's
+ * own frame everywhere outside the repository, and every record names the
+ * logger instead of the code that called it.
+ */
+const INTERNAL_FRAME_MARKERS = ['logger.ts', 'logger.js', 'node_modules', 'pino'];
+
+/** Strip the directory part of a path. */
+function basename(path: string): string {
+  return path.replace(PATH_PREFIX_RE, '');
+}
+
+/**
+ * Parse one V8 stack frame into a callsite.
+ *
+ * `functionName` is omitted — rather than filled with a placeholder — whenever
+ * V8 resolved no name for the frame: a bare frame (top-level module code, an
+ * inline callback) carries none at all, and `Object.<anonymous>` is V8's own
+ * placeholder. An absent attribute is more useful to a consumer than one whose
+ * value means "unknown".
+ *
+ * Exported for direct unit testing; not part of the package's public API.
+ */
+export function _parseStackFrame(frame: string): Callsite | undefined {
+  const named = NAMED_FRAME_RE.exec(frame);
+  if (named) {
+    const site: Callsite = { filename: basename(named[2]), lineno: Number(named[3]) };
+    const fn = named[1].replace(ASYNC_PREFIX_RE, '');
+    if (!fn.includes(ANONYMOUS_NAME)) site.functionName = fn;
+    return site;
+  }
+  const bare = BARE_FRAME_RE.exec(frame);
+  if (!bare) return undefined;
+  return { filename: basename(bare[1]), lineno: Number(bare[2]) };
+}
+
+/**
+ * Walk the stack to the first frame outside the logging machinery.
+ *
+ * Intentionally expensive: it builds an Error purely to read V8's stack, so it
+ * runs only when logIncludeCaller or logCodeAttributes asks for a callsite.
+ */
+// Stryker disable all
+function captureCallsite(): Callsite | undefined {
+  const stack = new Error().stack?.split('\n');
+  /* v8 ignore next -- stack is always defined in V8 */
+  if (!stack) return undefined;
+  for (const frame of stack.slice(1)) {
+    if (INTERNAL_FRAME_MARKERS.some((marker) => frame.includes(marker))) continue;
+    return _parseStackFrame(frame);
+  }
+  /* v8 ignore next -- a V8 stack always has a frame outside the logger */
+  return undefined;
+}
+// Stryker enable all
+
 /** Public Logger interface — consumers should type against this, not pino.Logger. */
 export interface Logger {
   trace(obj: Record<string, unknown>, msg?: string): void;
@@ -146,28 +235,22 @@ export function makeWriteHook() {
       const pinoLevel = o['level'] as number;
       o['level'] = severityName(severityFromPino(pinoLevel));
 
-      // Caller info injection — intentionally expensive (creates Error per call).
+      // Callsite capture — one stack walk feeding two independent knobs.
+      // logIncludeCaller writes filename/lineno onto the record;
+      // logCodeAttributes forwards the site to the OTLP exporter, which
+      // publishes it as code.* attributes. Either knob alone triggers the
+      // walk, and neither implies the other's output.
       // Stryker disable all
-      if (cfg.logIncludeCaller) {
-        const err = new Error();
-        const stack = err.stack?.split('\n');
-        /* v8 ignore next -- stack is always defined in V8 */
-        if (stack) {
-          for (const frame of stack.slice(1)) {
-            if (
-              !frame.includes('logger.ts') &&
-              !frame.includes('node_modules') &&
-              !frame.includes('pino')
-            ) {
-              const match = frame.match(/\((.+):(\d+):\d+\)/) ?? frame.match(/at (.+):(\d+):\d+/);
-              /* v8 ignore next -- match always succeeds for V8 stack frames */
-              if (match) {
-                o['caller_file'] = match[1].replace(/^.*\//, ''); // basename only
-                o['caller_line'] = Number(match[2]);
-              }
-              break;
-            }
+      let codeSite: Callsite | undefined;
+      if (cfg.logIncludeCaller || cfg.logCodeAttributes) {
+        const site = captureCallsite();
+        /* v8 ignore next -- V8 always yields a parseable frame outside the logger */
+        if (site) {
+          if (cfg.logIncludeCaller) {
+            o['filename'] = site.filename;
+            o['lineno'] = site.lineno;
           }
+          if (cfg.logCodeAttributes) codeSite = site;
         }
       }
       // Stryker enable all
@@ -237,7 +320,7 @@ export function makeWriteHook() {
       _incrementHealth(_emittedField('logs'));
 
       // Export to OTLP when a log provider is registered (noop otherwise).
-      emitLogRecord(o);
+      emitLogRecord(o, codeSite);
 
       // Capture to window.__pinoLogs for Playwright and devtools inspection.
       // Check is done inline (not at module load) so it works when loaded in Node.js

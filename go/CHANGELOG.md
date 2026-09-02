@@ -7,6 +7,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`PROVIDE_LOG_INCLUDE_CALLER` and `PROVIDE_LOG_CODE_ATTRIBUTES` do something.**
+  Both were parsed into `LoggingConfig` and read by nothing: `AddSource` and
+  `slog.SourceKey` appeared nowhere in the package, so no record ever carried a
+  filename or a line number while the spec declared both variables applicable to
+  Go and `INCLUDE_CALLER` defaulted on.
+
+  `INCLUDE_CALLER` emits `filename` — the base name, never the absolute path
+  `runtime.Frame` carries, which is the path the *compiling* machine had —
+  and `lineno`. `CODE_ATTRIBUTES` emits `code.file.path`,
+  `code.function.name` and `code.line.number`. The gates are independent.
+
+  The fields are attached in the telemetry handler rather than through
+  `slog.HandlerOptions{AddSource: true}`. `AddSource` emits a `source` group of
+  `{function, file, line}`, which is not the canonical shape, and it reaches only
+  the JSON and text renderers — the pretty renderer builds no `HandlerOptions`
+  and the OTLP log bridge is a sibling handler, so both would have been left
+  without a callsite.
+
+  The record's `PC` is captured by `slog.Logger.log` before any handler runs and
+  survives every rebuild in the chain, so the frame is the caller's without any
+  frame-skipping.
+
+  Cost, since `INCLUDE_CALLER` defaults on: roughly 5.6 to 7.2 µs per emitted
+  record, one `runtime.CallersFrames` lookup — the same one stdlib `AddSource`
+  does. Previously free only because the knob was dead.
+
 ### Fixed
 
 - **A log record the destination refuses is counted as an export failure.**

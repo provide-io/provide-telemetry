@@ -10,7 +10,67 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Breaking
+
+**TypeScript: the callsite fields are renamed, and the OTel code attributes
+move to current semantic conventions.** Anyone filtering a saved query on the
+old names loses it.
+
+| Old | New |
+|---|---|
+| `caller_file` | `filename` |
+| `caller_line` | `lineno` |
+| `code.filepath` | `code.file.path` |
+| `code.lineno` | `code.line.number` |
+| `code.namespace` | *removed — no cross-language meaning* |
+| — | `code.function.name` (new; omitted when the frame resolves no name) |
+
+`PROVIDE_LOG_CODE_ATTRIBUTES` also stops depending on
+`PROVIDE_LOG_INCLUDE_CALLER`. It previously emitted nothing unless both were
+on, because the `code.*` attributes were derived from the record fields; each
+knob now controls only its own output.
+
+**C#: the nine public log methods gain two optional parameters.** `Trace`,
+`Debug`, `Info`, `Warn`, `Warning`, `Critical`, both `Error` overloads and
+`Log` each take `[CallerFilePath]` and `[CallerLineNumber]` arguments the
+compiler supplies. Source-compatible — call sites recompile unchanged — but
+binary-breaking: an assembly built against 0.8.x must be rebuilt.
+
+### Added
+
+- **Callsite fields are canonical, implemented in all four applicable SDKs, and
+  compared across them.** `PROVIDE_LOG_INCLUDE_CALLER` emits `filename` (a base
+  name, never a full path — a full path stamps the build machine's layout onto
+  every record) and `lineno`. `PROVIDE_LOG_CODE_ATTRIBUTES` emits
+  `code.file.path`, `code.function.name` and `code.line.number`. The two are
+  independent: each selects its own output from one capture.
+
+  Go and C# honour both knobs for the first time — each parsed the variable into
+  a config field nothing read. Go additionally implements
+  `PROVIDE_LOG_CODE_ATTRIBUTES`, and attaches the fields in the shared
+  middleware rather than through `slog.HandlerOptions`, so the `console`, `json`
+  and `pretty` renderers and the OTLP log bridge all carry identical fields.
+
+  A cross-language pass in the behavioural parity harness runs the probes with
+  capture enabled and asserts each SDK names its *caller's* file and a positive
+  line. That pass is what was missing: every harness in the repo forced
+  `PROVIDE_LOG_INCLUDE_CALLER=false` for deterministic output, so the one
+  behaviour the knob controls was never compared, and the SDKs drifted four ways
+  unseen.
+
 ### Fixed
+
+- **TypeScript reported its own source file as the callsite in every published
+  build.** The stack walk skipped frames matching `logger.ts`, but consumers run
+  the compiled `logger.js`, so the walk stopped on the logger's own frame and
+  every record named the SDK instead of the caller. Correct in the source tree
+  and in the tests, wrong everywhere it mattered.
+
+- **Go could emit a duplicate `filename` or `lineno`.** Callsite attachment is
+  the only step that runs after the PII pass, which is where the map round-trip
+  collapses every earlier duplicate — so an application logging its own
+  `filename` got the key twice. The callsite now shadows a caller's field of the
+  same name, as Python and C# do.
 
 - **Go: a log record the destination refuses is counted as an export failure.**
   `log/slog` discards a handler's returned error, so a failing writer lost every

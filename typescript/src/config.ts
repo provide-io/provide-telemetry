@@ -71,11 +71,14 @@ export interface TelemetryConfig {
 
   /** Include timestamp in log output. */
   logIncludeTimestamp: boolean;
-  /** Include caller info in log output. */
+  /** Add filename / lineno fields to each log record. */
   logIncludeCaller: boolean;
   /** Enable PII/secret sanitization in logs. */
   logSanitize: boolean;
-  /** Attach code.filepath / code.lineno attributes to log records. */
+  /**
+   * Attach code.file.path / code.line.number / code.function.name attributes to
+   * exported log records. Independent of logIncludeCaller.
+   */
   logCodeAttributes: boolean;
   /** Per-module log level overrides (e.g. {"provide.server": "DEBUG"}). */
   logModuleLevels: Record<string, string>;
