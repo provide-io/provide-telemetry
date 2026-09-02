@@ -99,11 +99,20 @@ public class LoggerEmissionTests : IDisposable
         Testing.ResetForTests();
         ProvideTelemetry.SetupTelemetry();
         var logger = ProvideTelemetry.GetLogger("levels");
+        // The two trailing parameters are the compiler-supplied callsite, which
+        // reflection cannot fill in; passing an empty path is how a caller with
+        // no source position of its own says so, and the record then omits
+        // filename/lineno. LoggerCallsiteTests covers the populated case.
         var emit = typeof(Logger).GetMethod(
-            method, new[] { typeof(string), typeof(IReadOnlyDictionary<string, object?>) })!;
+            method,
+            new[]
+            {
+                typeof(string), typeof(IReadOnlyDictionary<string, object?>),
+                typeof(string), typeof(int),
+            })!;
 
         var line = Assert.Single(CaptureStderr(
-            () => emit.Invoke(logger, new object?[] { "level.check.ok", null })));
+            () => emit.Invoke(logger, new object?[] { "level.check.ok", null, "", 0 })));
 
         var record = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(line)!;
         Assert.Equal(expected, record["level"].GetString());
@@ -382,7 +391,9 @@ public class LoggerEmissionTests : IDisposable
     {
         // The root logger contributes no logger_name and every identity field is
         // empty, so "extras" really is empty and the line must not end in a
-        // dangling space. Run with no backend factory: this is the core-package
+        // dangling space. The callsite is switched off for the same reason:
+        // filename/lineno are extras like any other, and this test is about the
+        // no-extras line. Run with no backend factory: this is the core-package
         // -alone deployment, and OTel's resource builder rejects an empty
         // service name outright.
         Testing.ResetForTests();
@@ -392,6 +403,7 @@ public class LoggerEmissionTests : IDisposable
             var config = TelemetryConfig.Default();
             config.Logging.Format = "console";
             config.Logging.IncludeTimestamp = false;
+            config.Logging.IncludeCaller = false;
             config.ServiceName = "";
             config.Environment = "";
             config.Version = "";

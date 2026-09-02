@@ -39,6 +39,7 @@ if str(_SPEC_DIR) not in sys.path:
 
 from _parity_cli import _build_parser  # type: ignore[import-not-found]  # noqa: E402  (path set up above)
 from parity_probe_support import (  # noqa: E402
+    run_caller_output_check,
     run_contract_cases,
     run_output_check,
     run_runtime_probe_check,
@@ -430,6 +431,16 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
         )
         if not output_ok:
+            any_fail = True
+        if not run_caller_output_check(
+            _REPO_ROOT,
+            selected,
+            _CARGO_BIN,
+            _CARGO_ENV,
+            _PROBE_ENV,
+            verbose=args.verbose,
+            timeout=args.timeout,
+        ):
             any_fail = True
         try:
             runtime_ok = run_runtime_probe_check(

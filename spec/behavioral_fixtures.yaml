@@ -741,6 +741,25 @@ log_output_format:
       expected:
         msg: "log.output.parity"
         level: "INFO"
+  # A second pass with callsite capture ON.
+  #
+  # The pass above disables PROVIDE_LOG_INCLUDE_CALLER so the compared record is
+  # deterministic, and every other parity harness does the same. That is why the
+  # callsite fields drifted unseen: Python emitted filename/lineno, TypeScript
+  # emitted caller_file/caller_line, and Go and C# emitted nothing at all, while
+  # no comparison in the repo ever had the feature switched on.
+  #
+  # expected_filename is the base name of each probe's own source file. The
+  # assertion is attribution: an SDK that reports its own renderer's file rather
+  # than its caller's fails here, which is the defect this exists to catch.
+  caller_probe:
+    env:
+      PROVIDE_LOG_INCLUDE_CALLER: "true"
+    expected_filename:
+      python: "emit_log_python.py"
+      typescript: "emit_log_typescript.ts"
+      go: "main.go"
+      csharp: "Program.cs"
 
 # Cross-language OTLP endpoint validation fixtures.
 # All four languages MUST accept every "valid" endpoint and reject every

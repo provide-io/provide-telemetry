@@ -10,11 +10,19 @@
 # SDK honour it". A variable read into a struct that nothing else ever reads
 # passes the gate exactly like one that works.
 #
-# Two of them did. PROVIDE_LOG_INCLUDE_CALLER is parsed by Go and by C# and
-# applied by neither; PROVIDE_LOG_CODE_ATTRIBUTES is parsed by Go and applied by
-# nobody there. Five gates were green over both.
+# Three variables were in exactly that state — PROVIDE_LOG_INCLUDE_CALLER parsed
+# and dead in Go and in C#, PROVIDE_LOG_CODE_ATTRIBUTES parsed and dead in Go —
+# with five gates green over all of them.
 #
-# This file is where that divergence is admitted, dated, and owned, so it reads
+# The register is empty: every SDK now honours what it parses. It is kept rather
+# than deleted because the mechanism is the point. Declaring a gap here is what
+# excuses a language from the callsite-attribution pass in
+# behavioral_fixtures.yaml, and that pass is two-sided — a language with an entry
+# must emit nothing, and one without an entry must emit correctly. So an entry
+# cannot be added to dodge a failure without the divergence becoming visible, and
+# it cannot be removed before the work is done.
+#
+# This file is where such divergence is admitted, dated, and owned, so it reads
 # as debt rather than as parity.
 #
 # Format:
@@ -41,36 +49,6 @@
 # compares emitted output, which arrives with the caller-field fixtures. Until
 # then this narrows the problem from "invisible" to "declared".
 
-honoured_gaps:
-  - lang: go
-    env: PROVIDE_LOG_INCLUDE_CALLER
-    reason: >
-      Parsed into LoggingConfig.IncludeCaller and stored, but nothing reads it:
-      AddSource and slog.SourceKey appear nowhere in go/. No Go log record
-      carries a filename or a line number, while the spec declares the variable
-      applicable to Go and defaulted on.
-    owner: livingstaccato
-    expires_on: 2026-12-31
-    tracking: https://github.com/provide-io/provide-telemetry/issues/57
+honoured_gaps: []
 
-  - lang: csharp
-    env: PROVIDE_LOG_INCLUDE_CALLER
-    reason: >
-      Parsed in ConfigEnv.cs and copied through Config.cs, but Logger.Emit never
-      captures a callsite. Implementing it means [CallerFilePath] and
-      [CallerLineNumber] on the public log methods, which changes their
-      signatures and needs PublicApi.cs regenerated.
-    owner: livingstaccato
-    expires_on: 2026-12-31
-    tracking: https://github.com/provide-io/provide-telemetry/issues/57
 
-  - lang: go
-    env: PROVIDE_LOG_CODE_ATTRIBUTES
-    reason: >
-      Parsed into LoggingConfig.LogCodeAttributes and stored; no code.* attribute
-      is ever attached to a record. Python emits the current semconv names and
-      TypeScript the pre-1.27 ones, so closing this also settles which spelling
-      is canonical.
-    owner: livingstaccato
-    expires_on: 2026-12-31
-    tracking: https://github.com/provide-io/provide-telemetry/issues/57

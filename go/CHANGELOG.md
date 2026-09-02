@@ -7,6 +7,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`PROVIDE_LOG_INCLUDE_CALLER` and `PROVIDE_LOG_CODE_ATTRIBUTES` do something.**
+  Both were parsed into `LoggingConfig` and read by nothing: `AddSource` and
+  `slog.SourceKey` appeared nowhere in the package, so no record ever carried a
+  filename or a line number while the spec declared both variables applicable to
+  Go and `INCLUDE_CALLER` defaulted on.
+
+  `INCLUDE_CALLER` emits `filename` — the base name, never the absolute path
+  `runtime.Frame` carries, which is the path the *compiling* machine had —
+  and `lineno`, on every renderer and on the exported record.
+  `CODE_ATTRIBUTES` emits `code.file.path`, `code.function.name` and
+  `code.line.number` on the exported record only, which is what the knob
+  promises: these carry the full path, and printing that locally is the leak
+  `filename` reports a base name to avoid. The gates are independent.
+
+  `filename`/`lineno` are attached in the telemetry handler rather than through
+  `slog.HandlerOptions{AddSource: true}`. `AddSource` emits a `source` group of
+  `{function, file, line}`, which is not the canonical shape, and it reaches only
+  the JSON and text renderers — the pretty renderer builds no `HandlerOptions`
+  and the OTLP log bridge is a sibling handler, so both would have been left
+  without a callsite. The `code.*` attributes are attached by a thin handler
+  wrapping the bridge, which is what keeps them off the local renderers.
+
+  The record's `PC` is captured by `slog.Logger.log` before any handler runs and
+  survives every rebuild in the chain, so the frame is the caller's without any
+  frame-skipping.
+
+  Cost, since `INCLUDE_CALLER` defaults on: one `runtime.CallersFrames` lookup
+  and a record rebuild per emitted record — the same lookup stdlib `AddSource`
+  does. `BenchmarkLogEmit_WithCallsite` and `BenchmarkLogEmit_WithoutCallsite`
+  measure it against each other; they are also the first benchmarks in this
+  package to cover the emit path at all, which is why the knob could be given a
+  default of on without any gate pricing it.
+
 ### Fixed
 
 - **A log record the destination refuses is counted as an export failure.**

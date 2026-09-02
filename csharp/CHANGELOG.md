@@ -6,6 +6,51 @@ languages; this file covers only what shipped to NuGet.
 
 ---
 
+## [Unreleased]
+
+### Breaking
+
+- **The nine public log methods take two more parameters.** `Trace`, `Debug`,
+  `Info`, `Warn`, `Warning`, `Critical`, both `Error` overloads and `Log` each
+  end in `[CallerFilePath] string callerFile = ""` and
+  `[CallerLineNumber] int callerLine = 0`, which the compiler supplies. This is
+  what makes `PROVIDE_LOG_INCLUDE_CALLER` do anything here.
+
+  Binary-breaking: an assembly built against 0.8.x raises
+  `MissingMethodException` on its first log call and must be rebuilt.
+
+  Source-breaking in two shapes that compiled on 0.8.x:
+
+  - `log.Error("m", null)` and `log.Error("m", null, null)` become **CS0121**,
+    ambiguous between the two `Error` overloads. Resolution used to break the
+    tie by preferring the candidate omitting fewer optional parameters; both now
+    omit the same two, so neither `null → IReadOnlyDictionary?` nor
+    `null → Exception` wins. Name the argument — `fields: null` — or cast it.
+  - `Action<string, IReadOnlyDictionary<string, object?>?> h = log.Info;`
+    becomes **CS0123**. A method-group conversion needs exact arity, and `Info`
+    went from two parameters to four. Wrap it in a lambda.
+
+  `dynamic` dispatch and `MethodInfo.Invoke` bypass the compiler, so both emit a
+  record with no callsite rather than a wrong one. Reflection that looks a log
+  method up by its two-parameter signature finds nothing and must pass four.
+
+- **`LoggingConfig.LogCodeAttributes` is removed.** It was settable and cloned
+  and nothing else: no environment variable parsed it and no emitter read it.
+  `spec/telemetry-api.yaml` lists `PROVIDE_LOG_CODE_ATTRIBUTES` for Python,
+  TypeScript and Go, so the property named a knob this package does not have —
+  the same reason `PrettyKeyColor` and its siblings are absent.
+
+### Added
+
+- **`PROVIDE_LOG_INCLUDE_CALLER` attaches `filename` and `lineno`.** `filename`
+  is the base name of the calling source file — never the whole path, which
+  `[CallerFilePath]` bakes in from the machine that compiled the assembly — and
+  `lineno` is its 1-based line. The pair is attached after redaction, on the
+  same seam as `_schema_error`, and overwrites a caller field of either name.
+
+  A cross-language pass in the behavioural parity harness asserts this SDK names
+  its caller's file, alongside Python, TypeScript and Go.
+
 ## [0.8.1] — 2026-08-22
 
 ### Breaking

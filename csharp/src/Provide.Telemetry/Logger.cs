@@ -2,31 +2,81 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 namespace Provide.Telemetry;
 
 /// <summary>Structured logger emitting the canonical envelope to stderr.</summary>
+/// <remarks>
+/// Every entry point ends in two optional callsite parameters the compiler
+/// fills in — see <see cref="Emit"/>. A caller never writes them; a caller's own
+/// logging wrapper declares the same pair and forwards it, so the record blames
+/// the application rather than the wrapper. Forward both or neither: forwarding
+/// only one leaves the other defaulting at the wrapper, and the record then
+/// names one file with another's line number, which nothing here can detect.
+///
+/// Two dispatch shapes lose the callsite, because the attributes are a
+/// compile-time substitution and neither goes through the compiler:
+/// <c>dynamic</c> and <see cref="System.Reflection.MethodInfo.Invoke(object, object[])"/>.
+/// Both emit a record with no callsite rather than a wrong one.
+/// </remarks>
 public sealed class Logger
 {
+    /// <summary>Record field carrying the base name of the calling source file.</summary>
+    internal const string FilenameKey = "filename";
+
+    /// <summary>Record field carrying the 1-based line number of the call.</summary>
+    internal const string LinenoKey = "lineno";
+
+    private static readonly char[] PathSeparators = { '/', '\\' };
+
     private readonly string _name;
 
     public Logger(string name) => _name = name ?? "";
 
-    public void Trace(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit("TRACE", message, fields);
-    public void Debug(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit("DEBUG", message, fields);
-    public void Info(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit("INFO", message, fields);
-    public void Warn(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit("WARN", message, fields);
-    public void Warning(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit("WARNING", message, fields);
-    public void Error(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit("ERROR", message, fields);
-    public void Critical(string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit("CRITICAL", message, fields);
+    public void Trace(
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit("TRACE", message, fields, callerFile, callerLine);
+    public void Debug(
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit("DEBUG", message, fields, callerFile, callerLine);
+    public void Info(
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit("INFO", message, fields, callerFile, callerLine);
+    public void Warn(
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit("WARN", message, fields, callerFile, callerLine);
+    public void Warning(
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit("WARNING", message, fields, callerFile, callerLine);
+    public void Error(
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit("ERROR", message, fields, callerFile, callerLine);
+    public void Critical(
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit("CRITICAL", message, fields, callerFile, callerLine);
 
     /// <summary>Emit at a level known only at runtime.</summary>
     /// <remarks>
@@ -37,20 +87,42 @@ public sealed class Logger
     /// branches permanently uncovered in the consuming repo.
     /// </remarks>
     public void Log(
-        LogSeverity level, string message, IReadOnlyDictionary<string, object?>? fields = null) =>
-        Emit(Levels.Name(level), message, fields);
+        LogSeverity level,
+        string message,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0) =>
+        Emit(Levels.Name(level), message, fields, callerFile, callerLine);
 
     /// <summary>Log an exception, attaching its stable fingerprint.</summary>
-    public void Error(string message, Exception error, IReadOnlyDictionary<string, object?>? fields = null)
+    public void Error(
+        string message,
+        Exception error,
+        IReadOnlyDictionary<string, object?>? fields = null,
+        [CallerFilePath] string callerFile = "",
+        [CallerLineNumber] int callerLine = 0)
     {
         ArgumentNullException.ThrowIfNull(error);
-        Emit("ERROR", message, fields, Fingerprint.ComputeErrorFingerprint(error));
+        Emit("ERROR", message, fields, callerFile, callerLine, Fingerprint.ComputeErrorFingerprint(error));
     }
 
+    /// <summary>
+    /// Build and dispatch one record.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="callerFile"/> and <paramref name="callerLine"/> arrive
+    /// from <see cref="CallerFilePathAttribute"/> and
+    /// <see cref="CallerLineNumberAttribute"/> on the public methods above, so
+    /// the callsite costs nothing at run time and no stack has to be walked to
+    /// find it. The path is the build machine's absolute one and is reduced to a
+    /// base name before it can reach a record.
+    /// </remarks>
     private void Emit(
         string level,
         string message,
         IReadOnlyDictionary<string, object?>? fields,
+        string callerFile,
+        int callerLine,
         string? errorFingerprint = null)
     {
         Setup.EnsureLazyInit();
@@ -60,6 +132,7 @@ public sealed class Logger
         var merged = Merge(fields);
         var schemaError = ValidateSchema(merged, cfg, message);
         var rendered = cfg.Logging.Sanitize ? Pii.RedactSecretSpans(message) : message;
+        var callerFilename = cfg.Logging.IncludeCaller ? BaseName(callerFile) : "";
         var backend = Setup.CurrentBackend;
 
         SignalPipeline.Process(new LogDispatch
@@ -68,7 +141,8 @@ public sealed class Logger
             LogLevel = level,
             Harden = () => Pii.HardenPayload(merged, cfg.Logging.PiiMaxDepth),
             Sanitize = hardened => Materialize(
-                Pii.SanitizeHardened(hardened, cfg.Logging.Sanitize), schemaError),
+                Pii.SanitizeHardened(hardened, cfg.Logging.Sanitize),
+                schemaError, callerFilename, callerLine),
             Build = payload => CanonicalLogRecord.Create(
                 DateTimeOffset.UtcNow, level, rendered, _name, cfg,
                 Context.GetTraceContext().TraceId, Context.GetTraceContext().SpanId,
@@ -80,12 +154,40 @@ public sealed class Logger
 
     private static (IReadOnlyDictionary<string, object?>, IReadOnlyList<PendingRedaction>) Materialize(
         (Dictionary<string, object?> Payload, IReadOnlyList<PendingRedaction> Redactions) sanitized,
-        string? schemaError)
+        string? schemaError,
+        string callerFilename,
+        int callerLine)
     {
         // Attached after redaction so the diagnostic itself is never treated as
-        // a caller field and re-sanitized into "***".
+        // a caller field and re-sanitized into "***". The callsite rides the
+        // same seam, and for the same reason.
         if (schemaError is not null) sanitized.Payload["_schema_error"] = schemaError;
+        if (callerFilename.Length > 0)
+        {
+            // Overwrites a caller field of the same name, as the identity keys
+            // do in CanonicalLogRecord.Create: one record carrying two meanings
+            // of "filename" is worse than losing the caller's spelling.
+            sanitized.Payload[FilenameKey] = callerFilename;
+            sanitized.Payload[LinenoKey] = callerLine;
+        }
         return (sanitized.Payload, sanitized.Redactions);
+    }
+
+    /// <summary>
+    /// Reduce a source path to its base name.
+    /// </summary>
+    /// <remarks>
+    /// Both separators are stripped on both platforms, because
+    /// <see cref="CallerFilePathAttribute"/> bakes in the path of the machine
+    /// that *compiled* the assembly: a Windows-built package running on Linux
+    /// carries backslashes, which <c>Path.GetFileName</c> would there treat as
+    /// ordinary characters and hand back whole. Emitting the full path would put
+    /// the build machine's directory layout on every single log line.
+    /// </remarks>
+    internal static string BaseName(string path)
+    {
+        var cut = path.LastIndexOfAny(PathSeparators);
+        return cut < 0 ? path : path[(cut + 1)..];
     }
 
     private Dictionary<string, object?> Merge(IReadOnlyDictionary<string, object?>? fields)

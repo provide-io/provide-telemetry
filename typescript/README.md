@@ -91,6 +91,36 @@ log.error({ event: 'db.query.error', error: err.message });
 
 Event names follow the DA(R)S pattern: 3 segments (`domain.action.status`) or 4 segments (`domain.action.resource.status`).
 
+### Callsite capture
+
+Two independent knobs select two different outputs from one stack walk. Enabling
+either one performs the walk; neither implies the other.
+
+| Knob | Output | Keys |
+|------|--------|------|
+| `logIncludeCaller` / `PROVIDE_LOG_INCLUDE_CALLER` | Fields on the log record | `filename`, `lineno` |
+| `logCodeAttributes` / `PROVIDE_LOG_CODE_ATTRIBUTES` | Attributes on the exported OTLP log record | `code.file.path`, `code.line.number`, `code.function.name` |
+
+`filename` carries the base name of the caller's source file, never a full path —
+an absolute path leaks the build machine's layout into every record.
+`code.file.path` carries the whole path, which is what OpenTelemetry defines that
+attribute as and what the other SDKs send. `lineno` and `code.line.number` are
+1-based.
+
+The reported frame is the caller's. The walk identifies this module's own frames
+by the file the capture itself is in, so it holds for the source tree, the
+published build, and a consumer whose own module happens to be called
+`logger.ts`; pino's frames are matched by path segment under `node_modules`.
+
+Bundling the SDK and the application into one file leaves nothing to tell those
+apart, and there the record carries no callsite at all rather than one naming the
+logger's own line.
+
+`code.function.name` carries the name of the enclosing function. It is omitted
+when the runtime resolves no name for the frame — top-level module code and
+anonymous callbacks produce nameless stack frames, and an absent attribute is
+more useful than one whose value means "unknown".
+
 ### Tracing
 
 ```typescript

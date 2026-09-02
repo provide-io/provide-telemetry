@@ -720,10 +720,16 @@ callsite_fields:
       lineno:
         type: int
         description: "1-based line number of the call"
+    audience: >
+      Every renderer, and the exported record too. These are ordinary log
+      fields; a host reading its own console output is the main consumer.
     note: >
       The reported frame is the caller's, not the SDK's. Every SDK puts
       wrapper frames between user code and its renderer, and each is
-      responsible for skipping its own.
+      responsible for skipping its own. An SDK that cannot identify its own
+      frames — a bundled or minified build, a runtime whose stack format it
+      does not parse — emits neither field rather than naming itself: an
+      absent callsite is recoverable, a confidently wrong one is not.
   otel_attributes:
     gate: PROVIDE_LOG_CODE_ATTRIBUTES
     fields:
@@ -736,10 +742,22 @@ callsite_fields:
       code.line.number:
         type: int
         description: "1-based line number of the call"
+    audience: >
+      The exported record only. The gate is spelled "attach code attributes
+      to OTel log records" and means it: these carry the full source path,
+      and rendering that locally would print the compiling machine's
+      directory layout on every line — the leak `filename` reports a base
+      name to avoid. An SDK that attaches them to the record every renderer
+      sees has widened the knob past what it promises.
     note: >
       Current semantic conventions. code.filepath and code.lineno were
       deprecated in semconv 1.27 and are not canonical here; code.namespace
       is not emitted, having no cross-language meaning.
+  collision: >
+    The callsite wins. A caller logging its own filename, lineno or code.*
+    key has that value replaced rather than duplicated — the fields name
+    where the call came from, and a record carrying two answers is worse
+    than one carrying the SDK's.
   independence: >
     The two gates are independent. PROVIDE_LOG_CODE_ATTRIBUTES does not
     require PROVIDE_LOG_INCLUDE_CALLER: they select different outputs from

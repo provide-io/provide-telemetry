@@ -18,7 +18,8 @@ import (
 )
 
 // _telemetryHandler is a slog.Handler middleware that implements the full processor chain:
-// context-field merge → standard fields → trace/span IDs → sampling → schema → PII → base handler.
+// context-field merge → standard fields → trace/span IDs → sampling → schema → PII →
+// callsite → base handler.
 type _telemetryHandler struct {
 	next  slog.Handler
 	cfg   *TelemetryConfig
@@ -109,6 +110,11 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
+
+	// After sanitization, deliberately: a source path is not user data, and
+	// hardening's attribute cap and value truncation would mangle it. Mirrors
+	// Python, which appends CallsiteParameterAdder after sanitize_sensitive_fields.
+	r = h.applyCallsite(r)
 
 	// log/slog discards whatever a handler returns, so a destination that
 	// refuses the write is invisible to the caller: the record is gone and
@@ -504,6 +510,9 @@ func _baseHandlerWithBridge(cfg *TelemetryConfig, name string) slog.Handler {
 	bridge := backend.LoggerHandler(cmp.Or(name, cfg.ServiceName))
 	if bridge == nil {
 		return base
+	}
+	if cfg.Logging.LogCodeAttributes {
+		bridge = &_codeAttrsHandler{next: bridge}
 	}
 	return newMultiHandler(base, bridge)
 }

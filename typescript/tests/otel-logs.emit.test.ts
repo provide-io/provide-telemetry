@@ -346,7 +346,7 @@ describe('emitLogRecord — securityMaxAttrCount', () => {
 });
 
 describe('emitLogRecord — logCodeAttributes', () => {
-  it('maps caller_file to code.filepath when logCodeAttributes is true', async () => {
+  it('publishes the callsite under the code.* semantic conventions', async () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({
@@ -356,19 +356,40 @@ describe('emitLogRecord — logCodeAttributes', () => {
     } as never);
     setupTelemetry({ logCodeAttributes: true });
 
-    emitLogRecord({
-      level: 'INFO',
-      message: 'test',
-      time: 1000,
-      caller_file: 'app.ts',
-      caller_line: 42,
-      name: 'my.module',
-    });
+    emitLogRecord(
+      { level: 'INFO', message: 'test', time: 1000, name: 'my.module' },
+      { filename: 'app.ts', path: '/srv/app/app.ts', lineno: 42, functionName: 'handleRequest' },
+    );
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
-    expect(attrs['code.filepath']).toBe('app.ts');
-    expect(attrs['code.lineno']).toBe(42);
-    expect(attrs['code.namespace']).toBe('my.module');
+    // The full path, not the base name the record field carries: OpenTelemetry
+    // defines code.file.path as the whole path, and Python and Go both send it.
+    expect(attrs['code.file.path']).toBe('/srv/app/app.ts');
+    expect(attrs['code.line.number']).toBe(42);
+    expect(attrs['code.function.name']).toBe('handleRequest');
+    // code.namespace is not a canonical attribute and is no longer derived.
+    expect(attrs).not.toHaveProperty('code.namespace');
+  });
+
+  it('omits code.function.name when the callsite resolved no function name', async () => {
+    const loggerStub = makeLoggerStub();
+    vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
+    await setupOtelLogProvider({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    } as never);
+    setupTelemetry({ logCodeAttributes: true });
+
+    emitLogRecord(
+      { level: 'INFO', message: 'test', time: 1000 },
+      { filename: 'app.ts', path: '/srv/app/app.ts', lineno: 42 },
+    );
+
+    const attrs = loggerStub.emit.mock.calls[0][0].attributes;
+    expect(attrs['code.file.path']).toBe('/srv/app/app.ts');
+    expect(attrs['code.line.number']).toBe(42);
+    expect(attrs).not.toHaveProperty('code.function.name');
   });
 
   it('does NOT add code attributes when logCodeAttributes is false', async () => {
@@ -381,40 +402,18 @@ describe('emitLogRecord — logCodeAttributes', () => {
     } as never);
     setupTelemetry({ logCodeAttributes: false });
 
-    emitLogRecord({
-      level: 'INFO',
-      message: 'test',
-      time: 1000,
-      caller_file: 'app.ts',
-      caller_line: 42,
-      name: 'my.module',
-    });
+    emitLogRecord(
+      { level: 'INFO', message: 'test', time: 1000 },
+      { filename: 'app.ts', path: '/srv/app/app.ts', lineno: 42, functionName: 'handleRequest' },
+    );
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
-    expect(attrs).not.toHaveProperty('code.filepath');
-    expect(attrs).not.toHaveProperty('code.lineno');
-    expect(attrs).not.toHaveProperty('code.namespace');
+    expect(attrs).not.toHaveProperty('code.file.path');
+    expect(attrs).not.toHaveProperty('code.line.number');
+    expect(attrs).not.toHaveProperty('code.function.name');
   });
 
-  it('only maps present fields (partial code attributes)', async () => {
-    const loggerStub = makeLoggerStub();
-    vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
-    await setupOtelLogProvider({
-      serviceName: 'test',
-      otelEnabled: true,
-      otlpEndpoint: 'http://localhost:4318',
-    } as never);
-    setupTelemetry({ logCodeAttributes: true });
-
-    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, caller_file: 'app.ts' });
-
-    const attrs = loggerStub.emit.mock.calls[0][0].attributes;
-    expect(attrs['code.filepath']).toBe('app.ts');
-    expect(attrs).not.toHaveProperty('code.lineno');
-    expect(attrs).not.toHaveProperty('code.namespace');
-  });
-
-  it('adds no code attributes when none of the source fields are present', async () => {
+  it('adds no code attributes when no callsite was captured', async () => {
     const loggerStub = makeLoggerStub();
     vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
     await setupOtelLogProvider({
@@ -427,8 +426,29 @@ describe('emitLogRecord — logCodeAttributes', () => {
     emitLogRecord({ level: 'INFO', message: 'test', time: 1000 });
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
-    expect(attrs).not.toHaveProperty('code.filepath');
-    expect(attrs).not.toHaveProperty('code.lineno');
-    expect(attrs).not.toHaveProperty('code.namespace');
+    expect(attrs).not.toHaveProperty('code.file.path');
+    expect(attrs).not.toHaveProperty('code.line.number');
+    expect(attrs).not.toHaveProperty('code.function.name');
+  });
+
+  it('does not derive code attributes from record fields', async () => {
+    const loggerStub = makeLoggerStub();
+    vi.mocked(logs.getLogger).mockReturnValue(loggerStub as never);
+    await setupOtelLogProvider({
+      serviceName: 'test',
+      otelEnabled: true,
+      otlpEndpoint: 'http://localhost:4318',
+    } as never);
+    setupTelemetry({ logCodeAttributes: true });
+
+    // filename/lineno on the record belong to logIncludeCaller; they are
+    // carried through as-is and never promoted to code.* attributes.
+    emitLogRecord({ level: 'INFO', message: 'test', time: 1000, filename: 'app.ts', lineno: 42 });
+
+    const attrs = loggerStub.emit.mock.calls[0][0].attributes;
+    expect(attrs['filename']).toBe('app.ts');
+    expect(attrs['lineno']).toBe(42);
+    expect(attrs).not.toHaveProperty('code.file.path');
+    expect(attrs).not.toHaveProperty('code.line.number');
   });
 });
