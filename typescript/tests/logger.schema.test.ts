@@ -506,9 +506,9 @@ describe('_firstCallerFrame', () => {
     // The frame consumers actually get: they import dist/logger.js, never the
     // .ts source. Frame 0 is this module's own by construction, whatever the
     // file is called, so the build the consumer runs needs no separate rule.
-    expect(
-      _firstCallerFrame(['    at captureCallsite (/pkg/dist/logger.js:150:9)', caller]),
-    ).toBe(caller);
+    expect(_firstCallerFrame(['    at captureCallsite (/pkg/dist/logger.js:150:9)', caller])).toBe(
+      caller,
+    );
   });
 
   it('skips every later frame from the same file as the capture frame', () => {

@@ -404,7 +404,7 @@ describe('emitLogRecord — logCodeAttributes', () => {
 
     emitLogRecord(
       { level: 'INFO', message: 'test', time: 1000 },
-      { filename: 'app.ts', lineno: 42, functionName: 'handleRequest' },
+      { filename: 'app.ts', path: '/srv/app/app.ts', lineno: 42, functionName: 'handleRequest' },
     );
 
     const attrs = loggerStub.emit.mock.calls[0][0].attributes;
