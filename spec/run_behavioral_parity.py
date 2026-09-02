@@ -266,6 +266,15 @@ class Result:
     output: str
 
 
+# Generous, because the only thing this timeout can catch is a runtime that is
+# installed but slow to answer — an absent one raises FileNotFoundError at once.
+# Ten seconds was not: `dotnet --version` on a runner that has just installed the
+# SDK pays for its first-run initialisation, and on a machine still busy with the
+# previous language's suite it exceeded that and reported C# as *not installed*,
+# failing the whole gate on a green change.
+_RUNTIME_CHECK_TIMEOUT_SECONDS = 120
+
+
 def _runtime_available(runner: LanguageRunner) -> bool:
     """Return True if the runtime for this language is installed."""
     try:
@@ -274,7 +283,7 @@ def _runtime_available(runner: LanguageRunner) -> bool:
             capture_output=True,
             check=True,
             cwd=runner.cwd,
-            timeout=10,
+            timeout=_RUNTIME_CHECK_TIMEOUT_SECONDS,
         )
         return True
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
