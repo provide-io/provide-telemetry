@@ -123,6 +123,36 @@ their old two-parameter signature finds nothing and must add the two.
   `filename` got the key twice. The callsite now shadows a caller's field of the
   same name, as Python and C# do.
 
+- **Python: a redirected stream on Windows mangled non-ASCII, and a Windows
+  terminal without colorama cost the whole logging pipeline.** Two separate
+  silent failures, neither of which raises anything a caller sees.
+
+  A redirected stream on Windows carries the locale encoding — cp1252, not
+  UTF-8, on every version before 3.15 — and CPython gives stderr
+  `errors="backslashreplace"`, so an emoji was written out as the literal text
+  `\U0001f439` rather than failing. A parent process capturing the stream, which
+  is the case this SDK serves when several language runtimes share one log, read
+  mangled records. The stderr handler now writes UTF-8 through the stream's byte
+  layer, draining the text layer first so the two do not interleave. A stream
+  that already encodes UTF-8 — which is every stream off Windows — is used
+  exactly as it was, so nothing changes there.
+
+  Separately, `structlog.dev.ConsoleRenderer(colors=True)` raises `SystemError`
+  on Windows when colorama is not installed, and colorama is not a dependency of
+  this package. `configure_logging` catches every exception, so on any Windows
+  terminal without it the entire configuration — context, OTel, module levels —
+  was replaced by the WARNING-level emergency fallback, with one `RuntimeWarning`
+  as the only trace. Colour is now answered by asking whether escapes will
+  actually render: virtual-terminal processing enabled, and, for structlog's
+  renderer, colorama present.
+
+  That also settles a second-order problem. `colorama.init()` rebinds
+  `sys.stderr` to a translating wrapper, but the stderr handler is built before
+  the renderer and holds the original stream, so colorama's translation never
+  reached log output anyway. With colour now conditional on VT, escapes are
+  emitted only where the terminal renders them itself, and nothing depends on
+  that translation.
+
 - **Go and C#: ANSI was emitted to Windows consoles that cannot render it, and
   C# lost non-ASCII output there entirely.** A console handle is a character
   device, so both SDKs' terminal probes reported colour as available on every
