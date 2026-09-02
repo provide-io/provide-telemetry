@@ -66,6 +66,20 @@ _make_handler = _otel_logs.make_otel_logging_handler
 TRACE = _levels.TRACE
 logging.addLevelName(TRACE, "TRACE")
 
+# Module-name prefixes CallsiteParameterAdder walks past before deciding which
+# frame is the callsite. structlog skips its own frames and `logging`'s, but
+# knows nothing about the wrappers this module puts between the caller and
+# structlog: the `_trace` closure from _make_filtering_bound_logger, and
+# _TraceWrapper / _LazyLogger's `trace()` and `log()`. Naming this module keeps
+# all five out of the way, so `filename` and `lineno` are the caller's.
+#
+# Deliberately just this module, not the whole `provide.telemetry` package:
+# every wrapper lives here, and a package-wide prefix would also skip
+# provide-telemetry's own structlog callers (TelemetryMiddleware), blaming
+# their logs on whatever called *them*. __name__ rather than a literal so the
+# prefix cannot drift if the module moves.
+_CALLSITE_IGNORES: list[str] = [__name__]
+
 # Derived from the one shared table rather than restated. The literal version
 # of this dict knew WARNING but not WARN, and nothing kept it in step with the
 # near-identical table in processors.py.
@@ -340,7 +354,8 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
                 parameters=[
                     structlog.processors.CallsiteParameter.FILENAME,
                     structlog.processors.CallsiteParameter.LINENO,
-                ]
+                ],
+                additional_ignores=_CALLSITE_IGNORES,
             )
         )
 
