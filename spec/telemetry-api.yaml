@@ -733,6 +733,27 @@ windows_console:
       classifies as a console. .NET is the exception: Console.Error is a writer
       over Console.OutputEncoding, which defaults to the console's own code
       page, and the encoded bytes go out through WriteFile.
+  stream_encoding:
+    problem: >
+      A redirected stream on Windows carries the *locale* encoding rather than
+      UTF-8 — cp1252 on a Western install — on every Python version before
+      3.15, where PEP 686 changes the default. CPython gives stderr
+      errors="backslashreplace", so a non-ASCII character does not raise: it is
+      written out as the literal text \U0001f439. Nothing fails, nothing is
+      reported, and a parent process capturing the stream reads mangled records
+      — which is the case an SDK serving several language runtimes in one log
+      exists for.
+    contract: >
+      An SDK writes UTF-8 to its own log destination whatever encoding the
+      host's stream declares, and without replacing that stream: it writes
+      through the stream's byte layer, draining the text layer first so the two
+      do not interleave. A stream that already encodes UTF-8, or offers no byte
+      layer, is used exactly as it is.
+    applicability: [python]
+    note: >
+      Only Python declares a text encoding on its log destination. Go, Rust and
+      C# write bytes or encode at the boundary themselves, and Node encodes
+      UTF-8 unconditionally.
   virtual_terminal:
     problem: >
       A Windows console handle is a character device, so a terminal probe that

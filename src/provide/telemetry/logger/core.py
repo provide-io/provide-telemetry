@@ -21,6 +21,7 @@ from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, to_stdlib_level
 from provide.telemetry.logger import _otel_logs
+from provide.telemetry.logger.console import ansi_supported, structlog_colors, utf8_writer
 from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
 from provide.telemetry.logger.pretty import PrettyRenderer
 from provide.telemetry.logger.processors import (
@@ -87,8 +88,15 @@ _LEVEL_NAME_TO_NUMERIC: dict[str, int] = {name: severity.stdlib_level for name, 
 
 
 def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
-    """Default handler. Hoisted so the pragma applies; see CLAUDE.md on placement."""
-    return logging.StreamHandler(sys.stderr)  # pragma: no mutate — None also defaults to stderr
+    """Default handler, writing UTF-8 whatever the stream's own encoding is.
+
+    A redirected stream on Windows carries the locale encoding — cp1252, not
+    UTF-8 — and stderr's ``errors="backslashreplace"`` turns an emoji into the
+    literal text ``\U0001f439`` rather than raising. utf8_writer hands back
+    sys.stderr itself wherever that is already correct, which is everywhere but
+    there.
+    """
+    return logging.StreamHandler(utf8_writer(sys.stderr))  # pragma: no mutate — None also defaults to stderr
 
 
 # structlog_level never exceeds CRITICAL, so this entry's `<` test never fires:
@@ -255,7 +263,7 @@ def _setup_emergency_fallback(exc: Exception) -> None:
     structlog.configure(
         processors=fallback_processors,
         wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        logger_factory=structlog.PrintLoggerFactory(file=utf8_writer(sys.stderr)),
         cache_logger_on_first_use=False,
     )
     _configured = True
@@ -369,7 +377,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
         from provide.telemetry.logger.pretty import resolve_color
 
         renderer = PrettyRenderer(  # pragma: no mutate — renderer constructor; outputs verified via snapshot/console tests
-            colors=sys.stderr.isatty(),
+            colors=ansi_supported(sys.stderr),
             key_color=resolve_color(
                 config.logging.pretty_key_color
             ),  # pragma: no mutate — color resolution is formatting-only
@@ -382,8 +390,13 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
         # exception_formatter pinned to plain_traceback — structlog's default
         # (RichTracebackFormatter(show_locals=True)) renders frame locals,
         # which can leak sensitive values via logger.error(..., exc_info=True).
+        # structlog_colors, not isatty: ConsoleRenderer(colors=True) raises
+        # SystemError on Windows without colorama — which is not a dependency of
+        # this package — and configure_logging catches every exception, so a
+        # Windows terminal without it lost the whole pipeline to the emergency
+        # fallback rather than merely losing colour.
         renderer = structlog.dev.ConsoleRenderer(
-            colors=sys.stderr.isatty(), exception_formatter=structlog.dev.plain_traceback
+            colors=structlog_colors(sys.stderr), exception_formatter=structlog.dev.plain_traceback
         )
 
     processors.append(render_with_backpressure_extra(renderer))

@@ -251,7 +251,16 @@ source_paths = ["src/provide/telemetry/"]
 # cannot be imported or exercised without the optional otel extra (the gated
 # mutation run omits it) — same rationale as the coverage `omit` above. span.py
 # stays mutated and is covered by tests/tracing/test_span_mutants.py (non-otel).
-do_not_mutate = ["src/provide/telemetry/tracing/context_runtime.py"]
+# logger/_windows_console.py joins it for the same reason from the other
+# direction: its one function is ctypes interop into kernel32, so nothing in it
+# can execute on the Linux mutation runner and every mutant survives by
+# construction. It is a module of its own precisely so the rest of
+# logger/console.py — the decisions, which is the part that was wrong — stays
+# mutated.
+do_not_mutate = [
+  "src/provide/telemetry/tracing/context_runtime.py",
+  "src/provide/telemetry/logger/_windows_console.py",
+]
 pytest_add_cli_args = ["-o", "addopts=", "--no-cov"]
 pytest_add_cli_args_test_selection = [
   "-m",
