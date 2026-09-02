@@ -19,6 +19,7 @@ CI_RUST = REPO_ROOT / ".github" / "workflows" / "ci-rust.yml"
 CI_PYTHON = REPO_ROOT / ".github" / "workflows" / "ci-python.yml"
 CI_TYPESCRIPT = REPO_ROOT / ".github" / "workflows" / "ci-typescript.yml"
 CI_MUTATION = REPO_ROOT / ".github" / "workflows" / "ci-mutation.yml"
+CI_CSHARP = REPO_ROOT / ".github" / "workflows" / "ci-csharp.yml"
 README = REPO_ROOT / "README.md"
 TS_STRYKER = REPO_ROOT / "typescript" / "stryker.config.mjs"
 OTEL_COLLECTOR_CONFIG = REPO_ROOT / "tests" / "integration" / "otel-collector-config.yaml"
@@ -240,6 +241,35 @@ def test_local_otlp_collector_exports_all_three_signals_to_files() -> None:
         "metrics:",
     ]:
         assert expected in config
+
+
+def test_every_language_test_suite_runs_on_windows() -> None:
+    """Each SDK's own test suite must have a Windows leg.
+
+    Go and C# used to reach windows-2025 only through `performance-smoke`,
+    which measures timings and therefore verifies nothing about rendering,
+    encoding, terminal detection or path handling — the parts that actually
+    differ there. That gap is what let non-ASCII output break for consumers on
+    Windows with every workflow green (issue #57). A perf job is not a test
+    matrix, so this asserts on the suite job by name.
+    """
+    import yaml
+
+    suites = {
+        CI_PYTHON: "quality",
+        CI_TYPESCRIPT: "typescript-quality",
+        CI_RUST: "test",
+        CI_GO: "test",
+        CI_CSHARP: "test",
+    }
+
+    missing: list[str] = []
+    for workflow_path, job_name in suites.items():
+        job = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"][job_name]
+        operating_systems = job.get("strategy", {}).get("matrix", {}).get("os", [])
+        if not any(str(os_name).startswith("windows-") for os_name in operating_systems):
+            missing.append(f"{workflow_path.name}:{job_name}")
+    assert missing == [], f"test suites with no Windows leg: {missing}"
 
 
 def test_jobs_running_repo_scripts_check_out_the_repo() -> None:

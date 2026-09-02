@@ -36,6 +36,31 @@ public class BackendInstallationTests : IDisposable
     /// </remarks>
     private const string UnbuildableEndpoint = "collector-with-no-scheme";
 
+    /// <summary>How long a test waits for a backend to finish draining.</summary>
+    /// <remarks>
+    /// Not a performance bound: a drain against the discard port finishes in
+    /// milliseconds. The budget is generous so that a merely slow drain on a
+    /// loaded runner cannot turn back into an abandoned one.
+    /// </remarks>
+    private static readonly TimeSpan DrainBudget = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Finish a backend's drain here rather than leaving it to <c>Dispose</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>Dispose</c> shuts down against an already-expired deadline, and
+    /// <c>ProviderDrains.Run</c> starts every drain on the thread pool and then
+    /// waits zero for it — so a disposed backend leaves a drain in flight. That
+    /// drain writes the process-global <see cref="Health"/> counters whenever it
+    /// happens to finish, and for a backend with a record still queued the write
+    /// is an export failure. It lands after this class's teardown has reset
+    /// health, which is to say inside some later test's reading. Shutting down
+    /// against a real deadline makes <c>Run</c> wait for the drain, and leaves
+    /// the following <c>Dispose</c> with no providers left to abandon.
+    /// </remarks>
+    private static void DrainToCompletion(OpenTelemetryBackend backend) =>
+        backend.Shutdown(DateTimeOffset.UtcNow + DrainBudget);
+
     private static TelemetryConfig ConfigWithBadEndpoints()
     {
         var config = TelemetryConfig.Default();
@@ -110,9 +135,12 @@ public class BackendInstallationTests : IDisposable
 
         Assert.False(backend.Providers.Logs);
         // Emitting through a backend with no logs provider is a no-op, not a
-        // fault, and must not count as an export failure.
+        // fault, and must not count as an export failure. Read as a delta for
+        // the reason given on DrainToCompletion: the counter belongs to the
+        // process, not to this test.
+        var before = Health.GetHealthSnapshot().LogsExportFailures;
         backend.EmitLog(Record("INFO"));
-        Assert.Equal(0, Health.GetHealthSnapshot().LogsExportFailures);
+        Assert.Equal(before, Health.GetHealthSnapshot().LogsExportFailures);
     }
 
     [Fact]
@@ -162,11 +190,19 @@ public class BackendInstallationTests : IDisposable
         using var backend = new OpenTelemetryBackend(LiveLogsConfig());
         Assert.True(backend.Providers.Logs);
 
+        // Read as a delta across the one call under test rather than as an
+        // absolute. The counter is process-global and this assembly contains
+        // tests that abandon a drain on purpose — ProviderDeadlineTests is about
+        // exactly that — so an absolute zero here is an assertion about the
+        // whole process at this instant, not about this emit.
+        var before = Health.GetHealthSnapshot().LogsExportFailures;
         backend.EmitLog(Record(level));
+        var after = Health.GetHealthSnapshot().LogsExportFailures;
+        DrainToCompletion(backend);
 
         // Delivery is best-effort, but the bridge itself must not fault: an
         // unrecognised level maps to Information rather than throwing.
-        Assert.Equal(0, Health.GetHealthSnapshot().LogsExportFailures);
+        Assert.Equal(before, after);
     }
 
     [Fact]
@@ -188,11 +224,14 @@ public class BackendInstallationTests : IDisposable
     public void EmitLogAfterShutdownIsSilentlyIgnored()
     {
         var backend = new OpenTelemetryBackend(LiveLogsConfig());
-        backend.Shutdown(DateTimeOffset.UtcNow.AddSeconds(1));
+        // A real deadline, so the shutdown drain finishes here instead of being
+        // abandoned to the thread pool — see DrainToCompletion.
+        backend.Shutdown(DateTimeOffset.UtcNow + DrainBudget);
 
+        var before = Health.GetHealthSnapshot().LogsExportFailures;
         backend.EmitLog(Record("ERROR"));
 
-        Assert.Equal(0, Health.GetHealthSnapshot().LogsExportFailures);
+        Assert.Equal(before, Health.GetHealthSnapshot().LogsExportFailures);
         backend.Dispose();
     }
 

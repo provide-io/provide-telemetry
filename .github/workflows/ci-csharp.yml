@@ -21,17 +21,41 @@ permissions:
   contents: read
 
 jobs:
+  # Linux and Windows. Windows was previously reached only by
+  # performance-smoke, which times operations and so proves nothing about
+  # rendering, encoding or path handling. The split follows ci-python.yml and
+  # ci-rust.yml: everything on Linux, the default configuration on Windows.
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      # false, not true: on an OS matrix a cancelled sibling hides whether the
+      # other platform is healthy, which is the one thing a cross-platform run
+      # exists to tell you.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2025]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: csharp
+        # $RUNNER_TEMP expansion and the shared coverage script are POSIX
+        # shell; the Windows leg would otherwise run them under PowerShell.
+        shell: bash
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
         with:
           dotnet-version: "10.0.x"
+      # uv gives one Python invocation that works on both runner OSes — the
+      # image's own interpreter is `python3` on Linux and `python` on Windows.
+      # check_csharp_coverage.py is stdlib-only, so nothing is synced.
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.11"
+      # Formatting is a property of the tree, not of the platform, so it is
+      # checked once — the same reason ci-rust.yml runs `cargo fmt` on the
+      # Linux leg only.
       - name: Check formatting
+        if: runner.os == 'Linux'
         run: dotnet format Provide.Telemetry.sln --verify-no-changes
       - name: Build (warnings as errors)
         run: dotnet build Provide.Telemetry.sln -warnaserror
@@ -49,8 +73,10 @@ jobs:
       # 98 under a measured 98.20%: the remaining partial branches are
       # defensive null-coalescing arms and lock double-checks only a race can
       # take, plus DI-shape lambda arms in the OTel drain wiring.
+      # Enforced per OS: a test that quietly stops running on one platform
+      # shows up here as a coverage drop rather than as a silent gap.
       - name: Enforce coverage floor
-        run: python3 ../ci/check_csharp_coverage.py "$RUNNER_TEMP/cscov" --line-floor 100 --branch-floor 98
+        run: uv run --no-project python ../ci/check_csharp_coverage.py "$RUNNER_TEMP/cscov" --line-floor 100 --branch-floor 98
 
   # Blocks on any vulnerable NuGet package, transitive included, in every
   # project of the solution. Restores first so an unrestored solution cannot
