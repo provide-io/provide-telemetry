@@ -128,17 +128,34 @@ export function _parseStackFrame(frame: string): Callsite | undefined {
  * Intentionally expensive: it builds an Error purely to read V8's stack, so it
  * runs only when logIncludeCaller or logCodeAttributes asks for a callsite.
  */
+/**
+ * The first frame belonging to the caller rather than to the logging machinery.
+ *
+ * Separate from {@link captureCallsite} so the skip list is reachable from a
+ * test with a synthetic stack. Building a real stack that contains a
+ * `logger.js` frame is not possible from inside this source tree, and that is
+ * the frame that matters: consumers run the compiled build, so a skip list
+ * naming only the `.ts` file stops the walk on this module and reports the
+ * logger as the callsite everywhere the package is actually used.
+ *
+ * Exported for direct unit testing; not part of the package's public API.
+ */
+export function _firstCallerFrame(frames: string[]): string | undefined {
+  for (const frame of frames) {
+    if (INTERNAL_FRAME_MARKERS.some((marker) => frame.includes(marker))) continue;
+    return frame;
+  }
+  return undefined;
+}
+
 // Stryker disable all
 function captureCallsite(): Callsite | undefined {
   const stack = new Error().stack?.split('\n');
   /* v8 ignore next -- stack is always defined in V8 */
   if (!stack) return undefined;
-  for (const frame of stack.slice(1)) {
-    if (INTERNAL_FRAME_MARKERS.some((marker) => frame.includes(marker))) continue;
-    return _parseStackFrame(frame);
-  }
+  const frame = _firstCallerFrame(stack.slice(1));
   /* v8 ignore next -- a V8 stack always has a frame outside the logger */
-  return undefined;
+  return frame === undefined ? undefined : _parseStackFrame(frame);
 }
 // Stryker enable all
 

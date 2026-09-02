@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetConfig, setupTelemetry } from '../src/config.js';
 import { _resetContext } from '../src/context.js';
 import type { Callsite } from '../src/logger.js';
-import { _parseStackFrame, _resetRootLogger, getLogger, makeWriteHook } from '../src/logger.js';
+import {
+  _firstCallerFrame,
+  _parseStackFrame,
+  _resetRootLogger,
+  getLogger,
+  makeWriteHook,
+} from '../src/logger.js';
 import * as otelLogs from '../src/otel-logs.js';
 import * as schema from '../src/schema.js';
 
@@ -422,5 +428,34 @@ describe('write hook — logIncludeTimestamp toggle', () => {
     const obj: Record<string, unknown> = { level: 30, event: 'test', time: ts };
     hook(obj);
     expect(obj['time']).toBe(ts);
+  });
+});
+
+describe('_firstCallerFrame', () => {
+  const caller = '    at handleRequest (/srv/app/routes.ts:42:17)';
+
+  it('skips this module in the source tree', () => {
+    expect(_firstCallerFrame(['    at write (/pkg/src/logger.ts:210:9)', caller])).toBe(caller);
+  });
+
+  it('skips this module in the published build', () => {
+    // The frame consumers actually get: they import dist/logger.js, never the
+    // .ts source. A skip list naming only the source file stops the walk here
+    // and reports the logger as the callsite for every record in every build.
+    expect(_firstCallerFrame(['    at write (/pkg/dist/logger.js:210:9)', caller])).toBe(caller);
+  });
+
+  it('skips dependencies and pino frames', () => {
+    expect(
+      _firstCallerFrame([
+        '    at Pino.write (/pkg/node_modules/pino/lib/proto.js:210:9)',
+        '    at Object.info (/pkg/node_modules/.pnpm/pino/index.js:11:2)',
+        caller,
+      ]),
+    ).toBe(caller);
+  });
+
+  it('returns undefined when every frame is internal', () => {
+    expect(_firstCallerFrame(['    at write (/pkg/dist/logger.js:210:9)'])).toBeUndefined();
   });
 });
