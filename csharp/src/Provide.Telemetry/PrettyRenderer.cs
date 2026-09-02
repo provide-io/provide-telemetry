@@ -78,5 +78,5 @@ internal static class PrettyRenderer
     /// <summary>Render one pretty line, coloring only when stderr is a terminal.</summary>
     internal static string Render(
         IReadOnlyDictionary<string, object?> output, CanonicalLogRecord record) =>
-        Render(output, record, !Console.IsErrorRedirected);
+        Render(output, record, !Console.IsErrorRedirected && ConsolePrep.AnsiEnabled);
 }

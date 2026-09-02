@@ -22,9 +22,10 @@ public sealed class LoggingConfig
     // knob that does nothing is a promise the package does not keep.
     // No PrettyKeyColor/PrettyValueColor/PrettyFields here. config_defaults in
     // spec/telemetry-api.yaml lists PROVIDE_LOG_PRETTY_* for python, typescript,
-    // go and rust only, and this SDK's pretty renderer emits quoted key=value
-    // with no ANSI at all. Carrying the properties made "pretty" look colour
-    // configurable in C#, which is a worse answer than not offering the knob.
+    // go and rust only. This renderer does emit ANSI — PrettyRenderer's colour
+    // constants are real and it uses them — but which colours is fixed, and
+    // carrying the properties would make "pretty" look configurable in C#,
+    // which is a worse answer than not offering the knob.
     public Dictionary<string, string> ModuleLevels { get; set; } = new(StringComparer.Ordinal);
 }
 
