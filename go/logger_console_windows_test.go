@@ -81,27 +81,49 @@ func consoleHandle(t *testing.T) *os.File {
 	return f
 }
 
-// consoleText reads the console screen buffer back as text.
+// consoleInfo is the head of CONSOLE_SCREEN_BUFFER_INFO: two COORDs of
+// {X, Y int16}, the attributes, the window rect and the maximum window size.
+type consoleInfo struct {
+	size              [2]int16
+	cursorPosition    [2]int16
+	attributes        uint16
+	window            [4]int16
+	maximumWindowSize [2]int16
+}
+
+func consoleBufferInfo(t *testing.T, f *os.File) consoleInfo {
+	t.Helper()
+	var info consoleInfo
+	if ret, _, err := _procGetConsoleScreenBufferInf.Call(
+		uintptr(syscall.Handle(f.Fd())), uintptr(unsafe.Pointer(&info)),
+	); ret == 0 {
+		t.Fatalf("GetConsoleScreenBufferInfo: %v", err)
+	}
+	return info
+}
+
+// consoleCursor is where the next write will land, as the packed COORD the
+// console API takes: X in the low word, Y in the high word.
+//
+// Every test here shares one console — a process has at most one — so reading
+// from the top of the buffer finds whatever an earlier test left there, and an
+// assertion about mojibake finds the correct text an earlier test wrote.
+// Reading from the cursor is what makes each assertion about its own write.
+func consoleCursor(t *testing.T, f *os.File) uintptr {
+	t.Helper()
+	info := consoleBufferInfo(t, f)
+	return uintptr(uint32(uint16(info.cursorPosition[1]))<<16 | uint32(uint16(info.cursorPosition[0])))
+}
+
+// consoleTextFrom reads the console screen buffer back as text, starting at the
+// packed COORD start.
 //
 // The buffer is a grid of cells, so a wrapped line arrives with no separator
 // and trailing cells arrive as spaces; the caller looks for a substring rather
 // than parsing lines.
-func consoleText(t *testing.T, f *os.File) string {
+func consoleTextFrom(t *testing.T, f *os.File, start uintptr) string {
 	t.Helper()
-	// CONSOLE_SCREEN_BUFFER_INFO begins with COORD dwSize {X, Y int16}.
-	var info struct {
-		size              [2]int16
-		cursorPosition    [2]int16
-		attributes        uint16
-		window            [4]int16
-		maximumWindowSize [2]int16
-	}
-	handle := syscall.Handle(f.Fd())
-	if ret, _, err := _procGetConsoleScreenBufferInf.Call(
-		uintptr(handle), uintptr(unsafe.Pointer(&info)),
-	); ret == 0 {
-		t.Fatalf("GetConsoleScreenBufferInfo: %v", err)
-	}
+	info := consoleBufferInfo(t, f)
 
 	// Two screens' worth of cells is plenty for one record and keeps the read
 	// bounded on a buffer whose height is often 9001 lines.
@@ -109,10 +131,10 @@ func consoleText(t *testing.T, f *os.File) string {
 	buf := make([]uint16, count)
 	var read uint32
 	if ret, _, err := _procReadConsoleOutputCharW.Call(
-		uintptr(handle),
+		uintptr(syscall.Handle(f.Fd())),
 		uintptr(unsafe.Pointer(&buf[0])),
 		uintptr(count),
-		0, // COORD{0, 0}, packed as Y<<16|X
+		start,
 		uintptr(unsafe.Pointer(&read)),
 	); ret == 0 {
 		t.Fatalf("ReadConsoleOutputCharacterW: %v", err)
@@ -150,9 +172,10 @@ func TestWindowsConsole_NonASCIISurvivesADefaultCodePage(t *testing.T) {
 		t.Fatalf("console output code page is %d after setup, want %d", cp, _codePageUTF8)
 	}
 
+	start := consoleCursor(t, console)
 	GetLogger(context.Background(), "console").Info("console.render.ok", "glyph", _nonASCII)
 
-	if text := consoleText(t, console); !strings.Contains(text, _nonASCII) {
+	if text := consoleTextFrom(t, console, start); !strings.Contains(text, _nonASCII) {
 		t.Errorf("the console does not hold what was logged; it holds: %q", strings.TrimSpace(text))
 	}
 }
@@ -173,11 +196,12 @@ func TestWindowsConsole_TheDefaultCodePageIsWhatBreaksIt(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _, _ = _procSetConsoleOutCP.Call(original) })
 
+	start := consoleCursor(t, console)
 	if _, err := console.Write([]byte("uncorrected " + _nonASCII + "\n")); err != nil {
 		t.Fatalf("writing to the console: %v", err)
 	}
 
-	if text := consoleText(t, console); strings.Contains(text, _nonASCII) {
+	if text := consoleTextFrom(t, console, start); strings.Contains(text, _nonASCII) {
 		t.Error("CP437 rendered UTF-8 correctly, so this test can no longer tell the fix from its absence")
 	}
 }
