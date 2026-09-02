@@ -53,12 +53,18 @@ languages; this file covers only what shipped to NuGet.
 
 ### Fixed
 
-- **Non-ASCII output no longer arrives as mojibake on a Windows console, and
-  ANSI is emitted only to a console that renders it.** `Console.Error` encodes
-  with `Console.OutputEncoding`, which defaults to the console's output code
-  page — CP437 or CP1252, not UTF-8 — so every non-ASCII character this package
-  wrote was mangled there. Setup sets that console to UTF-8 (no BOM) and
-  shutdown restores what the host had.
+- **Non-ASCII output no longer disappears on a Windows console, and ANSI is
+  emitted only to a console that renders it.** `Console.Error` is a writer over
+  `Console.OutputEncoding`, which defaults to the console's output code page —
+  CP437 or CP1252, not UTF-8 — and the encoded bytes go out through `WriteFile`.
+  Any character that code page cannot represent was therefore replaced by the
+  encoder before it ever reached the console. Setup sets that console to UTF-8
+  (no BOM) and shutdown restores what the host had.
+
+  This is the one SDK of the five that needs it. The other four convert to
+  UTF-16 and call `WriteConsoleW`, so the code page is no part of their path —
+  Go included, which an earlier version of this change had wrong until a console
+  test in the Go suite disproved it.
 
   Separately, `Console.IsErrorRedirected` is false for any console, so the
   pretty renderer's colours switched on for all of them — including legacy

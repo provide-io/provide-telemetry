@@ -10,43 +10,42 @@ import (
 	"syscall"
 )
 
-// ENABLE_VIRTUAL_TERMINAL_PROCESSING and CP_UTF8.
-const (
-	_enableVirtualTerminal = uint32(0x0004)
-	_codePageUTF8          = uintptr(65001)
-)
+// ENABLE_VIRTUAL_TERMINAL_PROCESSING.
+const _enableVirtualTerminal = uint32(0x0004)
 
-// The three console calls the stdlib does not wrap. syscall exports
-// GetConsoleMode and nothing else of this family, and reaching for
+// The one console call the stdlib does not wrap. syscall exports
+// GetConsoleMode and not its setter, and reaching for
 // golang.org/x/sys/windows would be this package's first third-party
-// dependency — for three calls whose arguments are all plain integers, so no
+// dependency — for a call whose arguments are both plain integers, so no
 // unsafe.Pointer is involved either.
 //
 //nolint:gochecknoglobals // lazy DLL handles are the documented syscall idiom
 var (
-	_kernel32            = syscall.NewLazyDLL("kernel32.dll")
-	_procSetConsoleMode  = _kernel32.NewProc("SetConsoleMode")
-	_procGetConsoleOutCP = _kernel32.NewProc("GetConsoleOutputCP")
-	_procSetConsoleOutCP = _kernel32.NewProc("SetConsoleOutputCP")
+	_kernel32           = syscall.NewLazyDLL("kernel32.dll")
+	_procSetConsoleMode = _kernel32.NewProc("SetConsoleMode")
 )
 
 // _prepareConsole makes a Windows console able to render what this SDK writes.
 //
-// Two changes, each made only when it is needed and each undone by the returned
-// restore:
+// Only ANSI needs anything. A console renders escape sequences only once
+// ENABLE_VIRTUAL_TERMINAL_PROCESSING is set on it; Windows Terminal and current
+// conhost set it themselves, legacy conhost does not and prints "ESC[36m"
+// literally. Whether enabling it succeeded is the answer to "does ANSI work
+// here", which is why colour is reported from this result rather than from the
+// handle being a character device — every console is one.
 //
-//   - The output code page becomes UTF-8. Go writes bytes straight to a console
-//     handle, so without this every non-ASCII byte is decoded as CP437 or
-//     CP1252 and rendered as mojibake.
-//   - ENABLE_VIRTUAL_TERMINAL_PROCESSING is set, and whether that succeeded is
-//     the answer to "does ANSI work here". Legacy conhost refuses it and prints
-//     the escapes literally, which is why colour is reported from this result
-//     rather than from the handle being a character device.
+// The output code page is deliberately *not* touched. It decides how a console
+// decodes the bytes written to it, but Go never writes bytes to one: os.File
+// classifies a console handle as kindConsole and internal/poll's writeConsole
+// decodes the UTF-8, encodes UTF-16 and calls WriteConsoleW, so the code page
+// is not in the path at all. Setting it would change the host's console to no
+// purpose. C# is the SDK that needs it, because .NET encodes through
+// Console.OutputEncoding and writes the resulting bytes.
 //
 // A handle that is not a console fails GetConsoleMode, and this returns a nil
 // restore — the signal that nothing was found and nothing was touched. A
-// console that already holds either setting is left holding it, and is not
-// restored to something it never had.
+// console that already has the mode bit keeps it, and is not restored to
+// something it never had.
 func _prepareConsole(f *os.File) (ansi bool, restore func()) {
 	if f == nil {
 		return false, nil
@@ -55,32 +54,20 @@ func _prepareConsole(f *os.File) (ansi bool, restore func()) {
 
 	var mode uint32
 	if err := syscall.GetConsoleMode(handle, &mode); err != nil {
-		// A file, a pipe, or a redirected stream. Its bytes are already correct
-		// UTF-8 and none of this applies.
+		// A file, a pipe, or a redirected stream. Nothing here applies, and its
+		// bytes were already correct UTF-8.
 		return false, nil
 	}
-
-	undo := make([]func(), 0, 2)
-	ansi = mode&_enableVirtualTerminal != 0
-	if !ansi {
-		if ret, _, _ := _procSetConsoleMode.Call(uintptr(handle), uintptr(mode|_enableVirtualTerminal)); ret != 0 {
-			ansi = true
-			previous := uintptr(mode)
-			undo = append(undo, func() { _, _, _ = _procSetConsoleMode.Call(uintptr(handle), previous) })
-		}
+	if mode&_enableVirtualTerminal != 0 {
+		return true, func() {}
 	}
-
-	if previous, _, _ := _procGetConsoleOutCP.Call(); previous != _codePageUTF8 {
-		if ret, _, _ := _procSetConsoleOutCP.Call(_codePageUTF8); ret != 0 {
-			undo = append(undo, func() { _, _, _ = _procSetConsoleOutCP.Call(previous) })
-		}
+	if ret, _, _ := _procSetConsoleMode.Call(uintptr(handle), uintptr(mode|_enableVirtualTerminal)); ret == 0 {
+		// A console that refuses VT is a console all the same, so a restore is
+		// returned: it is what tells the caller one was found.
+		return false, func() {}
 	}
-
-	return ansi, func() {
-		for _, step := range undo {
-			step()
-		}
-	}
+	previous := uintptr(mode)
+	return true, func() { _, _, _ = _procSetConsoleMode.Call(uintptr(handle), previous) }
 }
 
 // _terminalRendersANSI reports whether f is a console that renders ANSI.

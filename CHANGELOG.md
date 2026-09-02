@@ -123,29 +123,33 @@ their old two-parameter signature finds nothing and must add the two.
   `filename` got the key twice. The callsite now shadows a caller's field of the
   same name, as Python and C# do.
 
-- **Go and C#: non-ASCII output arrived as mojibake on a Windows console, and
-  ANSI was emitted to consoles that cannot render it.** A console decodes the bytes
-  written to it with its output code page — CP437 or CP1252 by default — and Go
-  writes bytes straight to the handle, so every non-ASCII character this SDK
-  wrote was mangled. Setup sets that console to UTF-8 and shutdown restores what
-  the host had. Separately, a console handle is a character device, so the
-  terminal probe reported colour as available on every console including legacy
-  conhost; virtual-terminal processing is enabled and its success is now the
-  colour answer.
+- **Go and C#: ANSI was emitted to Windows consoles that cannot render it, and
+  C# lost non-ASCII output there entirely.** A console handle is a character
+  device, so both SDKs' terminal probes reported colour as available on every
+  console — including legacy conhost, which prints `ESC[36m` literally because
+  `ENABLE_VIRTUAL_TERMINAL_PROCESSING` is not set on it. Setup enables it and its
+  success is now the colour answer; shutdown restores the mode.
 
-  C# has the same defect through a different door: `Console.Error` encodes with
-  `Console.OutputEncoding`, which defaults to that code page, and
-  `Console.IsErrorRedirected` is false for every console.
+  C# additionally sets the console's output code page to UTF-8, because
+  `Console.Error` is a writer over `Console.OutputEncoding`, which defaults to
+  that code page, and the encoded bytes go out through `WriteFile` — so any
+  character the code page cannot represent was lost before it reached the
+  console.
 
-  `spec/telemetry-api.yaml` carries the contract under `windows_console`, with
-  the applicability worked out rather than assumed: Go and C# write raw bytes,
-  while CPython, libuv and Rust std all convert to UTF-16 and call
-  `WriteConsoleW`, so the code page never reaches their output.
+  **Go does not, and that correction is the useful part of this change.** The
+  first version set the code page in Go too, on the assumption that Go writes
+  raw bytes as C# does. The console test disproved it: `os.File` classifies a
+  console handle as `kindConsole` and `internal/poll`'s `writeConsole` decodes
+  the UTF-8, encodes UTF-16 and calls `WriteConsoleW`, so the code page is no
+  part of Go's path. CPython, libuv and Rust std do the same. `windows_console`
+  in `spec/telemetry-api.yaml` now lists C# alone for the code page, and says
+  the list was arrived at by testing rather than by reading.
 
   Tested against a real console screen buffer — the test allocates one, writes a
-  record through the SDK and reads the cells back. A `bytes.Buffer` cannot catch
-  this, and no CI job has a console, because GitHub Actions redirects every
-  stream to a pipe.
+  record through the SDK and reads the cells back. A `bytes.Buffer` cannot see
+  any of this, and no CI job has a console, because GitHub Actions redirects
+  every stream to a pipe. That is why the wrong assumption survived being
+  written down twice before a test looked at it.
 
 - **Go: a log record the destination refuses is counted as an export failure.**
   `log/slog` discards a handler's returned error, so a failing writer lost every

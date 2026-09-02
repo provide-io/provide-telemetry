@@ -15,21 +15,25 @@ import (
 	"unsafe"
 )
 
-// The console test: a real console screen buffer, written through the whole
+// The console tests: a real console screen buffer, written through the whole
 // SDK, read back cell by cell.
 //
-// Nothing else in this repository can catch the bug it covers. Every other test
-// writes into a bytes.Buffer, which holds whatever bytes it is handed — but the
-// defect is that a console *decodes* those bytes with its output code page, so
-// a buffer proves only that the SDK produced correct UTF-8, which was never in
-// doubt. CI cannot catch it either: GitHub Actions redirects every stream to a
-// pipe, so no job has a console at all. Hence AllocConsole, which gives this
-// process one whether the runner had it or not.
+// Nothing else in this repository can look at one. Every other test writes into
+// a bytes.Buffer, which holds whatever bytes it is handed — and CI cannot do it
+// either, because GitHub Actions redirects every stream to a pipe, so no job has
+// a console at all. Hence AllocConsole, which gives this process one whether the
+// runner had it or not.
+//
+// The first thing these tests established was that a premise was wrong: the
+// output code page does not affect Go's console output, because Go does not
+// write bytes to a console. That is pinned below rather than merely believed.
 
 var (
 	_procAllocConsole              = _kernel32.NewProc("AllocConsole")
 	_procReadConsoleOutputCharW    = _kernel32.NewProc("ReadConsoleOutputCharacterW")
 	_procGetConsoleScreenBufferInf = _kernel32.NewProc("GetConsoleScreenBufferInfo")
+	_procGetConsoleOutCP           = _kernel32.NewProc("GetConsoleOutputCP")
+	_procSetConsoleOutCP           = _kernel32.NewProc("SetConsoleOutputCP")
 )
 
 const _codePage437 = uintptr(437)
@@ -38,16 +42,9 @@ const _codePage437 = uintptr(437)
 //
 // Not an emoji, deliberately. A console screen buffer holds UTF-16 code units
 // one per cell, so an astral character — every emoji — has no cell to live in
-// and conhost stores U+FFFD instead, whatever the code page says. Windows
-// Terminal renders one because its own buffer is not conhost's; the SDK cannot
-// make the legacy one hold it, and a test asserting otherwise would be asking
-// the platform for something it does not do.
-//
-// The code page is what this SDK controls, and it is what turns a stream of
-// UTF-8 bytes from four mojibake characters into one correct one. That holds
-// for every non-ASCII character, emoji included: the difference for an emoji is
-// U+FFFD instead of the glyph on legacy conhost, and the glyph itself anywhere
-// with a modern buffer.
+// and conhost stores U+FFFD instead. Windows Terminal renders one because its
+// own buffer is not conhost's; asking the legacy buffer for it is asking the
+// platform for something it does not do.
 const _nonASCII = "checkmark ✓"
 
 // consoleHandle attaches a console to this process and returns its screen
@@ -105,10 +102,9 @@ func consoleBufferInfo(t *testing.T, f *os.File) consoleInfo {
 // consoleCursor is where the next write will land, as the packed COORD the
 // console API takes: X in the low word, Y in the high word.
 //
-// Every test here shares one console — a process has at most one — so reading
-// from the top of the buffer finds whatever an earlier test left there, and an
-// assertion about mojibake finds the correct text an earlier test wrote.
-// Reading from the cursor is what makes each assertion about its own write.
+// A process has one console, so every test here shares it, and reading from the
+// top of the buffer finds whatever an earlier test left there. Reading from the
+// cursor is what makes each assertion about its own write.
 func consoleCursor(t *testing.T, f *os.File) uintptr {
 	t.Helper()
 	info := consoleBufferInfo(t, f)
@@ -118,9 +114,9 @@ func consoleCursor(t *testing.T, f *os.File) uintptr {
 // consoleTextFrom reads the console screen buffer back as text, starting at the
 // packed COORD start.
 //
-// The buffer is a grid of cells, so a wrapped line arrives with no separator
-// and trailing cells arrive as spaces; the caller looks for a substring rather
-// than parsing lines.
+// The buffer is a grid of cells, so a wrapped line arrives with no separator and
+// trailing cells arrive as spaces; the caller looks for a substring rather than
+// parsing lines.
 func consoleTextFrom(t *testing.T, f *os.File, start uintptr) string {
 	t.Helper()
 	info := consoleBufferInfo(t, f)
@@ -142,34 +138,34 @@ func consoleTextFrom(t *testing.T, f *os.File, start uintptr) string {
 	return string(utf16.Decode(buf[:read]))
 }
 
-// A non-ASCII record reaches a Windows console intact, whatever code page the
-// console started on.
-//
-// This is the reported failure, from the outside: a host prefixes its log lines
-// with an emoji to tell two runtimes apart in one stream, and on Windows every
-// such line arrives as mojibake. Go writes bytes straight to the console handle,
-// so a console left on CP437 or CP1252 decodes each UTF-8 byte separately.
-func TestWindowsConsole_NonASCIISurvivesADefaultCodePage(t *testing.T) {
-	consoleReset(t)
-	console := consoleHandle(t)
-
-	// Start from a legacy code page, so a pass proves this SDK set the console
-	// rather than inheriting a friendly default from the runner.
+// onCodePage437 puts the console on a legacy code page for the test's duration.
+func onCodePage437(t *testing.T) {
+	t.Helper()
 	original, _, _ := _procGetConsoleOutCP.Call()
 	if ret, _, err := _procSetConsoleOutCP.Call(_codePage437); ret == 0 {
 		t.Fatalf("SetConsoleOutputCP(437): %v", err)
 	}
 	t.Cleanup(func() { _, _, _ = _procSetConsoleOutCP.Call(original) })
+}
+
+// A record carrying non-ASCII reaches a Windows console intact, on the code page
+// a console starts with.
+//
+// This is the assertion the whole file exists for, and it passes without this
+// SDK touching the code page — which is the point. Go classifies a console
+// handle as kindConsole and internal/poll's writeConsole decodes the UTF-8,
+// encodes UTF-16 and calls WriteConsoleW, so what the console decodes with
+// never enters the picture.
+func TestWindowsConsole_NonASCIISurvivesADefaultCodePage(t *testing.T) {
+	consoleReset(t)
+	console := consoleHandle(t)
+	onCodePage437(t)
 
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 	t.Setenv("PROVIDE_LOG_FORMAT", LogFormatJSON)
 	if _, err := SetupTelemetry(WithLogOutput(console)); err != nil {
 		t.Fatalf("setup failed: %v", err)
-	}
-
-	if cp, _, _ := _procGetConsoleOutCP.Call(); cp != _codePageUTF8 {
-		t.Fatalf("console output code page is %d after setup, want %d", cp, _codePageUTF8)
 	}
 
 	start := consoleCursor(t, console)
@@ -180,80 +176,48 @@ func TestWindowsConsole_NonASCIISurvivesADefaultCodePage(t *testing.T) {
 	}
 }
 
-// The same bytes on the code page a console starts with come out wrong.
+// The code page this SDK leaves alone is genuinely irrelevant to Go's output.
 //
-// Without this the test above would pass on any runner whose console happened
-// to be UTF-8 already, and would stop being about the defect. Writing straight
-// to the handle, with no SDK in the path, is what isolates the code page as the
-// cause.
-func TestWindowsConsole_TheDefaultCodePageIsWhatBreaksIt(t *testing.T) {
+// Written straight to the handle with no SDK in the path, so what it pins is
+// the runtime's behaviour rather than this package's. If a future Go release
+// stopped routing console writes through WriteConsoleW, this fails and says so
+// — which is the only warning there would be that the code page has become
+// this SDK's problem after all, as it is C#'s.
+func TestWindowsConsole_GoDoesNotWriteBytesToAConsole(t *testing.T) {
 	consoleReset(t)
 	console := consoleHandle(t)
-
-	original, _, _ := _procGetConsoleOutCP.Call()
-	if ret, _, err := _procSetConsoleOutCP.Call(_codePage437); ret == 0 {
-		t.Fatalf("SetConsoleOutputCP(437): %v", err)
-	}
-	t.Cleanup(func() { _, _, _ = _procSetConsoleOutCP.Call(original) })
+	onCodePage437(t)
 
 	start := consoleCursor(t, console)
 	if _, err := console.Write([]byte("uncorrected " + _nonASCII + "\n")); err != nil {
 		t.Fatalf("writing to the console: %v", err)
 	}
 
-	if text := consoleTextFrom(t, console, start); strings.Contains(text, _nonASCII) {
-		t.Error("CP437 rendered UTF-8 correctly, so this test can no longer tell the fix from its absence")
+	if text := consoleTextFrom(t, console, start); !strings.Contains(text, _nonASCII) {
+		t.Errorf(
+			"CP437 mangled Go's console output, so the code page now matters here; it holds: %q",
+			strings.TrimSpace(text),
+		)
 	}
 }
 
-// Shutdown puts the console back the way the host had it.
-func TestWindowsConsole_ShutdownRestoresTheCodePage(t *testing.T) {
+// Nothing this SDK does changes the console's code page.
+//
+// The host owns it. Changing it would be a process-wide side effect bought for
+// nothing, given the write path above.
+func TestWindowsConsole_TheCodePageIsLeftAlone(t *testing.T) {
 	consoleReset(t)
 	console := consoleHandle(t)
-
-	original, _, _ := _procGetConsoleOutCP.Call()
-	if ret, _, err := _procSetConsoleOutCP.Call(_codePage437); ret == 0 {
-		t.Fatalf("SetConsoleOutputCP(437): %v", err)
-	}
-	t.Cleanup(func() { _, _, _ = _procSetConsoleOutCP.Call(original) })
+	onCodePage437(t)
 
 	resetSetupState(t)
 	t.Cleanup(func() { resetSetupState(t) })
 	if _, err := SetupTelemetry(WithLogOutput(console)); err != nil {
 		t.Fatalf("setup failed: %v", err)
-	}
-	if err := ShutdownTelemetry(context.Background()); err != nil {
-		t.Fatalf("shutdown failed: %v", err)
 	}
 
 	if cp, _, _ := _procGetConsoleOutCP.Call(); cp != _codePage437 {
-		t.Errorf("console output code page is %d after shutdown, want the host's %d", cp, _codePage437)
-	}
-}
-
-// A console the host already put on UTF-8 is left alone, and restoring does not
-// set it to something it never had.
-func TestWindowsConsole_AnAlreadyUTF8ConsoleIsLeftAlone(t *testing.T) {
-	consoleReset(t)
-	console := consoleHandle(t)
-
-	original, _, _ := _procGetConsoleOutCP.Call()
-	if ret, _, err := _procSetConsoleOutCP.Call(_codePageUTF8); ret == 0 {
-		t.Fatalf("SetConsoleOutputCP(65001): %v", err)
-	}
-	t.Cleanup(func() { _, _, _ = _procSetConsoleOutCP.Call(original) })
-
-	resetSetupState(t)
-	t.Cleanup(func() { resetSetupState(t) })
-	if _, err := SetupTelemetry(WithLogOutput(console)); err != nil {
-		t.Fatalf("setup failed: %v", err)
-	}
-	if err := ShutdownTelemetry(context.Background()); err != nil {
-		t.Fatalf("shutdown failed: %v", err)
-	}
-
-	if cp, _, _ := _procGetConsoleOutCP.Call(); cp != _codePageUTF8 {
-		t.Errorf("console output code page is %d, want the %d the host set", cp, _codePageUTF8)
+		t.Errorf("the console output code page is %d; the host set %d and nothing here should move it", cp, _codePage437)
 	}
 }
 
@@ -293,5 +257,33 @@ func TestWindowsConsole_ColourFollowsVirtualTerminalProcessing(t *testing.T) {
 	_prepareLogConsole(console)
 	if !_terminalRendersANSI(console) {
 		t.Error("a prepared VT console was not reported as rendering ANSI")
+	}
+}
+
+// Shutdown puts the console mode back the way the host had it.
+func TestWindowsConsole_ShutdownRestoresTheConsoleMode(t *testing.T) {
+	consoleReset(t)
+	console := consoleHandle(t)
+
+	var before uint32
+	if err := syscall.GetConsoleMode(syscall.Handle(console.Fd()), &before); err != nil {
+		t.Fatalf("GetConsoleMode: %v", err)
+	}
+
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	if _, err := SetupTelemetry(WithLogOutput(console)); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if err := ShutdownTelemetry(context.Background()); err != nil {
+		t.Fatalf("shutdown failed: %v", err)
+	}
+
+	var after uint32
+	if err := syscall.GetConsoleMode(syscall.Handle(console.Fd()), &after); err != nil {
+		t.Fatalf("GetConsoleMode: %v", err)
+	}
+	if before != after {
+		t.Errorf("console mode is %#x after shutdown, want the host's %#x", after, before)
 	}
 }

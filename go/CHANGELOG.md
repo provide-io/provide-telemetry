@@ -44,18 +44,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **Non-ASCII output no longer arrives as mojibake on a Windows console.**
-  Go writes bytes straight to a console handle, and a console decodes them with
-  its *output code page* — CP437 or CP1252 by default, not UTF-8. Every
-  non-ASCII character this SDK wrote was therefore mangled, which is what a host
-  prefixing its log lines with an emoji to tell two runtimes apart in one stream
-  sees. Setup now sets that console to UTF-8 and shutdown puts back what the
-  host had; a console already on UTF-8 is left alone.
-
-  Nothing is changed when the destination is not a console. A file, a pipe or a
-  writer supplied through `WithLogOutput` receives exactly the bytes it received
-  before — a host that owns the path to the terminal keeps owning it.
-
 - **ANSI is emitted to a Windows console only once it can render it.** A console
   handle is a character device, so the terminal probe said colour was fine on
   every one of them — including legacy conhost, which prints `←[36m` literally.
@@ -64,23 +52,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   enabling fails, colour is off. Behaviour away from Windows is unchanged, down
   to a pretty logger built before `SetupTelemetry` still being coloured.
 
-  Both changes are exercised against a real console screen buffer: the test
-  allocates one, writes a record through the whole SDK and reads the cells back,
-  and its sibling writes the same bytes on the code page a console starts with
-  to show they come out wrong. A `bytes.Buffer` cannot catch this — it holds
-  whatever bytes it is handed, while the defect is in what a console *decodes*
-  them to — and no CI job has a console at all, because GitHub Actions redirects
-  every stream to a pipe.
+  Exercised against a real console screen buffer: the test allocates one, writes
+  a record through the whole SDK and reads the cells back. A `bytes.Buffer`
+  cannot see any of this, and no CI job has a console at all, because GitHub
+  Actions redirects every stream to a pipe.
 
-  One limit worth stating, since emoji are the usual reason to care. A legacy
-  console screen buffer holds one UTF-16 code unit per cell, so an astral
-  character — every emoji — has no cell to live in and conhost stores U+FFFD
-  whatever the code page says. The code page is still what matters: it is the
-  difference between one replacement character and four mojibake ones, and on a
-  modern buffer such as Windows Terminal's, between the glyph and four mojibake
-  characters. The assertion therefore uses a non-ASCII character the legacy
-  buffer can actually hold, rather than asking the platform for something it
-  does not do.
+  **The console's output code page is deliberately not touched**, and finding
+  that out is what those tests were worth. The code page decides how a console
+  decodes the bytes written to it, and is not UTF-8 by default — but Go never
+  writes bytes to a console: `os.File` classifies a console handle as
+  `kindConsole`, and `internal/poll`'s `writeConsole` decodes the UTF-8, encodes
+  UTF-16 and calls `WriteConsoleW`. An earlier version of this change set the
+  code page, on the assumption that Go wrote raw bytes as C# does; the console
+  test disproved it by rendering a non-ASCII record correctly on CP437. Two
+  tests now hold that shape in place — one writes straight to the handle on
+  CP437 and requires the output to be correct, so a future Go release that
+  stopped using `WriteConsoleW` would say so, and one requires that setup leaves
+  the host's code page exactly where it found it.
 
 ### Fixed
 

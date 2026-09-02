@@ -708,24 +708,31 @@ windows_console:
   code_page:
     problem: >
       A console decodes the bytes written to it with its output code page,
-      which is CP437 or CP1252 on a default console, not UTF-8. An SDK whose
-      runtime writes raw bytes therefore renders every non-ASCII character as
-      mojibake — the reported failure being a host that prefixes its log lines
-      with an emoji to tell two runtimes apart in one stream.
+      which is CP437 or CP1252 on a default console, not UTF-8. An SDK that
+      encodes text and writes the resulting bytes therefore loses every
+      character the code page cannot represent — the reported failure being a
+      host that prefixes its log lines with an emoji to tell two runtimes apart
+      in one stream.
     contract: >
-      An SDK that writes raw bytes sets the console output code page to UTF-8
-      when it configures logging, and restores the previous value at shutdown.
-      A console already on UTF-8 is left alone and is not "restored" to
-      something it never had. Nothing is changed when the destination is not a
-      console: a file, a pipe or a writer the host supplied receives exactly
-      the bytes it would have received anyway.
-    applicability: [go, csharp]
+      An SDK that encodes through a code page sets the console output code page
+      to UTF-8 when it configures logging, and restores the previous value at
+      shutdown. A console already on UTF-8 is left alone and is not "restored"
+      to something it never had. Nothing is changed when the destination is not
+      a console: a file, a pipe or a writer the host supplied receives exactly
+      the bytes it would have received anyway. An SDK whose runtime writes
+      through WriteConsoleW changes nothing, the code page being no part of its
+      path.
+    applicability: [csharp]
     note: >
-      The other three runtimes convert to UTF-16 and call WriteConsoleW, so
-      their console output never meets the code page — CPython's
-      _WindowsConsoleIO (PEP 528), libuv's uv_tty_write for Node, and Rust
-      std's windows stdio. They are excluded because they have nothing to fix,
-      not because the problem does not apply to their users.
+      C# is alone here, and the list was arrived at by testing rather than by
+      reading: Go was on it until a console test proved otherwise. Four of the
+      five runtimes convert to UTF-16 and call WriteConsoleW, so their console
+      output never meets the code page — CPython's _WindowsConsoleIO (PEP 528),
+      libuv's uv_tty_write for Node, Rust std's windows stdio, and Go's
+      internal/poll writeConsole, which os.File reaches for any handle it
+      classifies as a console. .NET is the exception: Console.Error is a writer
+      over Console.OutputEncoding, which defaults to the console's own code
+      page, and the encoded bytes go out through WriteFile.
   virtual_terminal:
     problem: >
       A Windows console handle is a character device, so a terminal probe that

@@ -11,27 +11,25 @@ import (
 
 // Console preparation: what this SDK does to the terminal it writes to.
 //
-// Only Windows needs anything. Go's os.Stderr is an ordinary handle and writes
-// go out through WriteFile, so the bytes are interpreted by the console's
-// *output code page* — CP437 or CP1252 on a default console, not UTF-8. Every
-// non-ASCII byte this SDK writes then renders as mojibake, which is what a host
-// prefixing its log lines with an emoji sees. The runtimes behind the other
-// SDKs (CPython's _WindowsConsoleIO, libuv's uv_tty_write, Rust's std stdio)
-// convert to UTF-16 and call WriteConsoleW, so the code page never reaches
-// them; Go and C# are the two that write bytes.
+// Only Windows needs anything, and only for ANSI. A Windows console handle
+// carries os.ModeCharDevice, so the terminal probe says "colour is fine here" —
+// but a console renders ANSI only once ENABLE_VIRTUAL_TERMINAL_PROCESSING is
+// set on it. Windows Terminal and current conhost set it themselves; legacy
+// conhost does not, and prints the escapes literally. The platform least likely
+// to render ANSI was the one where colour was switched on unasked.
 //
-// ANSI is the same shape of problem. A Windows console handle carries
-// os.ModeCharDevice, so the terminal probe says "colour is fine here" — but a
-// console renders ANSI only once ENABLE_VIRTUAL_TERMINAL_PROCESSING is set on
-// it. Windows Terminal and current conhost set it themselves; legacy conhost
-// does not, and prints the escapes literally. The platform least likely to
-// render ANSI was the one where colour was switched on unasked.
+// The console's output code page decides how it decodes the bytes written to
+// it, and is famously not UTF-8 by default — but it is not this SDK's problem,
+// because Go never writes bytes to a console. os.File classifies a console
+// handle as kindConsole, and internal/poll's writeConsole decodes the UTF-8,
+// encodes UTF-16 and calls WriteConsoleW. CPython, libuv and Rust std do the
+// same; C# is the one SDK that encodes through a code page and writes the
+// result, and it is the one that sets it.
 //
-// So preparation is: make the console UTF-8, enable VT, and report colour
-// capability from whether VT actually took. Both changes are restored at
-// shutdown, and neither is made when the destination is not a console — a
-// file, a pipe, or a writer the host supplied gets exactly the bytes it would
-// have got before.
+// So preparation is: enable VT, and report colour capability from whether it
+// took. It is restored at shutdown, and nothing is done when the destination is
+// not a console — a file, a pipe, or a writer the host supplied gets exactly
+// the bytes it would have got before.
 
 // _consoleGuard owns the process's single console preparation.
 //
