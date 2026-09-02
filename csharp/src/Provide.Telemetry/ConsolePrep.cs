@@ -161,10 +161,15 @@ internal static class ConsolePrep
         }
 
         if (undo.Count == 0) return (ansi, null);
-        return (ansi, () =>
+        return (ansi, UndoAll);
+
+        // A local function rather than a multi-line lambda inside the tuple:
+        // dotnet format insists on breaking the closing brace of the latter
+        // onto its own line, which reads worse than naming the thing.
+        void UndoAll()
         {
             foreach (var step in undo) step();
-        });
+        }
     }
 
     /// <remarks>Excluded for the same reason as <see cref="PrepareWindowsConsole"/>.</remarks>
