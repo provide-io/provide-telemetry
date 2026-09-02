@@ -70,3 +70,27 @@ def test_mutation_policy_changes_trigger_their_language_gate() -> None:
         assert workflow.count(policy_path) >= 3, (
             f"{policy_path} must appear in push paths, pull-request paths, and change routing"
         )
+
+
+def test_the_windows_console_mutation_exclusion_keeps_its_justification() -> None:
+    """An exclusion outlives the reason for it unless the two are asserted together.
+
+    cargo-mutants parses the AST and does not honour cfg gates, so on the Linux
+    runner it generates mutants for a `#[cfg(windows)]` body that never compiles
+    there — every one surviving by construction rather than through a gap in the
+    tests. The exclusion is legitimate and the reason is not obvious, which is
+    the combination that rots.
+
+    Asserted with the file it names: an exclusion pointing at nothing is a gate
+    quietly narrowed.
+    """
+    config = (_REPO_ROOT / "rust" / ".cargo" / "mutants.toml").read_text(encoding="utf-8")
+
+    assert 'exclude_globs = ["src/logger/windows_console.rs"]' in config
+    assert "cfg gates" in config, "the exclusion must say why cargo-mutants cannot judge that file"
+    assert "no automated test exercises the interop" in config, (
+        "the exclusion must admit what it is giving up, not merely take it"
+    )
+    assert (_REPO_ROOT / "rust" / "src" / "logger" / "windows_console.rs").is_file(), (
+        "the exclusion names a file that does not exist"
+    )

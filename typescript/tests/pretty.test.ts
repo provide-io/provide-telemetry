@@ -213,6 +213,50 @@ describe('supportsColor', () => {
     }
   });
 
+  it('asks the stream it is given, not always stderr', () => {
+    // The defect: console.debug and console.log go to stdout and carry trace,
+    // debug and info — most records — while only warn and error reach stderr.
+    // With one piped and the other a terminal, asking stderr answered for the
+    // minority and applied it to everything.
+    const origProcess = globalThis.process;
+    const origForceColor = process.env['FORCE_COLOR'];
+    const origNoColor = process.env['NO_COLOR'];
+    try {
+      delete process.env['FORCE_COLOR'];
+      delete process.env['NO_COLOR'];
+      vi.stubGlobal('process', {
+        ...origProcess,
+        env: { ...origProcess.env },
+        stdout: { ...origProcess.stdout, isTTY: true },
+        stderr: { ...origProcess.stderr, isTTY: false },
+      });
+      expect(supportsColor('stdout')).toBe(true);
+      expect(supportsColor('stderr')).toBe(false);
+      expect(supportsColor()).toBe(false);
+    } finally {
+      if (origForceColor === undefined) delete process.env['FORCE_COLOR'];
+      else process.env['FORCE_COLOR'] = origForceColor;
+      if (origNoColor === undefined) delete process.env['NO_COLOR'];
+      else process.env['NO_COLOR'] = origNoColor;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('returns false when the chosen stream exists but isTTY is not boolean', () => {
+    const origProcess = globalThis.process;
+    try {
+      vi.stubGlobal('process', {
+        ...origProcess,
+        env: { ...origProcess.env },
+        stdout: {},
+        stderr: { ...origProcess.stderr, isTTY: true },
+      });
+      expect(supportsColor('stdout')).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('returns false when stderr exists but isTTY is not boolean', () => {
     const origProcess = globalThis.process;
     try {

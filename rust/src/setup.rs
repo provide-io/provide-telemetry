@@ -113,6 +113,9 @@ pub fn shutdown_telemetry(timeout_seconds: Option<f64>) -> Result<(), TelemetryE
     }
     shutdown_otel(timeout_seconds);
     set_active_config(None);
+    // After the drain: a record still on its way out should not land on a
+    // console already returned to the mode the host had.
+    crate::logger::windows_console::restore();
     Ok(())
 }
 

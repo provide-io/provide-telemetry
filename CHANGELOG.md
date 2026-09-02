@@ -125,6 +125,23 @@ their old two-parameter signature finds nothing and must add the two.
   name, and a rebuild keyed on the caller's original spelling would have found
   nothing and dropped exactly the attributes that most need to survive.
 
+- **TypeScript decided colour from the wrong stream, and Rust emitted ANSI to
+  Windows consoles that cannot render it.** `supportsColor()` asked
+  `process.stderr`, always — but `console.debug` and `console.log` write to
+  stdout, and those carry trace, debug and info, most of the records. A run with
+  one stream piped and the other a terminal was coloured wrongly in whichever
+  direction. It now takes the stream, and the hook passes the destination the
+  level actually resolves to.
+
+  Rust's pretty renderer gated on `is_terminal()` alone, which is true for every
+  Windows console including a legacy conhost that prints `ESC[36m` literally. It
+  enables virtual-terminal processing once per process and reports colour from
+  whether that succeeded, restoring the mode at shutdown — the same contract Go
+  and C# already follow, and the last SDK that owed it.
+
+  Also corrects TypeScript's `consoleOutput` doc comment, which claimed "Default
+  false" while both the default config and the environment path set true.
+
 - **TypeScript reported its own source file as the callsite in every published
   build.** The stack walk skipped frames matching `logger.ts`, but consumers run
   the compiled `logger.js`, so the walk stopped on the logger's own frame and

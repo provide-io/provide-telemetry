@@ -57,9 +57,13 @@ export interface TelemetryConfig {
   /** Push every log object into window.__pinoLogs (browser only). */
   captureToWindow: boolean;
   /**
-   * Emit logs to browser console via console.debug/log/warn/error.
-   * Default false — use captureToWindow + window.__pinoLogs or OTEL export instead.
-   * Set true during local development for live devtools inspection.
+   * Emit rendered records through console.debug/log/warn/error.
+   *
+   * Default **true**, in both `defaultConfig` and the environment path. The
+   * doc here said false while the code said true, which is the wrong half to
+   * believe: this is the switch that decides whether anything is printed at
+   * all, in Node as well as in a browser. Set it false to route records only
+   * through OTLP export, or through `captureToWindow` + `window.__pinoLogs`.
    */
   consoleOutput: boolean;
   /** Master schema strictness switch. */

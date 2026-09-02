@@ -7,6 +7,29 @@ they contained.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **ANSI is emitted to a Windows console only once it can render it.** The
+  pretty renderer gated colour on `is_terminal()`, which is true for every
+  Windows console — including a legacy conhost, which prints `ESC[36m` literally
+  because `ENABLE_VIRTUAL_TERMINAL_PROCESSING` is not set on it. The platform
+  least able to render ANSI was the one that got it unasked.
+
+  Virtual-terminal processing is enabled once per process and its success is now
+  the colour answer; `shutdown_telemetry` restores the mode the host had.
+  Behaviour away from Windows is unchanged.
+
+  This introduces the crate's first `unsafe`: three `kernel32` calls declared
+  directly, confined to a `#[cfg(windows)]` module, and each carrying a SAFETY
+  note. No dependency was added — the sibling SDKs reach the same API the same
+  way, Go through `syscall.NewLazyDLL` and C# through `DllImport`.
+
+  The console's output *code page* is deliberately untouched: `std`'s Windows
+  stdio converts to UTF-16 and calls `WriteConsoleW`, so a code page never sees
+  what this crate writes. Only C# encodes through one, and only C# sets it.
+
 ## [0.8.1] — 2026-08-22
 
 ### Breaking

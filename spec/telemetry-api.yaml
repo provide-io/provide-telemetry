@@ -770,6 +770,16 @@ windows_console:
     note: >
       TypeScript is excluded because libuv already enables VT when it
       initialises a TTY, and emulates ANSI itself where that fails.
+      structlog adds a condition of its own for Python: ConsoleRenderer with
+      colours raises SystemError on Windows without colorama, which is not a
+      dependency of that package, so the colour answer there is VT *and*
+      colorama. Answering no is the difference between plain output and no
+      logging pipeline at all, because that exception costs the whole
+      configuration.
+      Each SDK asks about the stream its records actually reach. TypeScript's
+      trace, debug and info go to stdout through console.debug/console.log and
+      only warn and error reach stderr, so a probe that asks stderr alone
+      answers for the minority and applies it to everything.
 
 callsite_fields:
   description: >

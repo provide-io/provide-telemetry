@@ -16,6 +16,23 @@ Two things to know when reading it:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Colour was decided from the wrong stream.** `supportsColor()` asked
+  `process.stderr`, always. But `console.debug` and `console.log` write to
+  **stdout**, and those carry trace, debug and info — most records — while only
+  warn and error reach stderr. A run with one stream piped and the other a
+  terminal was coloured wrongly in whichever direction, and nothing said so.
+
+  `supportsColor(stream)` now takes the destination, defaulting to stderr so a
+  direct caller of the exported helper gets the answer it got before, and the
+  write hook passes the stream the level actually resolves to.
+
+- **The `consoleOutput` doc said the opposite of the code.** It read "Default
+  false" while both `defaultConfig` and the environment path set `true` — the
+  wrong half to believe, since that flag decides whether anything is printed at
+  all, in Node as much as in a browser.
+
 ### Breaking
 
 - **The callsite fields are renamed and the code attributes move to current

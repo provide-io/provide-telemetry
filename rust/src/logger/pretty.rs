@@ -196,11 +196,13 @@ pub(super) fn format_pretty_line_with_colors(
     parts.join(" ")
 }
 
-/// Render a pretty log line, auto-detecting whether stderr is a TTY.
-/// Piped / redirected output gets plain text (no ANSI escapes).
+/// Render a pretty log line, auto-detecting whether stderr renders ANSI.
+///
+/// Piped / redirected output gets plain text. On Windows a console renders
+/// escapes only once virtual-terminal processing is enabled on it, so being a
+/// terminal is not enough — see [`super::windows_console`].
 pub(super) fn format_pretty_line(event: &LogEvent, cfg: &LoggingConfig) -> String {
-    use std::io::IsTerminal;
-    format_pretty_line_with_colors(event, cfg, std::io::stderr().is_terminal())
+    format_pretty_line_with_colors(event, cfg, super::windows_console::ansi_supported())
 }
 
 #[cfg(test)]

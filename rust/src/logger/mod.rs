@@ -21,6 +21,7 @@ mod emit;
 pub mod levels;
 mod pretty;
 mod processors;
+pub(crate) mod windows_console;
 
 use emit::{emit_if_console, emit_if_json, emit_if_otel, emit_if_pretty};
 // Receipts timestamp their records with the same clock and the same rendering
