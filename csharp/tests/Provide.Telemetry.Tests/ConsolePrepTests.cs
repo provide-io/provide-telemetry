@@ -9,84 +9,189 @@ using Xunit;
 namespace Provide.Telemetry.Tests;
 
 /// <summary>
-/// The part of the console contract that is testable off Windows.
+/// The console contract, driven from any platform.
 /// </summary>
 /// <remarks>
-/// The interop itself is not: it is P/Invoke into kernel32 and Console
-/// properties that only exist there. What is tested here is every decision
-/// around it — the platform gate, the redirection gate, idempotence, and the
-/// answer the pretty renderer asks for. The calls themselves are asserted
-/// against a real console screen buffer in the Go suite, which is the one place
-/// in this repository that can allocate a console.
+/// The interop itself is P/Invoke into kernel32 and Windows-only
+/// <see cref="Console"/> properties, and is excluded from coverage. Everything
+/// that decides whether it is called and what its answer means is substituted
+/// here, so the Windows branches are taken on the Linux runner too — a gate
+/// that cannot reach the platform-specific half is the silence that let this
+/// ship. The calls themselves are asserted against a real console screen
+/// buffer by the Go suite, which is the one place in this repository that can
+/// allocate one.
 /// </remarks>
 [Collection("Telemetry")]
-public sealed class ConsolePrepTests
+public sealed class ConsolePrepTests : IDisposable
 {
-    /// <summary>
-    /// Away from Windows a terminal renders escapes without being asked, so the
-    /// answer does not wait for setup — a renderer built before
-    /// <c>SetupTelemetry</c> is coloured exactly as it always was.
-    /// </summary>
+    public void Dispose() => ConsolePrep.ResetForTests();
+
+    /// <summary>Pretend to be a Windows console whose preparation succeeds.</summary>
+    private static Func<int> OnWindows(bool ansi = true, bool redirected = false)
+    {
+        var restores = 0;
+        ConsolePrep.IsWindows = () => true;
+        ConsolePrep.IsErrorRedirected = () => redirected;
+        ConsolePrep.PrepareConsole = () => (ansi, () => restores++);
+        return () => restores;
+    }
+
+    // ── ANSI ─────────────────────────────────────────────────────────────
+
     [Fact]
     public void AnsiIsAvailableWithoutPreparationAwayFromWindows()
     {
-        ConsolePrep.Restore();
-        // On Windows the same call means the opposite: nothing is prepared, so
-        // nothing has established that escapes render, so colour is off.
-        Assert.Equal(!OperatingSystem.IsWindows(), ConsolePrep.AnsiEnabled);
+        ConsolePrep.IsWindows = () => false;
+        // No Prepare() call: away from Windows a terminal renders escapes
+        // without being asked, so a renderer built before SetupTelemetry is
+        // coloured exactly as it always was.
+        Assert.True(ConsolePrep.AnsiEnabled);
     }
 
-    /// <summary>Preparing and restoring leaves the answer where it started.</summary>
+    [Fact]
+    public void AnsiIsOffOnAnUnpreparedWindowsConsole()
+    {
+        ConsolePrep.IsWindows = () => true;
+        Assert.False(ConsolePrep.AnsiEnabled);
+    }
+
+    [Fact]
+    public void AnsiFollowsWhatPreparationReported()
+    {
+        OnWindows(ansi: true);
+        ConsolePrep.Prepare();
+        Assert.True(ConsolePrep.AnsiEnabled);
+    }
+
+    /// <summary>
+    /// Legacy conhost refuses virtual-terminal processing and prints the escape
+    /// literally. Reporting colour from "is a console" alone put escapes on the
+    /// one platform least able to render them.
+    /// </summary>
+    [Fact]
+    public void AnsiIsOffWhenVirtualTerminalProcessingCouldNotBeEnabled()
+    {
+        OnWindows(ansi: false);
+        ConsolePrep.Prepare();
+        Assert.False(ConsolePrep.AnsiEnabled);
+    }
+
+    // ── preparation ──────────────────────────────────────────────────────
+
     [Fact]
     public void PreparingAndRestoringIsRoundTrip()
     {
-        var before = ConsolePrep.AnsiEnabled;
+        var restores = OnWindows();
         ConsolePrep.Prepare();
         ConsolePrep.Restore();
-        Assert.Equal(before, ConsolePrep.AnsiEnabled);
+
+        Assert.Equal(1, restores());
+        Assert.False(ConsolePrep.AnsiEnabled);
     }
 
     /// <summary>
-    /// Preparation happens once. Every path that rebuilds runtime state calls
-    /// it, and a second preparation would overwrite the saved encoding with the
-    /// one this SDK had already installed — leaving the host's console on UTF-8
-    /// for good.
+    /// A second preparation would overwrite the saved settings with the ones
+    /// this SDK installed, leaving the host's console on UTF-8 for good. Every
+    /// path that rebuilds runtime state calls Prepare.
     /// </summary>
     [Fact]
-    public void PreparingTwiceIsHarmless()
+    public void PreparingTwicePreparesOnce()
     {
+        var prepared = 0;
+        ConsolePrep.IsWindows = () => true;
+        ConsolePrep.IsErrorRedirected = () => false;
+        ConsolePrep.PrepareConsole = () =>
+        {
+            prepared++;
+            return (true, () => { });
+        };
+
         ConsolePrep.Prepare();
+        ConsolePrep.Prepare();
+
+        Assert.Equal(1, prepared);
+    }
+
+    [Fact]
+    public void RestoringTwiceRestoresOnce()
+    {
+        var restores = OnWindows();
         ConsolePrep.Prepare();
         ConsolePrep.Restore();
         ConsolePrep.Restore();
-        Assert.Equal(!OperatingSystem.IsWindows(), ConsolePrep.AnsiEnabled);
+
+        Assert.Equal(1, restores());
+    }
+
+    [Fact]
+    public void RestoringWithoutPreparingIsHarmless()
+    {
+        ConsolePrep.Restore();
+        ConsolePrep.IsWindows = () => false;
+        Assert.True(ConsolePrep.AnsiEnabled);
     }
 
     /// <summary>
-    /// The test host redirects stderr, which is the shape every non-console
-    /// destination has: a file, a pipe, a parent process capturing the stream.
-    /// Nothing is changed for it.
+    /// No console found means nothing to undo, and the next setup gets its own
+    /// chance rather than being told a preparation is already in place.
     /// </summary>
     [Fact]
-    public void ARedirectedStreamIsLeftAlone()
+    public void APreparationThatFoundNoConsoleIsRetried()
     {
-        var original = Console.OutputEncoding;
+        var attempts = 0;
+        ConsolePrep.IsWindows = () => true;
+        ConsolePrep.IsErrorRedirected = () => false;
+        ConsolePrep.PrepareConsole = () =>
+        {
+            attempts++;
+            return (false, null);
+        };
+
         ConsolePrep.Prepare();
-        Assert.Equal(original.CodePage, Console.OutputEncoding.CodePage);
-        ConsolePrep.Restore();
-        Assert.Equal(original.CodePage, Console.OutputEncoding.CodePage);
+        ConsolePrep.Prepare();
+
+        Assert.Equal(2, attempts);
     }
 
     /// <summary>
-    /// A record carrying an emoji leaves the console renderer as that emoji.
-    /// This is the value that broke: what a Windows console then decodes those
-    /// bytes to is the half this SDK could not previously control.
+    /// A redirected stream is every non-console destination: a file, a pipe, a
+    /// parent process capturing the stream. Nothing is changed for it.
+    /// </summary>
+    [Fact]
+    public void ARedirectedStreamIsNeverPrepared()
+    {
+        ConsolePrep.IsWindows = () => true;
+        ConsolePrep.IsErrorRedirected = () => true;
+        ConsolePrep.PrepareConsole = () => throw new InvalidOperationException("prepared a redirected stream");
+
+        ConsolePrep.Prepare();
+
+        Assert.False(ConsolePrep.AnsiEnabled);
+    }
+
+    [Fact]
+    public void NothingIsPreparedAwayFromWindows()
+    {
+        ConsolePrep.IsWindows = () => false;
+        ConsolePrep.IsErrorRedirected = () => false;
+        ConsolePrep.PrepareConsole = () => throw new InvalidOperationException("prepared a console off Windows");
+
+        ConsolePrep.Prepare();
+
+        Assert.True(ConsolePrep.AnsiEnabled);
+    }
+
+    // ── what actually reaches the stream ─────────────────────────────────
+
+    /// <summary>
+    /// A record carrying an emoji leaves the renderer as that emoji. This is
+    /// the value that broke; what a Windows console then decodes those bytes to
+    /// is the half this SDK could not previously control.
     /// </summary>
     /// <remarks>
     /// The console format, not json: <see cref="System.Text.Json.JsonSerializer"/>
-    /// escapes non-ASCII to <c>\uD83D\uDC39</c> by default, so the json path
-    /// never puts a raw multi-byte character on the wire and cannot show the
-    /// defect. The console and pretty renderers do.
+    /// escapes non-ASCII by default, so the json path never puts a raw
+    /// multi-byte character on the wire and cannot show the defect.
     /// </remarks>
     [Fact]
     public void NonAsciiSurvivesTheRenderPath()
@@ -95,11 +200,39 @@ public sealed class ConsolePrepTests
         var captured = CaptureStderr(() =>
         {
             Setup.SetupTelemetry(new TelemetryConfig { Logging = { Format = "console" } });
-            Logging.GetLogger("console").Info("console.render.ok", new Dictionary<string, object?> { ["glyph"] = "🐹" });
+            Logging.GetLogger("console").Info(
+                "console.render.ok", new Dictionary<string, object?> { ["glyph"] = "🐹" });
         });
         Setup.ResetForTests();
 
         Assert.Contains("🐹", captured, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The renderer asks for the ANSI answer rather than assuming a
+    /// non-redirected stream can render escapes.
+    /// </summary>
+    [Fact]
+    public void PrettyOutputIsPlainWhenTheDestinationIsRedirected()
+    {
+        var record = CanonicalLogRecord.Create(
+            DateTimeOffset.UnixEpoch, "INFO", "console.pretty.ok", "console",
+            TelemetryConfig.Default(), "", "",
+            new Dictionary<string, object?>(), null);
+
+        var rendered = PrettyRenderer.Render(record.ToWireEnvelope(includeTimestamp: false), record);
+
+        // xUnit redirects stderr, so this is the redirected branch: no escapes.
+        Assert.DoesNotContain('\x1b', rendered);
+    }
+
+    /// <summary>The encoding that would be installed carries no preamble.</summary>
+    [Fact]
+    public void Utf8WithoutABomIsWhatWouldBeInstalled()
+    {
+        var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        Assert.Empty(encoding.GetPreamble());
+        Assert.Equal(65001, encoding.CodePage);
     }
 
     private static string CaptureStderr(Action body)
@@ -116,32 +249,5 @@ public sealed class ConsolePrepTests
             Console.SetError(original);
         }
         return writer.ToString();
-    }
-
-    /// <summary>
-    /// The renderer asks for the ANSI answer rather than assuming a
-    /// non-redirected stream can render escapes — the assumption that put
-    /// literal <c>ESC[36m</c> on a legacy Windows console.
-    /// </summary>
-    [Fact]
-    public void PrettyOutputIsPlainWhenTheDestinationIsRedirected()
-    {
-        var record = CanonicalLogRecord.Create(
-            DateTimeOffset.UnixEpoch, "INFO", "console.pretty.ok", "console",
-            TelemetryConfig.Default(), "", "",
-            new Dictionary<string, object?>(), null);
-        var rendered = PrettyRenderer.Render(record.ToWireEnvelope(includeTimestamp: false), record);
-
-        // xUnit redirects stderr, so this is the redirected branch: no escapes.
-        Assert.DoesNotContain('\x1b', rendered);
-    }
-
-    /// <summary>Encoding round-trips through the renderer without a preamble.</summary>
-    [Fact]
-    public void Utf8WithoutABomIsWhatWouldBeInstalled()
-    {
-        var encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-        Assert.Empty(encoding.GetPreamble());
-        Assert.Equal(65001, encoding.CodePage);
     }
 }

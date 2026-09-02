@@ -40,105 +40,140 @@ internal static class ConsolePrep
     private const int CodePageUtf8 = 65001;
 
     private static readonly object Gate = new();
-    private static Encoding? _previousEncoding;
-    private static uint? _previousMode;
+    private static Action? _restore;
     private static bool _vtEnabled;
 
     /// <summary>
-    /// Whether the destination renders ANSI escapes.
+    /// The three things this class cannot do on the machine that tests it.
     /// </summary>
     /// <remarks>
-    /// Always true away from Windows, where a terminal renders escapes without
-    /// being asked — so a renderer built before <see cref="Prepare"/> runs is
-    /// coloured exactly as it always was. On Windows it is the result of
-    /// enabling virtual-terminal processing, and nothing else.
+    /// Seams in the shape <c>Resilience.Clock</c> already uses. The interop
+    /// itself only runs on Windows, and the coverage and mutation runs are
+    /// Linux — without these the decisions around it would be unreachable
+    /// there, which is the same silence that let the defect ship. Substituting
+    /// them lets every branch be taken on any platform, leaving only the two
+    /// P/Invoke bodies excluded.
+    /// </remarks>
+    internal static Func<bool> IsWindows { get; set; } = OperatingSystem.IsWindows;
+
+    internal static Func<bool> IsErrorRedirected { get; set; } = () => Console.IsErrorRedirected;
+
+    /// <summary>
+    /// Prepares the console, reporting whether ANSI renders and how to undo it.
+    /// A null restore means there was no console to prepare.
+    /// </summary>
+    internal static Func<(bool Ansi, Action? Restore)> PrepareConsole { get; set; } = PrepareWindowsConsole;
+
+    /// <summary>Whether the destination renders ANSI escapes.</summary>
+    /// <remarks>
+    /// Away from Windows a terminal renders escapes without being asked, so a
+    /// renderer built before <see cref="Prepare"/> runs is coloured exactly as
+    /// it always was. On Windows it is the result of enabling virtual-terminal
+    /// processing, and nothing else.
     /// </remarks>
     internal static bool AnsiEnabled
     {
         get
         {
-            if (!OperatingSystem.IsWindows()) return true;
-            lock (Gate) return _vtEnabled;
+            lock (Gate) return !IsWindows() || _vtEnabled;
         }
     }
 
-    /// <summary>Ready the console. Idempotent; a second call does nothing.</summary>
+    /// <summary>Ready the console. Idempotent while a preparation is in place.</summary>
     internal static void Prepare()
     {
-        if (!OperatingSystem.IsWindows()) return;
         lock (Gate)
         {
-            if (_previousEncoding is not null || _previousMode is not null || _vtEnabled) return;
-            if (Console.IsErrorRedirected) return;
-            PrepareWindowsConsole();
+            // A second preparation would overwrite the saved settings with the
+            // ones this SDK installed, leaving the host's console on UTF-8 for
+            // good. Every path that rebuilds runtime state calls this.
+            if (_restore is not null) return;
+            if (!IsWindows() || IsErrorRedirected()) return;
+            (_vtEnabled, _restore) = PrepareConsole();
         }
     }
 
     /// <summary>Put back whatever <see cref="Prepare"/> changed.</summary>
     internal static void Restore()
     {
-        if (!OperatingSystem.IsWindows()) return;
         lock (Gate)
         {
-            RestoreWindowsConsole();
-            _previousEncoding = null;
-            _previousMode = null;
+            _restore?.Invoke();
+            _restore = null;
             _vtEnabled = false;
         }
     }
 
+    /// <summary>Return the seams to their real implementations.</summary>
+    internal static void ResetForTests()
+    {
+        Restore();
+        IsWindows = OperatingSystem.IsWindows;
+        IsErrorRedirected = () => Console.IsErrorRedirected;
+        PrepareConsole = PrepareWindowsConsole;
+    }
+
     /// <remarks>
     /// Excluded from coverage rather than left to drag the gate down: every
-    /// line is a P/Invoke or a Console property that only exists on Windows,
-    /// and the coverage run is Linux. What is testable — the platform gate, the
-    /// redirection gate, idempotence and the ANSI answer — is above this and is
-    /// covered there. The behaviour of the calls themselves is asserted by the
-    /// Go suite against a real console screen buffer, which is the only place
-    /// in this repository that can allocate one.
+    /// line is a P/Invoke or a <see cref="Console"/> property that exists only
+    /// on Windows, and the coverage run is Linux. Everything that decides
+    /// whether this is called, and what its answer means, is above and is
+    /// covered there with this replaced. The calls themselves are asserted
+    /// against a real console screen buffer by the Go suite, which is the one
+    /// place in this repository that can allocate one.
+    /// </remarks>
+    /// <remarks>
+    /// Not marked SupportedOSPlatform("windows"): the seam above holds it as a
+    /// default value, which CA1416 reads as a call site reachable everywhere.
+    /// Prepare is what keeps it off other platforms, and that is tested.
     /// </remarks>
     [ExcludeFromCodeCoverage]
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static void PrepareWindowsConsole()
+    private static (bool, Action?) PrepareWindowsConsole()
     {
         var handle = GetStdHandle(StdErrorHandle);
+        var undo = new List<Action>(2);
+        var ansi = false;
+
         if (GetConsoleMode(handle, out var mode))
         {
-            _vtEnabled = (mode & EnableVirtualTerminalProcessing) != 0;
-            if (!_vtEnabled && SetConsoleMode(handle, mode | EnableVirtualTerminalProcessing))
+            ansi = (mode & EnableVirtualTerminalProcessing) != 0;
+            if (!ansi && SetConsoleMode(handle, mode | EnableVirtualTerminalProcessing))
             {
-                _vtEnabled = true;
-                _previousMode = mode;
+                ansi = true;
+                undo.Add(() => SetConsoleMode(handle, mode));
             }
         }
 
         try
         {
-            if (Console.OutputEncoding.CodePage == CodePageUtf8) return;
-            _previousEncoding = Console.OutputEncoding;
-            // No BOM: the encoding is applied per write, and a preamble would
-            // put one at the head of a log line.
-            Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            if (Console.OutputEncoding.CodePage != CodePageUtf8)
+            {
+                var previous = Console.OutputEncoding;
+                // No BOM: the encoding is applied per write, and a preamble
+                // would put one at the head of a log line.
+                Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                undo.Add(() => RestoreEncoding(previous));
+            }
         }
         catch (IOException)
         {
             // No console attached after all. Leave the encoding alone.
-            _previousEncoding = null;
         }
+
+        if (undo.Count == 0) return (ansi, null);
+        return (ansi, () =>
+        {
+            foreach (var step in undo) step();
+        });
     }
 
     /// <remarks>Excluded for the same reason as <see cref="PrepareWindowsConsole"/>.</remarks>
     [ExcludeFromCodeCoverage]
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static void RestoreWindowsConsole()
+    private static void RestoreEncoding(Encoding previous)
     {
-        if (_previousMode is { } mode)
-        {
-            SetConsoleMode(GetStdHandle(StdErrorHandle), mode);
-        }
-        if (_previousEncoding is null) return;
         try
         {
-            Console.OutputEncoding = _previousEncoding;
+            Console.OutputEncoding = previous;
         }
         catch (IOException)
         {

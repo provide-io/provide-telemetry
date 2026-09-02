@@ -327,7 +327,7 @@ public static class Setup
         Consent.Reset();
         Receipts.Reset();
         Tracing.Reset();
-        ConsolePrep.Restore();
+        ConsolePrep.ResetForTests();
     }
 
     private static void ApplyRuntimePolicies(TelemetryConfig cfg)
