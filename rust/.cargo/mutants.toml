@@ -16,6 +16,24 @@
 # still zero survivors.
 timeout_multiplier = 15.0
 
+# The Windows console module. cargo-mutants parses the AST and does not honour
+# cfg gates — the same blindness noted below for #[path]-included test modules —
+# so on the Linux runner it generates mutants for a #[cfg(windows)] body that
+# never compiles there, and every one of them survives by construction rather
+# than through a gap in the tests.
+#
+# Excluded whole rather than by mutant name because the platform arms share
+# function names, so a name regex cannot tell the Windows dispatcher from the
+# portable one. What the file holds is dispatch and three kernel32 calls; the
+# thing that decides whether ANSI is emitted at all — the is_terminal guard —
+# was an inline call before this module existed and was not mutated then
+# either, so the gate loses nothing it had.
+#
+# Stated plainly: no automated test exercises the interop. Its Go counterpart is
+# asserted against a real console screen buffer in the Go suite, which is the
+# one place in this repository that can allocate one.
+exclude_globs = ["src/logger/windows_console.rs"]
+
 # Equivalent mutations: excluded because the mutated code is
 # behaviourally identical to the original.
 exclude_re = [
