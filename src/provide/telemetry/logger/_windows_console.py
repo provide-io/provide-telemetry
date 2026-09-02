@@ -26,7 +26,6 @@ asked only for a Windows terminal, and that its answer is the colour answer.
 from __future__ import annotations
 
 import sys
-from typing import Any
 
 __all__ = ["enable_virtual_terminal"]
 
@@ -35,8 +34,15 @@ _STD_ERROR_HANDLE = -12
 _STD_OUTPUT_HANDLE = -11
 
 
-def enable_virtual_terminal(stream: Any) -> bool:  # pragma: no cover — Windows-only interop
-    """Turn on VT processing for stream's console handle, reporting success."""
+def enable_virtual_terminal(fileno: int) -> bool:  # pragma: no cover — Windows-only interop
+    """Turn on VT processing for the console behind fileno, reporting success.
+
+    Takes a descriptor rather than a stream: the caller has already established
+    that there is one. An earlier version accepted the stream and fell back to
+    descriptor 2 when it had none, which asked the *process's* stderr whether a
+    caller-supplied object renders ANSI — a different question with a different
+    answer.
+    """
     import ctypes
 
     # Narrowed rather than suppressed. typeshed declares ctypes.windll only for
@@ -48,10 +54,6 @@ def enable_virtual_terminal(stream: Any) -> bool:  # pragma: no cover — Window
         return False
 
     kernel32 = ctypes.windll.kernel32
-    try:
-        fileno = stream.fileno()
-    except (AttributeError, OSError, ValueError):
-        fileno = 2
     handle = kernel32.GetStdHandle(_STD_ERROR_HANDLE if fileno == 2 else _STD_OUTPUT_HANDLE)
 
     mode = ctypes.c_uint32()

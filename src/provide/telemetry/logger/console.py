@@ -78,7 +78,13 @@ def ansi_supported(stream: Any) -> bool:
         return False
     if not _is_windows():
         return True
-    return _enable_virtual_terminal(stream)
+    descriptor = _fileno(stream)
+    if descriptor is None:
+        # It says it is a terminal and offers no descriptor to check further —
+        # a host's own wrapper, or a test double. Take it at its word rather
+        # than asking the process's stderr about somebody else's object.
+        return True
+    return _enable_virtual_terminal(descriptor)
 
 
 def structlog_colors(stream: Any) -> bool:
@@ -113,6 +119,17 @@ def utf8_writer(stream: Any) -> Any:
     if buffer is None:
         return stream
     return _Utf8Writer(stream, buffer)
+
+
+def _fileno(stream: Any) -> int | None:
+    """The stream's OS descriptor, or None when it has none to give."""
+    fileno = getattr(stream, "fileno", None)
+    if fileno is None:
+        return None
+    try:
+        return int(fileno())
+    except (OSError, ValueError):
+        return None
 
 
 def _isatty(stream: Any) -> bool:

@@ -30,15 +30,21 @@ class _Stream:
     utf8_writer duck-types what it needs, which is exactly what this offers.
     """
 
-    def __init__(self, *, encoding: str, tty: bool, buffer: io.BytesIO | None = None) -> None:
+    def __init__(self, *, encoding: str, tty: bool, buffer: io.BytesIO | None = None, fileno: int | None = 2) -> None:
         self.encoding = encoding
         self._tty = tty
+        self._fileno = fileno
         self.buffer: Any = buffer if buffer is not None else io.BytesIO()
         self.text: list[str] = []
         self.flushes = 0
 
     def isatty(self) -> bool:
         return self._tty
+
+    def fileno(self) -> int:
+        if self._fileno is None:
+            raise io.UnsupportedOperation("fileno")
+        return self._fileno
 
     def write(self, text: str) -> int:
         self.text.append(text)
@@ -163,10 +169,10 @@ def test_ansi_on_windows_follows_virtual_terminal_processing(monkeypatch: pytest
     monkeypatch.setattr(sys, "platform", "win32")
     stream = _Stream(encoding="utf-8", tty=True)
 
-    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _stream: True)
+    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _fd: True)
     assert console.ansi_supported(stream) is True
 
-    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _stream: False)
+    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _fd: False)
     assert console.ansi_supported(stream) is False
 
 
@@ -174,7 +180,7 @@ def test_virtual_terminal_is_not_attempted_for_a_pipe(monkeypatch: pytest.Monkey
     """No console, nothing to enable."""
     monkeypatch.setattr(sys, "platform", "win32")
 
-    def _fail(_stream: Any) -> bool:
+    def _fail(_fd: int) -> bool:
         raise AssertionError("VT was attempted on a stream that is not a terminal")
 
     monkeypatch.setattr(console, "_enable_virtual_terminal", _fail)
@@ -200,7 +206,7 @@ def test_structlog_colors_are_off_on_windows_without_colorama(monkeypatch: pytes
     package.
     """
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _stream: True)
+    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _fd: True)
     monkeypatch.setattr(console, "_colorama_installed", lambda: False)
 
     assert console.structlog_colors(_Stream(encoding="utf-8", tty=True)) is False
@@ -208,7 +214,7 @@ def test_structlog_colors_are_off_on_windows_without_colorama(monkeypatch: pytes
 
 def test_structlog_colors_are_on_on_windows_with_colorama(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _stream: True)
+    monkeypatch.setattr(console, "_enable_virtual_terminal", lambda _fd: True)
     monkeypatch.setattr(console, "_colorama_installed", lambda: True)
 
     assert console.structlog_colors(_Stream(encoding="utf-8", tty=True)) is True
@@ -231,6 +237,10 @@ class _Closed:
     """A stream after the interpreter has torn its file object down."""
 
     encoding = "cp1252"
+
+    def fileno(self) -> int:
+        raise ValueError("I/O operation on closed file")
+
     # Declared rather than attached, so both type checkers can see it: one test
     # gives this a live byte layer to prove the record still reaches it.
     buffer: Any = None
@@ -368,3 +378,44 @@ def test_the_pipeline_really_would_be_lost_without_the_check(monkeypatch: pytest
 
     assert len(fallbacks) == 1
     assert isinstance(fallbacks[0], SystemError)
+
+
+def test_a_terminal_with_no_descriptor_is_taken_at_its_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The case that broke the pretty renderer's tests on Windows.
+
+    A StringIO subclass reporting isatty() is how this repo — and plenty of
+    hosts — stand in for a terminal. It has no descriptor, and an earlier
+    version fell back to descriptor 2, which asked the *process's* stderr
+    whether somebody else's object renders ANSI. On the Windows runner that
+    stderr is a pipe, so the answer was no and the colours vanished.
+    """
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    def _fail(_fd: int) -> bool:
+        raise AssertionError("VT was attempted for a stream that has no descriptor")
+
+    monkeypatch.setattr(console, "_enable_virtual_terminal", _fail)
+    assert console.ansi_supported(_Stream(encoding="utf-8", tty=True, fileno=None)) is True
+
+
+def test_a_terminal_with_a_descriptor_has_it_passed_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """And when there is one, that is what the interop is asked about."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    seen: list[int] = []
+
+    def _record(fd: int) -> bool:
+        seen.append(fd)
+        return True
+
+    monkeypatch.setattr(console, "_enable_virtual_terminal", _record)
+    assert console.ansi_supported(_Stream(encoding="utf-8", tty=True, fileno=7)) is True
+    assert seen == [7]
+
+
+def test_a_descriptor_that_raises_is_treated_as_absent() -> None:
+    """A closed stream answers isatty and then refuses fileno."""
+    assert console._fileno(_Closed()) is None
+
+
+def test_an_object_with_no_fileno_has_no_descriptor() -> None:
+    assert console._fileno(object()) is None
