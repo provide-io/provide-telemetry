@@ -284,8 +284,16 @@ func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
 	// or a plain struct would carry its Password field straight past redaction.
 	// Normalizing first turns every typed container into something the engine
 	// can see into, and bounds depth, width and value length while it is there.
-	payload := _hardenAttrs(_attrsToMap(r), _limitsFromConfig(h.cfg))
-	sanitized := SanitizePayload(payload, h.cfg.Logging.Sanitize, 0)
+	// Sanitized in rounds, one per occurrence of a repeated key, so neither
+	// attribute order nor a duplicate key is lost to the map the engine takes.
+	// Almost every record has exactly one round. See logger_pii_order.go.
+	attrs := _cleanedRecordAttrs(r)
+	rounds := _occurrences(attrs)
+	sanitized := make([]map[string]any, _roundCount(rounds))
+	for round := range sanitized {
+		payload := _hardenAttrs(_roundPayload(attrs, rounds, round), _limitsFromConfig(h.cfg))
+		sanitized[round] = SanitizePayload(payload, h.cfg.Logging.Sanitize, 0)
+	}
 
 	message := r.Message
 	if h.cfg.Logging.Sanitize && piicore.DetectSecretInValue(message, _customPIIPatterns()) {
@@ -293,9 +301,7 @@ func (h *_telemetryHandler) applyPII(r slog.Record) slog.Record {
 	}
 
 	nr := slog.NewRecord(r.Time, r.Level, message, r.PC)
-	for _, a := range _mapToAttrs(sanitized) {
-		nr.AddAttrs(a)
-	}
+	nr.AddAttrs(_rebuildInOrder(attrs, rounds, sanitized)...)
 	return nr
 }
 
