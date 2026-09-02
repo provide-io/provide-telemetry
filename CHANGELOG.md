@@ -92,6 +92,31 @@ their old two-parameter signature finds nothing and must add the two.
   behaviour the knob controls was never compared, and the SDKs drifted four ways
   unseen.
 
+- **Go: `WithLogOutput(w io.Writer)` selects where rendered log records go.**
+  All three renderers — `console`, `json` and `pretty` — write to it. This is
+  the surface a host needs to wrap the SDK's log stream: to prefix it when
+  several language runtimes share one stream, to tee it, or to drop it with
+  `io.Discard`.
+
+  A writer is a handle rather than a string, so no environment variable names
+  it and it is not part of `TelemetryConfig` — it sits beside the provider
+  options. That placement is what makes it durable. `TelemetryConfig` is the
+  cross-language wire shape Rust deserializes on the far side of a
+  `ReconfigureResult`, and the type callers receive as a deep copy that cannot
+  reach live runtime state; a handle survives neither. Keeping the writer out
+  of it also means no reload path can lose it, since every one of them rebuilds
+  from a config.
+
+  Writes are serialized, `ShutdownTelemetry` flushes a writer that implements
+  `Flush() error`, and a nil writer is a `ConfigurationError` rather than a
+  silent fall back to `os.Stderr`. Pretty-format colors follow the destination:
+  an `*os.File` is probed for a terminal, any other writer is asked via
+  `IsTerminal() bool`.
+
+  Go only. Whether an output sink belongs in the cross-language spec is
+  tracked separately; the other four SDKs route their output through their own
+  native logging stacks today.
+
 ### Fixed
 
 - **Go: the PII pass dropped duplicate attribute keys and randomized attribute
@@ -270,33 +295,6 @@ their old two-parameter signature finds nothing and must add the two.
   inside whatever group the caller left open, and an empty group is elided
   again.
 
-### Added
-
-- **Go: `WithLogOutput(w io.Writer)` selects where rendered log records go.**
-  All three renderers — `console`, `json` and `pretty` — write to it. This is
-  the surface a host needs to wrap the SDK's log stream: to prefix it when
-  several language runtimes share one stream, to tee it, or to drop it with
-  `io.Discard`.
-
-  A writer is a handle rather than a string, so no environment variable names
-  it and it is not part of `TelemetryConfig` — it sits beside the provider
-  options. That placement is what makes it durable. `TelemetryConfig` is the
-  cross-language wire shape Rust deserializes on the far side of a
-  `ReconfigureResult`, and the type callers receive as a deep copy that cannot
-  reach live runtime state; a handle survives neither. Keeping the writer out
-  of it also means no reload path can lose it, since every one of them rebuilds
-  from a config.
-
-  Writes are serialized, `ShutdownTelemetry` flushes a writer that implements
-  `Flush() error`, and a nil writer is a `ConfigurationError` rather than a
-  silent fall back to `os.Stderr`. Pretty-format colors follow the destination:
-  an `*os.File` is probed for a terminal, any other writer is asked via
-  `IsTerminal() bool`.
-
-  Go only. Whether an output sink belongs in the cross-language spec is
-  tracked separately; the other four SDKs route their output through their own
-  native logging stacks today.
-
 ## [0.8.1] — 2026-08-22
 
 ### Fixed
@@ -330,6 +328,48 @@ their old two-parameter signature finds nothing and must add the two.
   without an `actions/checkout` step.
 
 All five languages.
+
+- **`PROVIDE_CONSENT_LEVEL` is honoured by setup and by the lazy logger path
+  in every SDK.** Python, TypeScript and Go shipped an environment loader that
+  nothing called, and Rust had none, so an operator opt-out of `NONE` left
+  telemetry at `FULL`; only C# applied it. All five now read the variable at
+  `setup_telemetry()` and on the first `get_logger()` before setup. Loader
+  semantics are unified: unset or blank leaves the current level untouched
+  (Python and TypeScript used to reset it to `FULL`), an unrecognised value
+  fails closed (see Breaking), and a `set_consent_level()` made after setup is
+  never overwritten. A runtime probe (`consent_env_none_at_setup`,
+  `consent_env_none_lazy_logger`) pins it cross-language.
+- **PII `truncate` behaves identically everywhere.** C#'s `PIIRule.TruncateTo`
+  defaulted to `0`, which returned the whole plaintext; it now defaults to `8`
+  and `0` keeps only the suffix, like the other SDKs. Go clamps a negative
+  limit to `0` instead of panicking on a negative slice bound, and normalises
+  its zero-value `TruncateTo` to the spec default `8` at registration. Rust
+  gains `DEFAULT_TRUNCATE_TO` and a `Default` for `PIIRule`. TypeScript and C#
+  count Unicode scalar values rather than UTF-16 units, so a limit can no
+  longer split a surrogate pair.
+- **PII `hash` of a non-string value is the same digest in every SDK.** The
+  value is serialised with the RFC 8785 canonical-JSON routine receipts already
+  use before hashing; previously each SDK used its native string form, so a
+  boolean hashed as `"True"` in Python and C# but `"true"` elsewhere. Strings
+  and integers are unchanged.
+- Python's cross-context-safe OTel runtime context adopts the live
+  `ContextVar` instead of copying only the caller's current value, so tasks
+  already holding a span when `setup_telemetry()` runs keep their context and
+  their tokens still detach cleanly. A renamed private OTel attribute now
+  degrades setup with a `RuntimeWarning` instead of failing it.
+- The Python runtime-reconfiguration examples pass `RuntimeOverrides` instead
+  of a whole `TelemetryConfig`, and `examples/` is type-checked in CI.
+- `go/otel` is now linted, vetted and scanned by gosec/govulncheck in CI (the
+  root-module patterns never reached the nested module) and its five
+  outstanding lint findings are fixed.
+- `scripts/check_max_loc.py` scans every git-tracked source file (`.sh`,
+  `.js`, `.mjs`, `.mts`, `.tsx`, `Makefile`, `Dockerfile` included) instead of
+  a hand-kept root list that silently omitted `e2e/`, TypeScript scripts and
+  examples, Rust benches and C# perf code.
+- `scripts/oss-fuzz-local.sh` starts with its shebang again, the operations
+  runbook no longer claims an `*_ALLOW_BLOCKING_EVENT_LOOP` guard for
+  TypeScript, Rust or C#, and a memray test fixture no longer emits a
+  `SyntaxWarning`.
 
 ### Breaking
 
@@ -398,50 +438,6 @@ existed only in `go/logger` (`Configure`, `DefaultLogConfig`,
 equivalent. Its gremlins step and the two `ci-go.yml` coverage steps — gated
 on a `go/logger/go.mod` that never existed, so they had silently never run —
 go with it.
-
-### Fixed
-
-- **`PROVIDE_CONSENT_LEVEL` is honoured by setup and by the lazy logger path
-  in every SDK.** Python, TypeScript and Go shipped an environment loader that
-  nothing called, and Rust had none, so an operator opt-out of `NONE` left
-  telemetry at `FULL`; only C# applied it. All five now read the variable at
-  `setup_telemetry()` and on the first `get_logger()` before setup. Loader
-  semantics are unified: unset or blank leaves the current level untouched
-  (Python and TypeScript used to reset it to `FULL`), an unrecognised value
-  fails closed (see Breaking), and a `set_consent_level()` made after setup is
-  never overwritten. A runtime probe (`consent_env_none_at_setup`,
-  `consent_env_none_lazy_logger`) pins it cross-language.
-- **PII `truncate` behaves identically everywhere.** C#'s `PIIRule.TruncateTo`
-  defaulted to `0`, which returned the whole plaintext; it now defaults to `8`
-  and `0` keeps only the suffix, like the other SDKs. Go clamps a negative
-  limit to `0` instead of panicking on a negative slice bound, and normalises
-  its zero-value `TruncateTo` to the spec default `8` at registration. Rust
-  gains `DEFAULT_TRUNCATE_TO` and a `Default` for `PIIRule`. TypeScript and C#
-  count Unicode scalar values rather than UTF-16 units, so a limit can no
-  longer split a surrogate pair.
-- **PII `hash` of a non-string value is the same digest in every SDK.** The
-  value is serialised with the RFC 8785 canonical-JSON routine receipts already
-  use before hashing; previously each SDK used its native string form, so a
-  boolean hashed as `"True"` in Python and C# but `"true"` elsewhere. Strings
-  and integers are unchanged.
-- Python's cross-context-safe OTel runtime context adopts the live
-  `ContextVar` instead of copying only the caller's current value, so tasks
-  already holding a span when `setup_telemetry()` runs keep their context and
-  their tokens still detach cleanly. A renamed private OTel attribute now
-  degrades setup with a `RuntimeWarning` instead of failing it.
-- The Python runtime-reconfiguration examples pass `RuntimeOverrides` instead
-  of a whole `TelemetryConfig`, and `examples/` is type-checked in CI.
-- `go/otel` is now linted, vetted and scanned by gosec/govulncheck in CI (the
-  root-module patterns never reached the nested module) and its five
-  outstanding lint findings are fixed.
-- `scripts/check_max_loc.py` scans every git-tracked source file (`.sh`,
-  `.js`, `.mjs`, `.mts`, `.tsx`, `Makefile`, `Dockerfile` included) instead of
-  a hand-kept root list that silently omitted `e2e/`, TypeScript scripts and
-  examples, Rust benches and C# perf code.
-- `scripts/oss-fuzz-local.sh` starts with its shebang again, the operations
-  runbook no longer claims an `*_ALLOW_BLOCKING_EVENT_LOOP` guard for
-  TypeScript, Rust or C#, and a memray test fixture no longer emits a
-  `SyntaxWarning`.
 
 ### Changed
 
@@ -528,8 +524,6 @@ The canonical ladder and its aliases are pinned for all five by the `log_levels`
 section of `spec/behavioral_fixtures.yaml`, and the parity harness now emits one
 record per rung and fails if the ports disagree — so this cannot silently drift
 again.
-
-### Breaking
 
 Check these before deploying — each is triggered by one specific configured
 value, and nothing warns you at runtime.

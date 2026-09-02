@@ -33,29 +33,6 @@ Two things to know when reading it:
   wrong half to believe, since that flag decides whether anything is printed at
   all, in Node as much as in a browser.
 
-### Breaking
-
-- **The callsite fields are renamed and the code attributes move to current
-  semantic conventions.** `caller_file` → `filename`, `caller_line` → `lineno`,
-  `code.filepath` → `code.file.path`, `code.lineno` → `code.line.number`.
-  `code.namespace` is dropped, having no cross-language meaning, and
-  `code.function.name` is new — omitted when the frame resolves no name. A saved
-  query filtering on an old name stops matching.
-
-  These are the names Python already emitted; the rename is what makes the four
-  SDKs agree, and a cross-language pass in the parity harness now asserts it.
-
-- **`code.file.path` carries the whole path, not the base name.** That is what
-  OpenTelemetry defines the attribute as and what Python
-  (`record.pathname`) and Go (`runtime.Frame.File`) send. `filename` on the
-  record is still a base name.
-
-- **`logCodeAttributes` no longer depends on `logIncludeCaller`.** It used to
-  emit nothing unless both were on, because the `code.*` attributes were derived
-  from the record fields. Each knob controls only its own output.
-
-### Fixed
-
 - **The callsite named this module instead of the caller in every published
   build.** The stack walk skipped frames whose text contained `logger.ts`, and
   consumers run the compiled `logger.js`, so the walk stopped on this module's
@@ -88,6 +65,27 @@ Two things to know when reading it:
 - **A nested-eval frame no longer produces a malformed filename.** It carries
   two locations in one set of parentheses, which the path group swallowed whole;
   such a frame now yields no callsite.
+
+### Breaking
+
+- **The callsite fields are renamed and the code attributes move to current
+  semantic conventions.** `caller_file` → `filename`, `caller_line` → `lineno`,
+  `code.filepath` → `code.file.path`, `code.lineno` → `code.line.number`.
+  `code.namespace` is dropped, having no cross-language meaning, and
+  `code.function.name` is new — omitted when the frame resolves no name. A saved
+  query filtering on an old name stops matching.
+
+  These are the names Python already emitted; the rename is what makes the four
+  SDKs agree, and a cross-language pass in the parity harness now asserts it.
+
+- **`code.file.path` carries the whole path, not the base name.** That is what
+  OpenTelemetry defines the attribute as and what Python
+  (`record.pathname`) and Go (`runtime.Frame.File`) send. `filename` on the
+  record is still a base name.
+
+- **`logCodeAttributes` no longer depends on `logIncludeCaller`.** It used to
+  emit nothing unless both were on, because the `code.*` attributes were derived
+  from the record fields. Each knob controls only its own output.
 
 ## [0.8.1] — 2026-08-22
 
