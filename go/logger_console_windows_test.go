@@ -34,6 +34,22 @@ var (
 
 const _codePage437 = uintptr(437)
 
+// A non-ASCII character the console can actually store.
+//
+// Not an emoji, deliberately. A console screen buffer holds UTF-16 code units
+// one per cell, so an astral character — every emoji — has no cell to live in
+// and conhost stores U+FFFD instead, whatever the code page says. Windows
+// Terminal renders one because its own buffer is not conhost's; the SDK cannot
+// make the legacy one hold it, and a test asserting otherwise would be asking
+// the platform for something it does not do.
+//
+// The code page is what this SDK controls, and it is what turns a stream of
+// UTF-8 bytes from four mojibake characters into one correct one. That holds
+// for every non-ASCII character, emoji included: the difference for an emoji is
+// U+FFFD instead of the glyph on legacy conhost, and the glyph itself anywhere
+// with a modern buffer.
+const _nonASCII = "checkmark ✓"
+
 // consoleHandle attaches a console to this process and returns its screen
 // buffer as a file.
 //
@@ -134,10 +150,35 @@ func TestWindowsConsole_NonASCIISurvivesADefaultCodePage(t *testing.T) {
 		t.Fatalf("console output code page is %d after setup, want %d", cp, _codePageUTF8)
 	}
 
-	GetLogger(context.Background(), "console").Info("console.render.ok", "glyph", "🐹")
+	GetLogger(context.Background(), "console").Info("console.render.ok", "glyph", _nonASCII)
 
-	if text := consoleText(t, console); !strings.Contains(text, "🐹") {
-		t.Errorf("the console does not hold the glyph that was logged; it holds: %q", strings.TrimSpace(text))
+	if text := consoleText(t, console); !strings.Contains(text, _nonASCII) {
+		t.Errorf("the console does not hold what was logged; it holds: %q", strings.TrimSpace(text))
+	}
+}
+
+// The same bytes on the code page a console starts with come out wrong.
+//
+// Without this the test above would pass on any runner whose console happened
+// to be UTF-8 already, and would stop being about the defect. Writing straight
+// to the handle, with no SDK in the path, is what isolates the code page as the
+// cause.
+func TestWindowsConsole_TheDefaultCodePageIsWhatBreaksIt(t *testing.T) {
+	consoleReset(t)
+	console := consoleHandle(t)
+
+	original, _, _ := _procGetConsoleOutCP.Call()
+	if ret, _, err := _procSetConsoleOutCP.Call(_codePage437); ret == 0 {
+		t.Fatalf("SetConsoleOutputCP(437): %v", err)
+	}
+	t.Cleanup(func() { _, _, _ = _procSetConsoleOutCP.Call(original) })
+
+	if _, err := console.Write([]byte("uncorrected " + _nonASCII + "\n")); err != nil {
+		t.Fatalf("writing to the console: %v", err)
+	}
+
+	if text := consoleText(t, console); strings.Contains(text, _nonASCII) {
+		t.Error("CP437 rendered UTF-8 correctly, so this test can no longer tell the fix from its absence")
 	}
 }
 

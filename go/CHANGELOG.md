@@ -65,10 +65,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   to a pretty logger built before `SetupTelemetry` still being coloured.
 
   Both changes are exercised against a real console screen buffer: the test
-  allocates one, writes a record through the whole SDK and reads the cells back.
-  A `bytes.Buffer` cannot catch this — it holds whatever bytes it is handed,
-  while the defect is in what a console *decodes* them to — and no CI job has a
-  console at all, because GitHub Actions redirects every stream to a pipe.
+  allocates one, writes a record through the whole SDK and reads the cells back,
+  and its sibling writes the same bytes on the code page a console starts with
+  to show they come out wrong. A `bytes.Buffer` cannot catch this — it holds
+  whatever bytes it is handed, while the defect is in what a console *decodes*
+  them to — and no CI job has a console at all, because GitHub Actions redirects
+  every stream to a pipe.
+
+  One limit worth stating, since emoji are the usual reason to care. A legacy
+  console screen buffer holds one UTF-16 code unit per cell, so an astral
+  character — every emoji — has no cell to live in and conhost stores U+FFFD
+  whatever the code page says. The code page is still what matters: it is the
+  difference between one replacement character and four mojibake ones, and on a
+  modern buffer such as Windows Terminal's, between the glyph and four mojibake
+  characters. The assertion therefore uses a non-ASCII character the legacy
+  buffer can actually hold, rather than asking the platform for something it
+  does not do.
 
 ### Fixed
 
