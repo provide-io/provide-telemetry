@@ -44,6 +44,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **ANSI is emitted to a Windows console only once it can render it.** A console
+  handle is a character device, so the terminal probe said colour was fine on
+  every one of them — including legacy conhost, which prints `←[36m` literally.
+  Setup enables `ENABLE_VIRTUAL_TERMINAL_PROCESSING`, and whether that succeeded
+  is now the answer to "does this terminal render ANSI"; before setup, and where
+  enabling fails, colour is off. Behaviour away from Windows is unchanged, down
+  to a pretty logger built before `SetupTelemetry` still being coloured.
+
+  Exercised against a real console screen buffer: the test allocates one, writes
+  a record through the whole SDK and reads the cells back. A `bytes.Buffer`
+  cannot see any of this, and no CI job has a console at all, because GitHub
+  Actions redirects every stream to a pipe.
+
+  **The console's output code page is deliberately not touched**, and finding
+  that out is what those tests were worth. The code page decides how a console
+  decodes the bytes written to it, and is not UTF-8 by default — but Go never
+  writes bytes to a console: `os.File` classifies a console handle as
+  `kindConsole`, and `internal/poll`'s `writeConsole` decodes the UTF-8, encodes
+  UTF-16 and calls `WriteConsoleW`. An earlier version of this change set the
+  code page, on the assumption that Go wrote raw bytes as C# does; the console
+  test disproved it by rendering a non-ASCII record correctly on CP437. Two
+  tests now hold that shape in place — one writes straight to the handle on
+  CP437 and requires the output to be correct, so a future Go release that
+  stopped using `WriteConsoleW` would say so, and one requires that setup leaves
+  the host's code page exactly where it found it.
+
+### Fixed
+
 - **A log record the destination refuses is counted as an export failure.**
   `log/slog` discards whatever a handler returns, so a writer that fails — a
   pipe whose reader exited, a full disk, a closed file, a dropped network sink —

@@ -297,6 +297,13 @@ jobs:
       # mutants, lived=0 not_covered=0 timed_out=0, efficacy and mutator
       # coverage 100.00%. This raises how long a mutant may take to be judged;
       # it does not lower the bar, which is still zero survivors.
+      # logger_console_windows.go is excluded because this runner cannot reach
+      # it: the file carries //go:build windows, so on Linux it never compiles
+      # and every mutant of it reports as not-covered. gremlins mutates the AST
+      # without consulting build tags. What covers it instead is the
+      # windows-2025 leg of ci-go.yml, whose tests allocate a real console and
+      # read its screen buffer back — a stronger check than a mutant on a file
+      # the mutation runner cannot execute.
       - name: Run gremlins mutation tests for root package (100% kill rate required)
         run: |
           "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
@@ -309,6 +316,7 @@ jobs:
             --exclude-files="sampling_cmp.go" \
             --exclude-files="resilience_cmp.go" \
             --exclude-files="mutation_constants.go" \
+            --exclude-files="logger_console_windows.go" \
             --exclude-files="cmd/e2e_cross_language_client/" \
             --exclude-files="examples/" \
             --exclude-files="internal/" \

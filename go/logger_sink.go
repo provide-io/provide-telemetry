@@ -70,10 +70,14 @@ func (s *_logSink) Flush() error {
 // else can find out without adopting its file descriptor — os.NewFile sets a
 // finalizer that closes the descriptor, which for a wrapper around os.Stderr
 // would close the host's stderr.
+//
+// The file probe asks whether the terminal renders ANSI, not merely whether one
+// is there. Off Windows those are the same question; on Windows a console
+// renders escapes only once virtual-terminal processing is enabled on it.
 func _isTerminalWriter(w io.Writer) bool {
 	switch t := w.(type) {
 	case *os.File:
-		return _isTerminalFile(t)
+		return _terminalRendersANSI(t)
 	case interface{ IsTerminal() bool }:
 		return t.IsTerminal()
 	default:

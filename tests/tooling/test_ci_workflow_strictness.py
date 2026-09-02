@@ -144,6 +144,15 @@ def test_mutation_workflow_gates_every_changed_language() -> None:
     assert workflow.count("--threshold-efficacy=100") == 6
     assert workflow.count("--threshold-mcover=100") == 6
     assert '--exclude-files="mutation_constants.go"' in workflow
+    # A //go:build windows file never compiles on the Linux mutation runner, so
+    # gremlins — which mutates the AST without consulting build tags — reports
+    # every mutant of it as not-covered. The exclusion is paired with a reason
+    # and with the thing that does cover it: the windows-2025 leg of ci-go.yml,
+    # whose tests allocate a real console. Asserted together so the exclusion
+    # cannot outlive either.
+    assert '--exclude-files="logger_console_windows.go"' in workflow
+    assert "//go:build windows" in workflow
+    assert "windows-2025" in (REPO_ROOT / ".github" / "workflows" / "ci-go.yml").read_text(encoding="utf-8")
     # go/otel is a separate module, so its step is legitimately conditional.
     assert "hashFiles('go/otel/go.mod')" in workflow
     # go/logger was removed in 0.9.0: no step, no exclusion, no comment.

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"os"
 	"sync"
 	"time"
 )
@@ -195,8 +196,14 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 		}
 	}
 
+	// Ready the console before the sink is built: the sink decides once, at
+	// install, whether its destination renders ANSI, and on Windows that answer
+	// is "only if enabling virtual-terminal processing worked".
 	if state.logOutputSet {
+		_prepareLogConsole(state.logOutput)
 		_installLogSink(state.logOutput)
+	} else {
+		_prepareLogConsole(os.Stderr)
 	}
 
 	// Honour PROVIDE_CONSENT_LEVEL before any gate is published. Unset or
@@ -374,6 +381,10 @@ func ShutdownTelemetry(ctx context.Context) error {
 	_ = _flushLogSink()
 	_resetLogger()
 	_clearLogSink()
+	// The console goes back to the code page and mode the host had. Restoring
+	// after the sink is dropped, not before: a record still being written must
+	// not land on a console already returned to CP437.
+	_restoreLogConsole()
 	if libraryBounded && errors.Is(err, context.DeadlineExceeded) {
 		return nil
 	}
@@ -413,4 +424,5 @@ func _resetSetup() {
 	// without dropping the sink would leave the next setup writing into the
 	// previous host's writer.
 	_clearLogSink()
+	_restoreLogConsole()
 }

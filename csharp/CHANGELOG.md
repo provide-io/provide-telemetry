@@ -51,6 +51,31 @@ languages; this file covers only what shipped to NuGet.
   A cross-language pass in the behavioural parity harness asserts this SDK names
   its caller's file, alongside Python, TypeScript and Go.
 
+### Fixed
+
+- **Non-ASCII output no longer disappears on a Windows console, and ANSI is
+  emitted only to a console that renders it.** `Console.Error` is a writer over
+  `Console.OutputEncoding`, which defaults to the console's output code page —
+  CP437 or CP1252, not UTF-8 — and the encoded bytes go out through `WriteFile`.
+  Any character that code page cannot represent was therefore replaced by the
+  encoder before it ever reached the console. Setup sets that console to UTF-8
+  (no BOM) and shutdown restores what the host had.
+
+  This is the one SDK of the five that needs it. The other four convert to
+  UTF-16 and call `WriteConsoleW`, so the code page is no part of their path —
+  Go included, which an earlier version of this change had wrong until a console
+  test in the Go suite disproved it.
+
+  Separately, `Console.IsErrorRedirected` is false for any console, so the
+  pretty renderer's colours switched on for all of them — including legacy
+  conhost, which prints `ESC[36m` literally because
+  `ENABLE_VIRTUAL_TERMINAL_PROCESSING` is not set. Setup enables it, and the
+  result is now the colour answer. Behaviour away from Windows is unchanged.
+
+  Nothing is touched when stderr is redirected: a file, a pipe, or a parent
+  process capturing the stream receives exactly the bytes it received before.
+  The contract is `windows_console` in `spec/telemetry-api.yaml`.
+
 ## [0.8.1] — 2026-08-22
 
 ### Breaking

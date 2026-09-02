@@ -123,6 +123,34 @@ their old two-parameter signature finds nothing and must add the two.
   `filename` got the key twice. The callsite now shadows a caller's field of the
   same name, as Python and C# do.
 
+- **Go and C#: ANSI was emitted to Windows consoles that cannot render it, and
+  C# lost non-ASCII output there entirely.** A console handle is a character
+  device, so both SDKs' terminal probes reported colour as available on every
+  console — including legacy conhost, which prints `ESC[36m` literally because
+  `ENABLE_VIRTUAL_TERMINAL_PROCESSING` is not set on it. Setup enables it and its
+  success is now the colour answer; shutdown restores the mode.
+
+  C# additionally sets the console's output code page to UTF-8, because
+  `Console.Error` is a writer over `Console.OutputEncoding`, which defaults to
+  that code page, and the encoded bytes go out through `WriteFile` — so any
+  character the code page cannot represent was lost before it reached the
+  console.
+
+  **Go does not, and that correction is the useful part of this change.** The
+  first version set the code page in Go too, on the assumption that Go writes
+  raw bytes as C# does. The console test disproved it: `os.File` classifies a
+  console handle as `kindConsole` and `internal/poll`'s `writeConsole` decodes
+  the UTF-8, encodes UTF-16 and calls `WriteConsoleW`, so the code page is no
+  part of Go's path. CPython, libuv and Rust std do the same. `windows_console`
+  in `spec/telemetry-api.yaml` now lists C# alone for the code page, and says
+  the list was arrived at by testing rather than by reading.
+
+  Tested against a real console screen buffer — the test allocates one, writes a
+  record through the SDK and reads the cells back. A `bytes.Buffer` cannot see
+  any of this, and no CI job has a console, because GitHub Actions redirects
+  every stream to a pipe. That is why the wrong assumption survived being
+  written down twice before a test looked at it.
+
 - **Go: a log record the destination refuses is counted as an export failure.**
   `log/slog` discards a handler's returned error, so a failing writer lost every
   record silently while `LogsEmitted` kept climbing — the SDK's own health

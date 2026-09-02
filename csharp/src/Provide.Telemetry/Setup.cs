@@ -30,6 +30,10 @@ public static class Setup
             // through no parser, so nothing has range-checked it yet.
             ValidateRetriesCeiling(cfg);
 
+            // Ready the console before anything renders to it: on Windows the
+            // colour answer is "only once virtual-terminal processing is on",
+            // and a record written before that would be mojibake anyway.
+            ConsolePrep.Prepare();
             Consent.LoadConsentFromEnv();
             ApplyRuntimePolicies(cfg);
             backend = TelemetryBackendRegistry.Create(cfg);
@@ -86,6 +90,9 @@ public static class Setup
         // concurrent GetRuntimeStatus for the same duration.
         backend?.Shutdown(deadline);
         backend?.Dispose();
+        // After the drain: a record still on its way out must not land on a
+        // console already returned to CP437.
+        ConsolePrep.Restore();
     }
 
     public static FlushResult FlushTelemetry(TimeSpan? timeout = null)
@@ -250,6 +257,10 @@ public static class Setup
         lock (Gate)
         {
             if (_generation is not null) return;
+            // Ready the console before anything renders to it: on Windows the
+            // colour answer is "only once virtual-terminal processing is on",
+            // and a record written before that would be mojibake anyway.
+            ConsolePrep.Prepare();
             Consent.LoadConsentFromEnv();
             // SafeConfigFromEnv swallows its own faults, so only backend
             // construction below can throw here — which lets cfg be assigned at
@@ -316,6 +327,7 @@ public static class Setup
         Consent.Reset();
         Receipts.Reset();
         Tracing.Reset();
+        ConsolePrep.ResetForTests();
     }
 
     private static void ApplyRuntimePolicies(TelemetryConfig cfg)
