@@ -231,6 +231,9 @@ class _Closed:
     """A stream after the interpreter has torn its file object down."""
 
     encoding = "cp1252"
+    # Declared rather than attached, so both type checkers can see it: one test
+    # gives this a live byte layer to prove the record still reaches it.
+    buffer: Any = None
 
     def isatty(self) -> bool:
         raise ValueError("I/O operation on closed file")
@@ -264,7 +267,7 @@ def test_the_wrapper_still_writes_when_the_text_layer_cannot_flush() -> None:
     the record reaching it."""
     buffer = io.BytesIO()
     stream = _Closed()
-    stream.buffer = buffer  # type: ignore[attr-defined]
+    stream.buffer = buffer
 
     writer = console.utf8_writer(stream)
     writer.write("still here 🐹\n")

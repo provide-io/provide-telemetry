@@ -72,7 +72,9 @@ def _enable_virtual_terminal(stream: Any) -> bool:  # pragma: no cover — Windo
     """
     import ctypes
 
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    # windll exists only on Windows, and neither type checker has a platform
+    # to condition on here — the whole function is behind that check already.
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]  # ty: ignore[unresolved-attribute]
     try:
         fileno = stream.fileno()
     except (AttributeError, OSError, ValueError):
