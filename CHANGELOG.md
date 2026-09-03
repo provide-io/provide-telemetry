@@ -10,6 +10,8 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-03
+
 ### Added
 
 - **`ReconfigureTelemetry` accepts `WithLogOutput`.** A host can move its log
@@ -72,6 +74,8 @@ NuGet `Provide.Telemetry` — share a version number.
   are swapped inside it. That also means the handler cannot accumulate, however
   often config reloads, and a reload that finds no handler of the SDK's own —
   one a host removed — rebuilds rather than emitting into nothing.
+
+The TypeScript and C# packages moved for version parity only.
 
 ## [0.9.0] — 2026-09-03
 

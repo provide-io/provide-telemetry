@@ -9,6 +9,8 @@ they contained.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-03
+
 ### Added
 
 - **Rust: `set_log_output` selects where rendered log records go.** All three

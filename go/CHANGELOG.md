@@ -7,6 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-03
+
 ### Added
 
 - **`ReconfigureTelemetry` accepts `WithLogOutput`.** A host can move its log
