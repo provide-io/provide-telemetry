@@ -7,7 +7,7 @@ they contained.
 
 ---
 
-## [Unreleased]
+## [0.9.0] — 2026-09-03
 
 ### Fixed
 
