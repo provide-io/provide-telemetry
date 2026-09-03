@@ -8,6 +8,30 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Python: a runtime reload no longer removes handlers the host installed.**
+  `configure_logging` configures the root logger with
+  `logging.basicConfig(force=True)`, which removes and closes every handler
+  already attached — and every reconfiguration re-entered it. A host that added
+  its own handler after `setup_telemetry()` lost it at the next config change,
+  silently, and its records went to stderr instead: nothing raised, nothing
+  warned, and the destination it was reading stayed empty.
+
+  This is the one place Python's redirection story broke. The SDK exposes no
+  log sink there, deliberately, on the grounds that a host redirects with the
+  stdlib's own mechanism — which is worth nothing if the next reload revokes it.
+
+  Setting up keeps its clean slate: the first configuration still clears the
+  root, because a host that had already called `basicConfig()` would otherwise
+  see every record twice. A reload no longer touches the root's handler list at
+  all — the fan-out handler already installed keeps its place and its children
+  are swapped inside it. That also means the handler cannot accumulate, however
+  often config reloads, and a reload that finds no handler of the SDK's own —
+  one a host removed — rebuilds rather than emitting into nothing.
+
 ## [0.9.0] — 2026-09-03
 
 ### Breaking

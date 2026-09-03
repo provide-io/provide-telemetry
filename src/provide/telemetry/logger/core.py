@@ -289,6 +289,48 @@ def configure_logging(
             _setup_emergency_fallback(exc)
 
 
+def _installed_fanout() -> _BackpressureFanoutHandler | None:
+    """The SDK's own handler on the root logger, if it is still attached."""
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, _BackpressureFanoutHandler):
+            return handler
+    return None
+
+
+def _install_pipeline(children: list[logging.Handler], level: int, *, reload: bool) -> None:
+    """Put *children* behind the root logger at *level*.
+
+    Two paths, and what separates them is whether the SDK has configured
+    logging before, not what happens to be attached to the root logger.
+
+    Setting up owns the slate: ``basicConfig(force=True)`` removes and closes
+    whatever was there, because a host that had already called
+    ``basicConfig()`` would otherwise see every record twice.
+
+    A reload reuses the handler already installed and swaps its children. The
+    root's handler list is not rewritten, so a handler the host added after
+    setup survives — which it must, since redirecting through the stdlib is the
+    only mechanism Python's SDK offers, and that promise was worth nothing if
+    the next config change silently revoked it. Reuse also means the handler
+    cannot accumulate: one fan-out handler however often config reloads.
+
+    A reload that finds no handler of ours — a host removed it — rebuilds
+    through the first path, so the pipeline comes back rather than emitting
+    into nothing.
+    """
+    installed = _installed_fanout() if reload else None
+    if installed is None:
+        logging.basicConfig(
+            level=level,
+            handlers=[_BackpressureFanoutHandler(children)],
+            format="%(message)s",
+            force=True,
+        )
+        return
+    installed.replace_children(children)
+    logging.getLogger().setLevel(level)
+
+
 def _configure_logging_inner(config: TelemetryConfig) -> None:
     global _configured, _active_config
 
@@ -311,8 +353,7 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
         if lowers:
             effective_level = module_numeric
 
-    handlers = [_BackpressureFanoutHandler(_build_handlers(config, effective_level))]
-    logging.basicConfig(level=effective_level, handlers=handlers, format="%(message)s", force=True)
+    _install_pipeline(_build_handlers(config, effective_level), effective_level, reload=_configured)
 
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,

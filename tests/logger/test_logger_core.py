@@ -269,23 +269,28 @@ def test_configure_logging_sets_expected_runtime_arguments(monkeypatch: pytest.M
     assert configure_calls[0]["cache_logger_on_first_use"] is False
 
 
-def test_configure_logging_reconfigures_for_different_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_configure_logging_reconfigures_for_different_config() -> None:
+    """A config that differs from the active one is not short-circuited.
+
+    Asserted on the root logger's level rather than on a `basicConfig` call
+    count: a reload deliberately does not go through `basicConfig`, because
+    rewriting the root's handler list would take any handler the host installed
+    with it. The level is the outcome either path has to produce.
+    """
     _reset_logging_for_tests()
-    calls = {"count": 0}
+    root = logging.getLogger()
+    saved_handlers, saved_level = list(root.handlers), root.level
+    root.handlers[:] = []
+    try:
+        configure_logging(TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "INFO"}))
+        assert root.level == logging.INFO
 
-    def _basic_config(**kwargs: Any) -> None:
-        _ = kwargs
-        calls["count"] += 1
-
-    core_mod_any = cast(Any, core_mod)
-    logging_mod: Any = core_mod_any.logging
-    monkeypatch.setattr(logging_mod, "basicConfig", _basic_config)
-
-    cfg_a = TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "INFO"})
-    cfg_b = TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "ERROR"})
-    configure_logging(cfg_a)
-    configure_logging(cfg_b)
-    assert calls["count"] == 2
+        configure_logging(TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "ERROR"}))
+        assert root.level == logging.ERROR
+    finally:
+        _reset_logging_for_tests()
+        root.handlers[:] = saved_handlers
+        root.setLevel(saved_level)
 
 
 def test_lazy_logger_proxies_calls(monkeypatch: pytest.MonkeyPatch) -> None:
