@@ -31,6 +31,12 @@ from pathlib import Path
 
 import pytest
 
+# Marks this out of the mutation run, which executes from mutmut's copy of the
+# project under mutants/. That copy holds the source paths being mutated and no
+# changelogs, so an unmarked test here fails on a missing file rather than on
+# anything it set out to check.
+pytestmark = pytest.mark.tooling
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # The five language changelogs. Named rather than globbed: a glob picks up
