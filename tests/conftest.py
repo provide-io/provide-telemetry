@@ -8,6 +8,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import hypothesis
 import pytest
 import structlog
 
@@ -25,6 +26,29 @@ from provide.telemetry.tracing.context import set_trace_context
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+
+# Hypothesis measures how long each example takes and fails the test at 200ms by
+# default. That deadline asks a question this suite never runs in a position to
+# answer: the property tests execute under coverage in the normal gate and under
+# mutmut's trampoline in the mutation gate, where every call is dispatched
+# through a wrapper, and a run slow enough to trip the deadline says something
+# about the instrumentation rather than about the code.
+#
+# Left on, it produced a flake with no logic behind it. The mutation gate's
+# stats collection failed once on
+# test_event_name_property_builds_valid_strict_name — a property that cannot
+# fail on any input its strategy can generate, since `[a-z][a-z0-9_]{0,15}` is a
+# subset of the strict segment grammar and 3-5 segments is exactly the accepted
+# range. Seven full-suite reruns across 3.11 and 3.13 could not reproduce it,
+# and no falsifying example was stored, because there was none to store: a
+# DeadlineExceeded reports a perfectly valid example and reads like a logic
+# failure.
+#
+# Timing regressions are caught by the performance gates, which measure without
+# instrumentation and have baselines to compare against.
+hypothesis.settings.register_profile("provide", deadline=None)
+hypothesis.settings.load_profile("provide")
 
 
 @pytest.fixture(autouse=True)
