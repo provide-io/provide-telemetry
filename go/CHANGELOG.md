@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`ReconfigureTelemetry` accepts `WithLogOutput`.** A host can move its log
+  destination without tearing the runtime down. The option was already part of
+  the `SetupOption` set the call takes, and the writer in it was built into the
+  option state and then ignored — so the only way to change destination was
+  `ShutdownTelemetry` followed by a fresh setup, losing every provider with it.
+
+  Absent means unchanged, not cleared: a reconfigure that says nothing about the
+  destination leaves the installed writer alone, so reloading a log level does
+  not quietly return records to `os.Stderr`. A nil writer is rejected here
+  exactly as at setup, before anything is installed, and a reconfigure refused
+  for any other reason leaves the destination where it found it. The previous
+  writer is flushed before the new one takes over.
+
 ## [0.9.0] — 2026-09-03
 
 ### Added

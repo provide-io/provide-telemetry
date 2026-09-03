@@ -10,6 +10,47 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Added
+
+- **`ReconfigureTelemetry` accepts `WithLogOutput`.** A host can move its log
+  destination without tearing the runtime down. The option was already part of
+  the `SetupOption` set the call takes, and the writer in it was built into the
+  option state and then ignored — so the only way to change destination was
+  `ShutdownTelemetry` followed by a fresh setup, losing every provider with it.
+
+  Absent means unchanged, not cleared: a reconfigure that says nothing about the
+  destination leaves the installed writer alone, so reloading a log level does
+  not quietly return records to `os.Stderr`. A nil writer is rejected here
+  exactly as at setup, before anything is installed, and a reconfigure refused
+  for any other reason leaves the destination where it found it. The previous
+  writer is flushed before the new one takes over.
+
+- **Rust: `set_log_output` selects where rendered log records go.** All three
+  formats — `json`, `console` and `pretty` — write to it, writes are serialised
+  so a record arrives whole, and `shutdown_telemetry` flushes and releases it.
+  This is the surface a host needs to wrap the SDK's log stream: to prefix it
+  when several language runtimes share one, to tee it, or to drop it.
+
+  Emission wrote to stderr through `eprintln!` and nothing could intercept it,
+  which made Rust one of the two runtimes a host cannot redirect from outside.
+  A host running Go and Rust into one stream could prefix the Go half and not
+  the Rust half, so the combined output could not be attributed to a runtime
+  and the Rust side was pushed onto a separate logging stack that emitted
+  structurally different telemetry for the same operation.
+
+  The writer is a handle rather than a string, so no environment variable names
+  it and it is not part of `TelemetryConfig` — the config is a value callers
+  receive by copy and Rust deserialises across a reconfiguration, and a handle
+  survives neither. It is installed and cleared on its own, which settles when
+  it may change: a reconfiguration does not touch the writer, and a host can
+  swap or drop it without reconfiguring.
+
+  Colour is off while a writer is installed. The invariant is that ANSI never
+  reaches a destination not known to render it, and a `Write` is not something
+  the crate can ask — expressing Go's optional `IsTerminal` in Rust would cost
+  every host a trait implementation and the ability to pass a plain `File`. The
+  default stderr path still probes.
+
 ### Fixed
 
 - **Python: a runtime reload no longer removes handlers the host installed.**

@@ -312,3 +312,39 @@ fn pretty_test_emit_if_pretty_falls_back_to_stderr_without_capture() {
     // eprintln!. Just confirm it does not panic.
     crate::logger::emit::emit_if_pretty(&sample_event("INFO"));
 }
+
+// ── Colour follows the destination ───────────────────────────────────────────
+// The decision is asserted at both probe values, because the probe is false
+// under `cargo test` — stderr is not a terminal there — and a test that only
+// exercises it through `format_pretty_line` can never tell the sink half of
+// the expression from a constant.
+
+#[test]
+fn pretty_test_a_terminal_destination_gets_colour() {
+    let _guard = acquire_test_state_lock();
+    crate::logger::sink::clear_log_output();
+
+    assert!(super::ansi_for_destination(true));
+}
+
+#[test]
+fn pretty_test_a_destination_that_is_not_a_terminal_gets_none() {
+    let _guard = acquire_test_state_lock();
+    crate::logger::sink::clear_log_output();
+
+    assert!(!super::ansi_for_destination(false));
+}
+
+#[test]
+fn pretty_test_an_installed_writer_gets_no_colour_even_on_a_terminal() {
+    let _guard = acquire_test_state_lock();
+    crate::logger::sink::set_log_output(Vec::new());
+
+    let decided = super::ansi_for_destination(true);
+    crate::logger::sink::clear_log_output();
+
+    assert!(
+        !decided,
+        "ANSI would reach a writer this crate cannot establish as a terminal"
+    );
+}

@@ -287,20 +287,14 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 		fn(state)
 	}
 
-	target := state.config
-	if target == nil {
-		fromEnv, err := ConfigFromEnv()
-		if err != nil {
-			return nil, err
-		}
-		target = fromEnv
-	} else if err := validateReconfigureTarget(target); err != nil {
-		// The env path validates as it parses; an in-memory config from
-		// WithConfig has had nothing check it. Without this a NaN sampling rate
-		// clamps to 0.0 and silently stops the signal, and a negative queue size
-		// becomes an unbounded queue — both reported as a successful reconfigure.
-		// SetupTelemetry(WithConfig) and UpdateRuntimeConfig both reject these;
-		// the two facade methods on one runtime must not disagree.
+	// Rejected before anything is touched, exactly as at setup: a reconfigure
+	// that fails must leave the runtime — writer included — where it found it.
+	if err := _validateLogOutputOption(state); err != nil {
+		return nil, err
+	}
+
+	target, err := _reconfigureTarget(state)
+	if err != nil {
 		return nil, err
 	}
 
@@ -316,8 +310,58 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 	next := cloneTelemetryConfig(_runtimeCfg)
 	_applyHotFields(next, target)
 	_applyRuntimePolicies(next)
+	_moveLogOutputLocked(state)
 	_publishGenerationLocked(next)
 	return cloneTelemetryConfig(next), nil
+}
+
+// _validateLogOutputOption rejects a WithLogOutput carrying no writer.
+//
+// Checked before any state moves so a reconfigure that fails leaves the
+// runtime, writer included, exactly where it found it.
+func _validateLogOutputOption(state *_setupState) error {
+	if state.logOutputSet && _writerIsNil(state.logOutput) {
+		return NewConfigurationError("WithLogOutput: writer is nil")
+	}
+	return nil
+}
+
+// _reconfigureTarget resolves the config a reconfigure is aiming at: the
+// caller's when WithConfig supplied one, the environment otherwise.
+//
+// The env path validates as it parses; an in-memory config from WithConfig has
+// had nothing check it. Without that check a NaN sampling rate clamps to 0.0
+// and silently stops the signal, and a negative queue size becomes an unbounded
+// queue — both reported as a successful reconfigure. SetupTelemetry(WithConfig)
+// and UpdateRuntimeConfig both reject these; the two facade methods on one
+// runtime must not disagree.
+func _reconfigureTarget(state *_setupState) (*TelemetryConfig, error) {
+	if state.config == nil {
+		return ConfigFromEnv()
+	}
+	if err := validateReconfigureTarget(state.config); err != nil {
+		return nil, err
+	}
+	return state.config, nil
+}
+
+// _moveLogOutputLocked points rendered records at a destination the caller
+// asked for.
+//
+// The destination moves only when the caller asks. Absent means unchanged, not
+// cleared: a host reloading its log level must not have its records quietly
+// returned to os.Stderr. Console first, then the sink — the sink decides at
+// install whether its destination renders ANSI, and on Windows that answer
+// depends on virtual-terminal processing already being on.
+//
+// Called with _setupMu held.
+func _moveLogOutputLocked(state *_setupState) {
+	if !state.logOutputSet {
+		return
+	}
+	_ = _flushLogSink()
+	_prepareLogConsole(state.logOutput)
+	_installLogSink(state.logOutput)
 }
 
 // _providerConfigChanged returns true when reconfiguration would require

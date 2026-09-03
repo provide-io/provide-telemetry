@@ -202,7 +202,27 @@ pub(super) fn format_pretty_line_with_colors(
 /// escapes only once virtual-terminal processing is enabled on it, so being a
 /// terminal is not enough — see [`super::windows_console`].
 pub(super) fn format_pretty_line(event: &LogEvent, cfg: &LoggingConfig) -> String {
-    format_pretty_line_with_colors(event, cfg, super::windows_console::ansi_supported())
+    format_pretty_line_with_colors(event, cfg, destination_renders_ansi())
+}
+
+/// Whether the destination these records are going to renders ANSI.
+///
+/// A writer a host installed is not something this crate can ask, so it is
+/// assumed not to — the invariant being that escapes never reach a destination
+/// not known to render them. Only the default stderr path is probed.
+fn destination_renders_ansi() -> bool {
+    ansi_for_destination(super::windows_console::ansi_supported())
+}
+
+/// The decision itself, separated from probing the process's own stderr.
+///
+/// Split out to be testable: under `cargo test` stderr is not a terminal, so
+/// the probe is always false and the whole expression collapses to false
+/// whatever the sink half does. Every mutant of that half survived, because
+/// nothing could observe it. `probe` is what
+/// [`super::windows_console::ansi_supported`] answered.
+pub(super) fn ansi_for_destination(probe: bool) -> bool {
+    !super::sink::log_output_installed() && probe
 }
 
 #[cfg(test)]

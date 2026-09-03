@@ -68,9 +68,10 @@ func WithLoggerProvider(lp any) SetupOption {
 // A host wraps its log stream here — to prefix it when several language runtimes
 // share one stream, to tee it, or to drop it with io.Discard.
 //
-// The writer is installed for the life of the runtime. Reconfiguring does not
-// disturb it, and nothing short of ShutdownTelemetry removes it; a host that
-// needs a different destination shuts down and sets up again.
+// ReconfigureTelemetry accepts this option too, so a host can move its log
+// destination without tearing the runtime down. A reconfigure that does not
+// pass it leaves the installed writer alone — absent means unchanged, not
+// cleared. ShutdownTelemetry releases it.
 //
 // Writes are serialized, so a writer need not be safe for concurrent use. The
 // pretty renderer emits ANSI only when w is a terminal: an *os.File is probed,
