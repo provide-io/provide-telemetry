@@ -218,8 +218,16 @@ fn slo_red_metrics_request_count_always_increments() {
 // ── record_use_metrics smoke test ─────────────────────────────────────────────
 // record_use_metrics has no observable return value; this test at minimum ensures
 // the function does not panic and the cast `utilization_percent as f64` is present.
+//
+// It takes the SLO lock even though it asserts nothing, because the call it is
+// checking for panics also sets SLO_INITIALIZED. Without the lock it ran
+// concurrently with slo_use_metrics_sets_initialized_flag and set that flag
+// between its reset and the assertion on the next line, failing a test that
+// holds every lock it is supposed to.
 #[test]
 fn slo_use_metrics_does_not_panic_for_boundary_values() {
+    let _guard = acquire_test_state_lock();
+    let _slo_guard = slo_lock().lock().expect("slo lock");
     record_use_metrics("cpu", 0);
     record_use_metrics("cpu", 100);
     record_use_metrics("cpu", i32::MAX);
