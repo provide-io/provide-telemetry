@@ -287,6 +287,12 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 		fn(state)
 	}
 
+	// Rejected before anything is touched, exactly as at setup: a reconfigure
+	// that fails must leave the runtime — writer included — where it found it.
+	if state.logOutputSet && _writerIsNil(state.logOutput) {
+		return nil, NewConfigurationError("WithLogOutput: writer is nil")
+	}
+
 	target := state.config
 	if target == nil {
 		fromEnv, err := ConfigFromEnv()
@@ -316,6 +322,16 @@ func ReconfigureTelemetry(ctx context.Context, opts ...SetupOption) (*TelemetryC
 	next := cloneTelemetryConfig(_runtimeCfg)
 	_applyHotFields(next, target)
 	_applyRuntimePolicies(next)
+	// The destination moves only when the caller asks. Absent means unchanged,
+	// not cleared: a host reloading its log level must not have its records
+	// quietly returned to os.Stderr. Console first, then the sink — the sink
+	// decides at install whether its destination renders ANSI, and on Windows
+	// that answer depends on virtual-terminal processing already being on.
+	if state.logOutputSet {
+		_ = _flushLogSink()
+		_prepareLogConsole(state.logOutput)
+		_installLogSink(state.logOutput)
+	}
 	_publishGenerationLocked(next)
 	return cloneTelemetryConfig(next), nil
 }

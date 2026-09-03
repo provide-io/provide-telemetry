@@ -63,6 +63,15 @@ exclude_re = [
     # identical for all inputs — no test can distinguish `>` from `>=` here.
     'src/propagation.rs:96:24: replace > with >= in extract_w3c_context',
     'src/propagation.rs:96:24: replace > with == in extract_w3c_context',
+    # pretty.rs destination_renders_ansi: `ansi_for_destination(ansi_supported())`.
+    # Away from Windows `ansi_supported` is `stderr().is_terminal()`, and stderr
+    # is never a terminal while tests run, so the function is constantly false in
+    # every environment that could judge the mutant — replacing it with `false`
+    # is equivalent there and no test can distinguish it. What the wrapper
+    # decides is tested directly: `ansi_for_destination` is asserted at both
+    # probe values, with and without a sink installed, which is where the
+    # sink-versus-terminal logic actually lives.
+    'replace destination_renders_ansi -> bool with false',
     # bounded_flush_tests.rs blocked_until_for: the wait loop's `elapsed < cap`
     # vs `<=` differs only when elapsed equals the cap to the nanosecond — one
     # extra 5ms sleep at most, indistinguishable from scheduler noise. (The

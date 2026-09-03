@@ -114,12 +114,7 @@ fn emit_json_line(event: &LogEvent, include_timestamp: bool) {
     );
     let line = serde_json::to_string(obj).unwrap_or_default();
     let mut capture = crate::_lock::lock(&JSON_CAPTURE);
-    if let Some(buf) = capture.as_mut() {
-        buf.extend_from_slice(line.as_bytes());
-        buf.push(b'\n');
-    } else {
-        eprintln!("{line}");
-    }
+    super::sink::write_line(capture.as_mut(), &line);
 }
 
 pub(super) fn emit_if_json(event: &LogEvent) {
@@ -157,12 +152,7 @@ pub(super) fn emit_if_console(event: &LogEvent) {
     }
     let line = format_console_line(event, logging.include_timestamp);
     let mut capture = crate::_lock::lock(&CONSOLE_CAPTURE);
-    if let Some(buf) = capture.as_mut() {
-        buf.extend_from_slice(line.as_bytes());
-        buf.push(b'\n');
-    } else {
-        eprintln!("{line}");
-    }
+    super::sink::write_line(capture.as_mut(), &line);
 }
 
 pub(super) fn emit_if_pretty(event: &LogEvent) {
@@ -172,12 +162,7 @@ pub(super) fn emit_if_pretty(event: &LogEvent) {
     }
     let line = format_pretty_line(event, &logging);
     let mut capture = crate::_lock::lock(&PRETTY_CAPTURE);
-    if let Some(buf) = capture.as_mut() {
-        buf.extend_from_slice(line.as_bytes());
-        buf.push(b'\n');
-    } else {
-        eprintln!("{line}");
-    }
+    super::sink::write_line(capture.as_mut(), &line);
 }
 
 #[cfg(feature = "otel")]

@@ -803,12 +803,18 @@ log_output:
     that is supplied but unusable is a configuration error, never a silent fall
     back to the error stream — a host that asked for its logs elsewhere must not
     have them appear on a stream it is not reading. Colour follows the sink
-    rather than the process: a file-like destination is probed for a terminal,
-    and any other destination is asked.
-  applicability: [go]
+    rather than the process, and the invariant is that ANSI never reaches a
+    destination not known to render it: a sink an SDK cannot establish as a
+    terminal gets none. Recovering colour for one that is a terminal is a
+    permitted refinement where the runtime makes it free, not a requirement —
+    Go probes a file-like destination and asks any other through an optional
+    IsTerminal method its structural interfaces make costless, while Rust would
+    have to charge every host a trait implementation for the same answer, so it
+    assumes not-a-terminal.
+  applicability: [go, rust]
   host_control:
     go: none after setup — the SDK owns the slog handler chain
-    rust: none after setup — emit writes with eprintln!
+    rust: none after setup — emit writes to stderr unless a sink is installed
     python: the stdlib root logger, configured by logging.basicConfig
     csharp: Console.SetError
     typescript: the console methods and Node's stdio
@@ -817,18 +823,17 @@ log_output:
     runtime is closed, and only Go and Rust are. Adding a sink to the three
     open ones would be a second way to do what the platform already does.
 
-    Rust has Go's lock-in and no sink. Its own tests could not read output
-    without a seam, so one exists behind enable_json_capture_for_tests, exposed
-    inward only. Making it public is a question of demand rather than design,
-    and the demand is narrower than it first appears: prefixing an interleaved
-    multi-runtime log belongs to the parent process that owns the pipes, not to
-    each child that writes into one.
+    Go and Rust reach the capability by different routes, because their setup
+    surfaces differ. Go takes the writer as a setup option; Rust installs it
+    through set_log_output, independent of setup, which also settles when the
+    writer may change: reconfiguration does not touch it, a host can swap or
+    drop it without reconfiguring, and shutdown flushes and releases it.
 
-    Python's escape hatch is real but does not survive a reload:
-    configure_logging calls logging.basicConfig with force=True, and a runtime
-    reconfiguration re-enters it, so a handler the host installed after setup is
-    silently removed. That is a defect in the reload path rather than an
-    argument for a sink.
+    Prefixing is the case that drove both. A host running several language
+    runtimes into one stream needs the writer from every SDK involved, not one
+    of them: each runtime prefixes its own lines so the combined output stays
+    attributable, and a runtime without a sink is pushed onto a separate logging
+    stack that emits structurally different telemetry for the same operation.
 
 callsite_fields:
   description: >

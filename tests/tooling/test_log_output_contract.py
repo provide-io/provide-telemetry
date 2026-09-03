@@ -46,25 +46,34 @@ _CLOSED_RUNTIMES = frozenset({"go", "rust"})
 # description is stale and this fails.
 _WRITE_PATHS = {
     "go": ("go/logger_sink.go", "_logOutput"),
-    "rust": ("rust/src/logger/emit.rs", "eprintln!"),
+    "rust": ("rust/src/logger/sink.rs", "eprintln!"),
     "python": ("src/provide/telemetry/logger/core.py", "logging.basicConfig"),
     "csharp": ("csharp/src/Provide.Telemetry/Logger.cs", "Console.Error.WriteLine"),
     "typescript": ("typescript/src/logger.ts", "console"),
 }
 
-# Go's sink, the only implementation the contract currently describes. The
-# writer is a setup option rather than a TelemetryConfig field: config is the
+# The two implementations the contract describes, each reached by the route its
+# setup surface allows. Go takes the writer as a setup option; Rust installs it
+# independently of setup. Neither puts it in the config: that is the
 # cross-language wire shape Rust deserializes and callers receive as a deep
 # copy, and a handle survives neither.
-_GO_SINK = (
-    ("go/setup.go", "WithLogOutput"),
-    ("go/logger_sink.go", "_installLogSink"),
-    ("go/logger_sink.go", "_isTerminalWriter"),
-)
+_SINKS = {
+    "go": (
+        ("go/setup.go", "WithLogOutput"),
+        ("go/logger_sink.go", "_installLogSink"),
+        ("go/logger_sink.go", "_isTerminalWriter"),
+    ),
+    "rust": (
+        ("rust/src/logger/sink.rs", "pub fn set_log_output"),
+        ("rust/src/logger/sink.rs", "pub fn clear_log_output"),
+        ("rust/src/logger/sink.rs", "fn flush_log_output"),
+    ),
+}
 
-# Rust has Go's lock-in and no public sink. Its capture seam is test-only, and
-# promoting it is a spec change before it is a code change.
-_RUST_SINK_TOKENS = ("MakeWriter", "WithLogOutput")
+# Colour follows the sink. Rust cannot ask a writer whether it is a terminal
+# without charging every host a trait implementation, so it assumes not — and
+# the assumption has to be in the code, not only in the clause that claims it.
+_RUST_COLOUR_GUARD = ("rust/src/logger/pretty.rs", "log_output_installed")
 
 
 def _spec() -> dict[str, Any]:
@@ -116,22 +125,31 @@ def test_each_write_path_is_still_where_the_spec_says(language: str, location: t
     )
 
 
-@pytest.mark.parametrize(("relative_path", "token"), _GO_SINK)
-def test_go_implements_the_sink_it_is_listed_for(relative_path: str, token: str) -> None:
-    """The one language in applicability must actually have one."""
-    assert token in _source(relative_path), f"{token!r} is gone from {relative_path}"
+@pytest.mark.parametrize(
+    ("language", "relative_path", "token"),
+    [(lang, path, token) for lang, entries in sorted(_SINKS.items()) for path, token in entries],
+)
+def test_each_listed_language_implements_the_sink(language: str, relative_path: str, token: str) -> None:
+    """A language in applicability must actually have one."""
+    assert token in _source(relative_path), f"{language}: {token!r} is gone from {relative_path}"
 
 
-@pytest.mark.parametrize("token", _RUST_SINK_TOKENS)
-def test_rust_has_not_quietly_grown_a_sink(token: str) -> None:
-    """Rust is the plausible second implementation, so it is the one to watch.
+def test_every_language_with_a_sink_is_listed() -> None:
+    """A sink that appears without a spec change is the drift this prevents."""
+    assert set(_SINKS) == set(_log_output()["applicability"]), (
+        f"the sinks in the tree are {sorted(_SINKS)} but log_output.applicability "
+        f"says {sorted(_log_output()['applicability'])}"
+    )
 
-    Adding one is a legitimate change; adding one without moving Rust into
-    applicability leaves the spec describing a world with one sink in it while
-    two exist, which is the drift this file prevents.
+
+def test_rust_decides_colour_from_the_destination() -> None:
+    """The clause says a sink Rust cannot establish as a terminal gets no colour.
+
+    That is a claim about the renderer, so it is asserted against the renderer:
+    the pretty path has to consult the sink rather than probe the process.
     """
-    sources = "".join(path.read_text(encoding="utf-8") for path in sorted((_REPO_ROOT / "rust" / "src").rglob("*.rs")))
-    assert token not in sources, (
-        f"rust/src mentions {token!r}: if Rust has a log sink now, add it to "
-        "log_output.applicability and describe it in the contract"
+    relative_path, token = _RUST_COLOUR_GUARD
+    assert token in _source(relative_path), (
+        f"{relative_path} no longer consults {token!r}, so pretty output can carry ANSI "
+        "into a writer that is not known to render it"
     )

@@ -113,6 +113,12 @@ pub fn shutdown_telemetry(timeout_seconds: Option<f64>) -> Result<(), TelemetryE
     }
     shutdown_otel(timeout_seconds);
     set_active_config(None);
+    // Flush before releasing it: the host handed us a writer and is entitled to
+    // everything written to it, and dropping a buffered writer here would lose
+    // whatever it still held. Released because the telemetry runtime that was
+    // given the writer is the one being torn down.
+    crate::logger::sink::flush_log_output();
+    crate::logger::sink::clear_log_output();
     // After the drain: a record still on its way out should not land on a
     // console already returned to the mode the host had.
     crate::logger::windows_console::restore();
