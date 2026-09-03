@@ -781,6 +781,55 @@ windows_console:
       only warn and error reach stderr, so a probe that asks stderr alone
       answers for the minority and applies it to everything.
 
+log_output:
+  description: >
+    Where an SDK's rendered log records go when the host wants them somewhere
+    other than the process's own error stream.
+  problem: >
+    A host that wants to own an SDK's log stream — to tee it, to discard it, or
+    to keep records out of a stdout already carrying a program's payload — can
+    only do so if the runtime leaves the destination reachable after setup, and
+    the five do not agree on whether it does. Python installs handlers on the
+    stdlib root, C# writes through Console.Error and TypeScript through the
+    console methods; in all three the host redirects with the platform's own
+    mechanism and needs nothing from this SDK. Go builds an slog handler chain
+    the host never sees, and Rust's emit calls eprintln! directly, so in those
+    two the destination is unreachable the moment setup returns.
+  contract: >
+    An SDK whose runtime leaves the host no way to redirect after setup offers a
+    sink: a destination supplied at setup that every renderer writes to, the
+    console, JSON and pretty formats alike. Writes to it are serialised, so a
+    record arrives whole. Shutdown flushes it when its type can flush. A sink
+    that is supplied but unusable is a configuration error, never a silent fall
+    back to the error stream — a host that asked for its logs elsewhere must not
+    have them appear on a stream it is not reading. Colour follows the sink
+    rather than the process: a file-like destination is probed for a terminal,
+    and any other destination is asked.
+  applicability: [go]
+  host_control:
+    go: none after setup — the SDK owns the slog handler chain
+    rust: none after setup — emit writes with eprintln!
+    python: the stdlib root logger, configured by logging.basicConfig
+    csharp: Console.SetError
+    typescript: the console methods and Node's stdio
+  note: >
+    The list is short because the capability is only worth having where the
+    runtime is closed, and only Go and Rust are. Adding a sink to the three
+    open ones would be a second way to do what the platform already does.
+
+    Rust has Go's lock-in and no sink. Its own tests could not read output
+    without a seam, so one exists behind enable_json_capture_for_tests, exposed
+    inward only. Making it public is a question of demand rather than design,
+    and the demand is narrower than it first appears: prefixing an interleaved
+    multi-runtime log belongs to the parent process that owns the pipes, not to
+    each child that writes into one.
+
+    Python's escape hatch is real but does not survive a reload:
+    configure_logging calls logging.basicConfig with force=True, and a runtime
+    reconfiguration re-enters it, so a handler the host installed after setup is
+    silently removed. That is a defect in the reload path rather than an
+    argument for a sink.
+
 callsite_fields:
   description: >
     Where a log record says it came from. Two independent outputs, both
