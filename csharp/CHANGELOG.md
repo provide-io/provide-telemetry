@@ -6,7 +6,7 @@ languages; this file covers only what shipped to NuGet.
 
 ---
 
-## [Unreleased]
+## [0.9.0] — 2026-09-03
 
 ### Breaking
 

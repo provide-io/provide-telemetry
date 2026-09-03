@@ -8,7 +8,7 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ---
 
-## [Unreleased]
+## [0.9.0] — 2026-09-03
 
 ### Breaking
 
