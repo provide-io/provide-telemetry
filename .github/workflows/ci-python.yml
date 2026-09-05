@@ -95,8 +95,13 @@ jobs:
       - run: uv run xenon --max-absolute C --max-modules B --max-average A src/
         if: runner.os == 'Linux'
       - run: uv run vulture src/ tests/
-      - run: uv run python -m pip_audit --path .
-        if: runner.os == 'Linux'
+      # No pip-audit here. `python -m pip_audit --path .` resolves and installs
+      # the project to audit it, inside an environment that already holds the
+      # whole dev group -- so it reported on the scanner's own requirements as
+      # readily as on this project's, and it did the work twice. The
+      # `dependency-audit` job below audits the committed lock instead, which
+      # is the deterministic artifact and is what ci/audit_python.py exists to
+      # do.
       - run: uv run python scripts/check_licenses.py
         if: runner.os == 'Linux'
       - run: uv run python scripts/run_pytest_gate.py
@@ -120,9 +125,6 @@ jobs:
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - run: uv run codespell
 
-  # Fails the build on any known vulnerability in the committed uv.lock,
-  # production and development dependencies alike. Blocking from day one:
-  # a gate that cannot fail is not a gate.
   # Compiles the published Rust and Go quick starts. A README snippet with a
   # wrong signature is a break a consumer hits in their first five minutes, and
   # nothing else in CI reads those files as code.
@@ -142,6 +144,9 @@ jobs:
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
       - run: uv run python scripts/run_pytest_gate.py --no-cov -q -m tooling tests/docs/test_compiled_readme_snippets.py
 
+  # Fails the build on any known vulnerability in the committed uv.lock,
+  # production and development dependencies alike. Blocking from day one:
+  # a gate that cannot fail is not a gate.
   dependency-audit:
     runs-on: ubuntu-24.04
     steps:
@@ -149,7 +154,9 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
         with:
           python-version: "3.11"
-      # Install the dev group so pip-audit itself is available.
+      # The dev group is for the environment ci/audit_python.py runs in, not
+      # for the scanner: pip-audit comes from a tool environment so that what
+      # it requires stays out of what it audits.
       - run: bash ci/run_uv_sync_with_retry.sh --group dev
       # Export the committed lock and audit it. An empty inventory fails
       # rather than reading as a clean scan.

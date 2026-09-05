@@ -67,6 +67,12 @@ def _audit(requirements: str) -> tuple[int, list[Finding]]:
         result = subprocess.run(  # noqa: S603  # nosec B603 — fixed argv, no shell
             [
                 _UV,
+                # `tool run`, not `run`: `uv run pip-audit` needs pip-audit in
+                # the project environment, and then the export being audited
+                # contains pip-audit's own dependency tree. An advisory against
+                # something the scanner requires would read as this project's.
+                # A tool environment keeps the two apart.
+                "tool",
                 "run",
                 "pip-audit",
                 "--requirement",
