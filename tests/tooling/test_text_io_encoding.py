@@ -45,6 +45,9 @@ _SKIP_DIRS = frozenset(
         ".pytest_cache",
         ".ruff_cache",
         ".venv",
+        # A git worktree checkout of another branch (.gitignore excludes it).
+        # Scanning it holds that branch's files to this one's rules.
+        ".worktrees",
         "__pycache__",
         "build",
         "dist",

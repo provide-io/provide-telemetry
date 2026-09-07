@@ -1,3 +1,10 @@
+# Hooks with no `stages:` of their own default to running at EVERY stage,
+# commit-msg included -- so with a commit-msg hook type installed, a single
+# `git commit` ran this whole battery twice. This scopes them to the two stages
+# that matter; the commit-msg and manual hooks declare their own and are
+# unaffected.
+default_stages: [pre-commit, pre-push]
+
 repos:
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
@@ -37,7 +44,11 @@ repos:
     hooks:
       - id: max-loc
         name: python max loc
-        entry: uv run python scripts/check_max_loc.py --max-lines 500
+        # 777 to match ci-python.yml. The cap was raised there and in the
+        # allowlist by ca9853c6 but missed here, so the hook rejected 14 files
+        # CI accepts -- unnoticed for a month because the hooks were never
+        # installed. Keep the two in step.
+        entry: uv run python scripts/check_max_loc.py --max-lines 777
         language: system
         pass_filenames: false
         always_run: true

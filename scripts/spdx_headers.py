@@ -37,6 +37,11 @@ EXCLUDED_DIRS = {
     ".git",
     ".provide",
     ".venv",
+    # Git worktrees live here (.gitignore excludes the tree). A worktree holds
+    # another branch's checkout, so auditing it audits that branch's files
+    # against this one's rules -- and any developer with a worktree open could
+    # not commit at all.
+    ".worktrees",
     "workenv",
     ".mypy_cache",
     ".pytest_cache",
