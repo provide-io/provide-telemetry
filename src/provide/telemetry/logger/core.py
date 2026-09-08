@@ -276,15 +276,22 @@ def _setup_emergency_fallback(exc: Exception) -> None:
 
 
 def configure_logging(
-    config: TelemetryConfig, *, force: bool = False
+    config: TelemetryConfig, *, force: bool = False, claim_root: bool = True
 ) -> None:  # pragma: no mutate — default force=False; all call sites pass the flag explicitly
+    """Configure logging for *config*.
+
+    ``claim_root`` says whether this call is entitled to the root logger's
+    handler list. Setting up is: the host called ``setup_telemetry()`` and asked
+    for the SDK's pipeline. The lazy path behind ``get_logger()`` is not -- see
+    ``_install_pipeline``.
+    """
     global _configured, _active_config
     with _lock:
         if _configured and not force and _active_config == config:
             return
 
         try:
-            _configure_logging_inner(config)
+            _configure_logging_inner(config, claim_root=claim_root)
         except Exception as exc:
             _setup_emergency_fallback(exc)
 
@@ -297,7 +304,9 @@ def _installed_fanout() -> _BackpressureFanoutHandler | None:
     return None
 
 
-def _install_pipeline(children: list[logging.Handler], level: int, *, reload: bool) -> None:
+def _install_pipeline(
+    children: list[logging.Handler], level: int, *, reload: bool, claim_root: bool = True
+) -> None:
     """Put *children* behind the root logger at *level*.
 
     Two paths, and what separates them is whether the SDK has configured
@@ -317,9 +326,19 @@ def _install_pipeline(children: list[logging.Handler], level: int, *, reload: bo
     A reload that finds no handler of ours — a host removed it — rebuilds
     through the first path, so the pipeline comes back rather than emitting
     into nothing.
+
+    Without ``claim_root`` the handler is attached beside whatever is already
+    there. That is the lazy path behind ``get_logger()``, which a host reaches
+    by importing a module rather than by asking for anything: closing handlers
+    it never installed is not a liberty a getter has. On a root with no handlers
+    -- the ordinary case -- the two paths install the same single handler.
     """
     installed = _installed_fanout() if reload else None
-    if installed is None:
+    if installed is not None:
+        installed.replace_children(children)
+        logging.getLogger().setLevel(level)
+        return
+    if claim_root:
         logging.basicConfig(
             level=level,
             handlers=[_BackpressureFanoutHandler(children)],
@@ -327,11 +346,12 @@ def _install_pipeline(children: list[logging.Handler], level: int, *, reload: bo
             force=True,
         )
         return
-    installed.replace_children(children)
-    logging.getLogger().setLevel(level)
+    root = logging.getLogger()
+    root.addHandler(_BackpressureFanoutHandler(children))
+    root.setLevel(level)
 
 
-def _configure_logging_inner(config: TelemetryConfig) -> None:
+def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool = True) -> None:
     global _configured, _active_config
 
     level = _get_level(config.logging.level)
@@ -353,7 +373,12 @@ def _configure_logging_inner(config: TelemetryConfig) -> None:
         if lowers:
             effective_level = module_numeric
 
-    _install_pipeline(_build_handlers(config, effective_level), effective_level, reload=_configured)
+    _install_pipeline(
+        _build_handlers(config, effective_level),
+        effective_level,
+        reload=_configured,
+        claim_root=claim_root,
+    )
 
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -513,7 +538,10 @@ def get_logger(name: str | None = None) -> _TraceWrapper:
         # orchestration, and overwriting them here would clobber values set
         # directly by callers that only want logging without full setup.
         set_sampling_policy("logs", SamplingPolicy(default_rate=cfg.sampling.logs_rate))
-        configure_logging(cfg)
+        # A getter does not own the host's root logger: this call is reached by
+        # importing a module that holds a module-scope get_logger(), not by the
+        # host asking for the SDK's pipeline.
+        configure_logging(cfg, claim_root=False)
     return _TraceWrapper(structlog.get_logger(name or "provide"))
 
 
