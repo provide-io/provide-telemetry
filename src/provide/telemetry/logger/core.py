@@ -11,7 +11,7 @@ import logging
 import sys
 import threading
 import warnings
-from typing import Any
+from typing import Any, TextIO
 
 import structlog
 
@@ -87,6 +87,38 @@ _CALLSITE_IGNORES: list[str] = [__name__]
 _LEVEL_NAME_TO_NUMERIC: dict[str, int] = {name: severity.stdlib_level for name, severity in _LEVEL_TABLE.items()}
 
 
+# Where rendered records go. None means stderr, which is what a process that
+# says nothing gets. Guarded by its own lock rather than the config lock: a host
+# may install a writer at any point, including from a thread that is not the one
+# configuring telemetry.
+_LOG_OUTPUT: TextIO | None = None
+_LOG_OUTPUT_LOCK = threading.Lock()
+
+
+def set_log_output(writer: TextIO) -> None:
+    """Send rendered log records to *writer* instead of stderr.
+
+    Takes effect for handlers built after this call, so a host installing a
+    writer after ``setup_telemetry`` reconfigures to pick it up.
+    """
+    global _LOG_OUTPUT
+    with _LOG_OUTPUT_LOCK:
+        _LOG_OUTPUT = writer
+
+
+def clear_log_output() -> None:
+    """Return rendered log records to stderr, dropping any installed writer."""
+    global _LOG_OUTPUT
+    with _LOG_OUTPUT_LOCK:
+        _LOG_OUTPUT = None
+
+
+def log_output_installed() -> bool:
+    """Whether a host has installed a writer."""
+    with _LOG_OUTPUT_LOCK:
+        return _LOG_OUTPUT is not None
+
+
 def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
     """Default handler, writing UTF-8 whatever the stream's own encoding is.
 
@@ -95,7 +127,14 @@ def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
     literal text ``\U0001f439`` rather than raising. utf8_writer hands back
     sys.stderr itself wherever that is already correct, which is everywhere but
     there.
+
+    A writer installed by the host is taken as given: it is not passed through
+    utf8_writer, which exists for the console stream this process did not choose.
     """
+    with _LOG_OUTPUT_LOCK:
+        installed = _LOG_OUTPUT
+    if installed is not None:
+        return logging.StreamHandler(installed)
     return logging.StreamHandler(utf8_writer(sys.stderr))  # pragma: no mutate — None also defaults to stderr
 
 

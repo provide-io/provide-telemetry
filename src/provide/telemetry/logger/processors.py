@@ -286,11 +286,21 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
     return _processor
 
 
+# Renderers whose output is read by a person at a terminal, who already knows
+# which process they started. `service`/`env`/`version` are how a backend tells
+# one service's records apart; on a console line they are three constants
+# repeated on every line, pushing the message off the right-hand side.
+_HUMAN_RENDERERS = frozenset({"console", "pretty"})
+
+
 def add_standard_fields(config: TelemetryConfig) -> Any:
+    stamp_identity = config.logging.fmt not in _HUMAN_RENDERERS
+
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-        event_dict.setdefault("service", config.service_name)
-        event_dict.setdefault("env", config.environment)
-        event_dict.setdefault("version", config.version)
+        if stamp_identity:
+            event_dict.setdefault("service", config.service_name)
+            event_dict.setdefault("env", config.environment)
+            event_dict.setdefault("version", config.version)
         live = _get_active_config()
         include_error_taxonomy = (
             live.slo.include_error_taxonomy if live is not None else config.slo.include_error_taxonomy
