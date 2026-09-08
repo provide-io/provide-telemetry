@@ -316,9 +316,7 @@ def _installed_fanout() -> _BackpressureFanoutHandler | None:
     return None
 
 
-def _install_pipeline(
-    children: list[logging.Handler], level: int, *, reload: bool, claim_root: bool = True
-) -> None:
+def _install_pipeline(children: list[logging.Handler], level: int, *, reload: bool, claim_root: bool = True) -> None:
     """Put *children* behind the root logger at *level*.
 
     Two paths, and what separates them is whether the SDK has configured
