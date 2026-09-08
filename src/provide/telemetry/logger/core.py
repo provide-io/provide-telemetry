@@ -276,15 +276,27 @@ def _setup_emergency_fallback(exc: Exception) -> None:
 
 
 def configure_logging(
-    config: TelemetryConfig, *, force: bool = False, claim_root: bool = True
+    config: TelemetryConfig, *, force: bool = False
 ) -> None:  # pragma: no mutate — default force=False; all call sites pass the flag explicitly
-    """Configure logging for *config*.
+    """Configure logging for *config*, taking the root logger's handler list.
 
-    ``claim_root`` says whether this call is entitled to the root logger's
-    handler list. Setting up is: the host called ``setup_telemetry()`` and asked
-    for the SDK's pipeline. The lazy path behind ``get_logger()`` is not -- see
-    ``_install_pipeline``.
+    Reached when the host asked for the SDK's pipeline, which is what entitles
+    it to the root -- see ``_install_pipeline``.
     """
+    _configure_logging(config, force=force, claim_root=True)
+
+
+def _configure_logging_lazily(config: TelemetryConfig) -> None:
+    """Configure logging for ``get_logger()``, leaving the root's handlers alone.
+
+    Separate from ``configure_logging`` rather than a flag on it: which of the
+    two applies is decided by how the SDK was entered, never by a caller, so
+    there is nothing here for a public parameter to express.
+    """
+    _configure_logging(config, force=False, claim_root=False)
+
+
+def _configure_logging(config: TelemetryConfig, *, force: bool, claim_root: bool) -> None:
     global _configured, _active_config
     with _lock:
         if _configured and not force and _active_config == config:
@@ -541,7 +553,7 @@ def get_logger(name: str | None = None) -> _TraceWrapper:
         # A getter does not own the host's root logger: this call is reached by
         # importing a module that holds a module-scope get_logger(), not by the
         # host asking for the SDK's pipeline.
-        configure_logging(cfg, claim_root=False)
+        _configure_logging_lazily(cfg)
     return _TraceWrapper(structlog.get_logger(name or "provide"))
 
 

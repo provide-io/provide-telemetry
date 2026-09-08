@@ -141,12 +141,10 @@ def test_get_logger_lazy_config_path() -> None:
 def test_get_logger_default_name_and_lazy_behavior(monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_logging_for_tests()
     configured = {"count": 0}
-    claimed: list[bool] = []
     names: list[str] = []
 
-    def _configure(_: TelemetryConfig, *, claim_root: bool = True) -> None:
+    def _configure(_: TelemetryConfig) -> None:
         configured["count"] += 1
-        claimed.append(claim_root)
         monkeypatch.setattr(core_mod, "_configured", True)
         monkeypatch.setattr(core_mod, "_active_config", TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "TRACE"}))
 
@@ -160,15 +158,12 @@ def test_get_logger_default_name_and_lazy_behavior(monkeypatch: pytest.MonkeyPat
 
     core_mod_any = cast(Any, core_mod)
     structlog_mod: Any = core_mod_any.structlog
-    monkeypatch.setattr(core_mod, "configure_logging", _configure)
+    monkeypatch.setattr(core_mod, "_configure_logging_lazily", _configure)
     monkeypatch.setattr(structlog_mod, "get_logger", _get_logger)
     wrapped = core_mod.get_logger()
     wrapped.info("auth.login.success")
     assert configured["count"] == 1
     assert names == ["provide"]
-    # The lazy path is reached by importing a module, so it configures without
-    # claiming the root logger's handler list.
-    assert claimed == [False]
 
 
 def test_get_logger_does_not_reconfigure_when_already_configured(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,7 +171,7 @@ def test_get_logger_does_not_reconfigure_when_already_configured(monkeypatch: py
     monkeypatch.setattr(core_mod, "_active_config", TelemetryConfig.from_env({"PROVIDE_LOG_LEVEL": "INFO"}))
     configured_calls = {"count": 0}
 
-    def _configure(_: TelemetryConfig, *, claim_root: bool = True) -> None:
+    def _configure(_: TelemetryConfig) -> None:
         configured_calls["count"] += 1
 
     monkeypatch.setattr(core_mod, "configure_logging", _configure)
