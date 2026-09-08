@@ -81,3 +81,51 @@ def test_the_sdk_still_installs_its_own_handler_on_the_lazy_path() -> None:
     get_logger("probe")
 
     assert _installed_fanout() is not None, "the SDK installed no handler, so nothing would emit"
+
+
+def test_the_setup_path_does_claim_the_root() -> None:
+    """The counterpart: setup was asked for, so it owns the handler list.
+
+    Without this, nothing distinguishes the two paths and `claim_root=True` at
+    the setup call site could be anything.
+    """
+    from provide.telemetry.config import TelemetryConfig
+    from provide.telemetry.logger.core import configure_logging
+
+    _reset_logging_for_tests()
+    root = logging.getLogger()
+    handler = _install_host_handler()
+    try:
+        configure_logging(TelemetryConfig.from_env(), force=True)
+
+        assert handler not in root.handlers, "setup left a handler it was entitled to replace"
+    finally:
+        root.removeHandler(handler)
+
+
+def test_the_lazy_path_does_not_reconfigure_once_configured() -> None:
+    """It passes force=False, so a second get_logger() is a no-op.
+
+    Reconfiguring on every call would rebuild the pipeline behind any host that
+    had adjusted it, and would make the handler count grow with the number of
+    modules importing a logger.
+    """
+    from provide.telemetry.logger.core import _installed_fanout
+
+    _reset_logging_for_tests()
+    get_logger("probe")
+    first = _installed_fanout()
+
+    get_logger("probe.again")
+
+    assert _installed_fanout() is first, "the lazy path rebuilt an already-installed pipeline"
+
+
+def test_the_lazy_path_sets_the_root_level() -> None:
+    """Attaching a handler is not enough; the root must pass records to it."""
+    _reset_logging_for_tests()
+    logging.getLogger().setLevel(logging.CRITICAL)
+
+    get_logger("probe")
+
+    assert logging.getLogger().level != logging.CRITICAL, "root level left where it would drop records"
