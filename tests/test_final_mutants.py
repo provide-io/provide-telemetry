@@ -97,7 +97,7 @@ def test_pretty_value_colour_reaches_the_renderer(monkeypatch: Any) -> None:
     from provide.telemetry.logger.pretty import resolve_color
 
     cfg = TelemetryConfig(logging=LoggingConfig(fmt="pretty", pretty_key_color="cyan", pretty_value_color="red"))
-    core_mod._configure_logging_inner(cfg)
+    core_mod._configure_logging_inner(cfg, claim_root=True)
 
     assert captured, "the pretty renderer must be constructed for fmt=pretty"
     assert captured["value_color"] == resolve_color("red")
