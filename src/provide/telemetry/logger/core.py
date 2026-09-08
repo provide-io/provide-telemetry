@@ -17,6 +17,7 @@ import structlog
 
 from provide.telemetry import levels as _levels
 from provide.telemetry._endpoint import validate_otlp_endpoint
+from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, to_stdlib_level
@@ -261,7 +262,11 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
         handlers.append(_make_otel_logging_handler(sdk_logs_mod, _otel_log_provider, level, config))
         return handlers
 
-    resource = resource_cls.create({"service.name": config.service_name, "service.version": config.version})
+    # The shared builder, as traces and metrics use, so the identity on exported
+    # log records goes through `floor < OTEL_* env < explicit` like every other
+    # signal's. Hand-rolling it here dropped deployment.environment and made
+    # OTEL_SERVICE_NAME apply to spans but not to logs.
+    resource = build_resource(config, resource_cls)
     provider = sdk_logs_mod.LoggerProvider(resource=resource)
     raw_exporter = run_with_resilience(
         "logs",

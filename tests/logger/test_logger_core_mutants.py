@@ -173,13 +173,15 @@ def test_build_handlers_otel_path_captures_every_argument(monkeypatch: pytest.Mo
         f"resource_cls.create must receive a dict, got {type(resource_arg)!r} "
         "(kills mutmut_18 resource=None and mutmut_19 create(None))"
     )
+    # The three identity attributes the shared builder resolves, which is what
+    # the log provider now receives: the hand-rolled dict this replaced carried
+    # no deployment.environment, so an exported log record could not say which
+    # environment produced it.
     assert resource_arg == {
         "service.name": "svc-under-test",
+        "deployment.environment": "dev",
         "service.version": "7.8.9",
-    }, (
-        "resource dict keys must be exactly 'service.name' and 'service.version' "
-        "(kills mutmut_20/21/22/23 dict-key text mutations)"
-    )
+    }
 
     # Exactly one LoggerProvider was instantiated with the real resource
     # (mutmut_24 provider=None, mutmut_25 resource=None)

@@ -51,6 +51,9 @@ def log_provider_config_key(config: TelemetryConfig) -> tuple[object, ...]:
     """
     return (
         config.service_name,
+        # In the resource the builder produces, so two environments must not
+        # share a provider carrying the first one's deployment.environment.
+        config.environment,
         config.version,
         config.logging.otlp_endpoint,
         tuple(sorted(config.logging.otlp_headers.items())),

@@ -29,7 +29,8 @@ _IDENTITY = ("service", "env", "version")
 def _record(fmt: str) -> dict[str, Any]:
     config = TelemetryConfig.from_env({"PROVIDE_LOG_FORMAT": fmt})
     assert config.logging.fmt == fmt, f"config did not take fmt={fmt!r}"
-    return add_standard_fields(config)(None, "info", {"event": "auth.login.success"})
+    record: dict[str, Any] = add_standard_fields(config)(None, "info", {"event": "auth.login.success"})
+    return record
 
 
 def test_json_carries_the_identity_fields() -> None:
