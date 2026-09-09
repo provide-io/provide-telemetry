@@ -27,6 +27,11 @@ if TYPE_CHECKING:
 # Module path → the symbols the public facade re-exports from it. Every name
 # must be unique across the whole table; see _build_registry.
 MODULE_EXPORTS: dict[str, tuple[str, ...]] = {
+    "provide.telemetry.logger.core": (
+        "clear_log_output",
+        "log_output_installed",
+        "set_log_output",
+    ),
     "provide.telemetry.asgi": (
         "TelemetryMiddleware",
         "bind_websocket_context",
