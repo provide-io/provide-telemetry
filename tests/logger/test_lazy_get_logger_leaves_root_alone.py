@@ -103,22 +103,29 @@ def test_the_setup_path_does_claim_the_root() -> None:
         root.removeHandler(handler)
 
 
-def test_the_lazy_path_does_not_reconfigure_once_configured() -> None:
-    """It passes force=False, so a second get_logger() is a no-op.
+def test_the_lazy_path_does_not_rebuild_an_installed_pipeline() -> None:
+    """A second get_logger() leaves the pipeline the first one installed.
 
-    Reconfiguring on every call would rebuild the pipeline behind any host that
-    had adjusted it, and would make the handler count grow with the number of
-    modules importing a logger.
+    Two guards stand between the second call and a rebuild -- ``get_logger()``'s
+    own ``_configured`` check and the early return in ``_configure_logging`` --
+    and handler identity shows neither of them failing: a rebuild reaches
+    ``replace_children``, which keeps the fan-out handler and swaps what sits
+    behind it, closing the children it replaces. A pipeline rebuilt per import
+    would close the sink one module is writing to the moment the next module is
+    imported, while the handler on the root looked untouched.
     """
     from provide.telemetry.logger.core import _installed_fanout
 
     _reset_logging_for_tests()
     get_logger("probe")
-    first = _installed_fanout()
+    fanout = _installed_fanout()
+    assert fanout is not None, "the SDK installed no handler on the first call"
+    children = list(fanout._handlers)
 
     get_logger("probe.again")
 
-    assert _installed_fanout() is first, "the lazy path rebuilt an already-installed pipeline"
+    assert _installed_fanout() is fanout, "the lazy path replaced the installed handler"
+    assert list(fanout._handlers) == children, "the lazy path rebuilt the children, closing the live ones"
 
 
 def test_the_lazy_path_sets_the_root_level() -> None:

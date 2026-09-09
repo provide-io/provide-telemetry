@@ -293,7 +293,12 @@ def _configure_logging_lazily(config: TelemetryConfig) -> None:
     two applies is decided by how the SDK was entered, never by a caller, so
     there is nothing here for a public parameter to express.
     """
-    _configure_logging(config, force=False, claim_root=False)
+    # Both flags are read for truth only, so a falsy ``None`` in place of either
+    # is the same flag. ``force`` is dead here besides: ``get_logger()`` reaches
+    # this only while ``_configured`` is False, and the early return the flag
+    # feeds needs ``_configured`` True. What the flags are for is asserted in
+    # tests/logger/test_lazy_get_logger_leaves_root_alone.py.
+    _configure_logging(config, force=False, claim_root=False)  # pragma: no mutate
 
 
 def _configure_logging(config: TelemetryConfig, *, force: bool, claim_root: bool) -> None:
