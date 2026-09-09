@@ -781,6 +781,58 @@ windows_console:
       only warn and error reach stderr, so a probe that asks stderr alone
       answers for the minority and applies it to everything.
 
+console_rendering:
+  description: >
+    What a renderer read by a person may leave out of a record that a renderer
+    read by a machine must carry.
+  problem: >
+    `service`, `env` and `version` are how a backend tells one service's records
+    from another's, so an exported record is not identifiable without them. A
+    console line is read by someone who started the process and already knows
+    all three, where the same fields are constants repeated on every line,
+    pushing the message rightward on a terminal that is already narrow.
+    Rendering them is therefore right for one audience and wrong for the other,
+    and an SDK that treats the console as a serialisation format gets the
+    console wrong.
+  contract: >
+    The wire record is the contract and is unaffected: `json` carries the
+    identity fields under the names `log_output_format` fixes, and the
+    behavioural parity probes compare that record across all five SDKs.
+
+    Console and pretty rendering is deliberately language-local. An SDK may show
+    the identity fields on those renderers or omit them, and the choice is
+    recorded per language below rather than made once for the five. What is not
+    optional is that a value the caller passed under one of those keys survives
+    to the line, whatever the format: omission applies to the identity an SDK
+    stamps on a record, never to a field a caller set.
+  applicability: [python, typescript, go, rust, csharp]
+  rendering:
+    python: omits on console and pretty
+    go: shows, the handler stamping every format alike
+    rust: shows, the fields being injected into the rendered context
+    typescript: shows, pino carrying them as base bindings
+    csharp: shows, one envelope serving json and text
+  note: >
+    Recorded as a language-local choice rather than closed in either direction,
+    and the case against that is worth writing down because it is not a weak
+    one. `log_output` describes a host running several language runtimes into a
+    single stream; identity fields are one of the two things that keep such a
+    stream attributable, and a stream where the Rust lines carry them and the
+    Python lines do not is inconsistent in exactly the way that section exists
+    to prevent. The answer for that case is the sink's own prefixing, which
+    names the runtime without spending three columns per line on it.
+
+    So this is settled by audience, not by parity: a console renderer serves a
+    person at a terminal, and each runtime's console conventions are its own. A
+    combined stream that needs identity per line should be emitting `json`,
+    where the fields are guaranteed.
+
+    The table above is the point of this section. Without it the split is
+    invisible -- no fixture covers console output, so nothing in CI would ever
+    report it -- and an invisible divergence is indistinguishable from a bug
+    nobody has found yet. Changing a language's entry is a decision recorded
+    here first.
+
 log_output:
   description: >
     Where an SDK's rendered log records go when the host wants them somewhere
