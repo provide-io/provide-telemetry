@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 import structlog
 
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import LoggingConfig, TelemetryConfig
 from provide.telemetry.logger import context as context_mod
 from provide.telemetry.logger import processors as processors_mod
 from provide.telemetry.logger.context import bind_context, clear_context, get_context, unbind_context
@@ -40,7 +40,9 @@ def test_clear_context_sets_empty_dict_state() -> None:
 
 
 def test_add_standard_fields_sets_exact_expected_keys() -> None:
-    cfg = TelemetryConfig(service_name="svc", environment="prod", version="9.9.9")
+    # json, because the identity fields are stamped for ingestion and omitted
+    # for the console renderers a person reads.
+    cfg = TelemetryConfig(service_name="svc", environment="prod", version="9.9.9", logging=LoggingConfig(fmt="json"))
     processor = add_standard_fields(cfg)
     out = processor(None, "info", {"event": "auth.login.success"})
     assert out["service"] == "svc"
