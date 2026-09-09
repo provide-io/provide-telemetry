@@ -27,6 +27,36 @@ NuGet `Provide.Telemetry` — share a version number.
   through `utf8_writer`, which exists for the console stream this process did
   not choose.
 
+  It meets the four terms `log_output` sets, which the first cut of it did not.
+  **Colour follows the writer**: `ansi_supported` asks the destination's own
+  `isatty`, so a file or a buffer receives no escapes even from a process whose
+  stderr is a terminal — under a pty, a `StringIO` was collecting `\x1b[2m…`
+  against an invariant that section states outright. Python can afford the
+  question Rust declines, every file object carrying `isatty`, so this is Go's
+  answer rather than Rust's. **A writer that cannot be written to is a
+  `ConfigurationError`** before installation rather than a silent fall back to a
+  stream the host is not reading; `None` is included, since `clear_log_output`
+  is how a writer is removed. **Shutdown flushes it and lets it go**, ahead of
+  the log provider's teardown so a host with a writer and no OTel provider is
+  still drained; a writer the host already closed raises on flush, and teardown
+  is not the place to surface that. **Installing is effective at once** — a host
+  installing a writer is asking for the records it has not seen yet, not for the
+  ones after some later reconfiguration.
+
+  `spec/telemetry-api.yaml` gains `python` in `log_output.applicability`, and
+  `host_control.python` is corrected: it named the stdlib root logger as the
+  host's mechanism, and `basicConfig(force=True)` is precisely what takes that
+  away. A runtime is closed either because the SDK owns the write, as Go's and
+  Rust's do, or because it owns the host's logging configuration, as Python's
+  does. TypeScript and C# are open in both senses, so this stays a
+  three-language contract, recorded as a decision rather than left as an
+  absence.
+
+  `tests/tooling/test_log_output_contract.py` asserted the spec against the
+  sources and still let a fifth sink appear, because it compared the spec with
+  its own list of languages and never read Python's. It reads Python's now, and
+  the colour clause is asserted per language rather than for Rust alone.
+
 ### Fixed
 
 - **A lazy `get_logger()` no longer claims the host's root logger.**
@@ -70,6 +100,12 @@ NuGet `Provide.Telemetry` — share a version number.
   states console output is language-local and records what each SDK does, so the
   split is declared rather than invisible — no fixture covers console output, so
   nothing in CI would otherwise report it.
+
+- **An installed writer no longer leaks between tests.**
+  `_reset_logging_for_tests` cleared the four globals carrying configuration
+  state and not the writer, which is process-global like the rest of them — so a
+  test that installed one and did not clear it rendered every later test in that
+  worker into a buffer nobody reads.
 
 - **The dependency scanner no longer audits itself.** Its own environment was
   inside the tree it walks, so its dependencies were reported as the project's.
