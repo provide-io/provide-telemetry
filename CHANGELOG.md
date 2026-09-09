@@ -10,6 +10,70 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Added
+
+- **Python: `set_log_output` selects where rendered log records go.** With
+  `clear_log_output` and `log_output_installed`, a host can move the SDK's log
+  stream, tee it, or drop it. Python's console handler is built unconditionally
+  (`logger/core.py`, `_build_handlers`) and `configure_logging` takes the root
+  with `basicConfig(force=True)`, so a host had no way to reach the destination
+  from outside and no configuration that omitted the handler.
+
+  The free-function shape follows Rust's rather than Go's `SetupOption`:
+  `setup_telemetry` takes a config and no options, so there is nothing for an
+  option to attach to, while `set_sampling_policy`, `set_consent_level` and ten
+  more like them are already the Python surface for a process-wide switch of
+  this kind. A writer the host installed is taken as given rather than passed
+  through `utf8_writer`, which exists for the console stream this process did
+  not choose.
+
+### Fixed
+
+- **A lazy `get_logger()` no longer claims the host's root logger.**
+  `configure_logging()` reaches `basicConfig(force=True)`, which removes *and
+  closes* every handler on the root. That is defensible for `setup_telemetry()`,
+  which a host calls deliberately. `get_logger()` reached the same code on its
+  lazy path, which runs when the SDK has not been set up — so importing a module
+  holding `log = get_logger(__name__)` at module scope closed handlers the SDK
+  never installed, the pytest capture handler among them. The lazy path now
+  attaches beside what is already on the root. On a root with no handlers, the
+  ordinary case, both paths install the same single handler.
+
+  This is what the other four SDKs already do: Go's `GetLogger` returns a
+  `slog.Logger` and touches `slog.SetDefault` only from setup, Rust exposes
+  `set_as_global_logger()` as an explicit opt-in, TypeScript returns a pino
+  child, and C# hands back a static instance.
+
+- **The log provider builds its resource with the shared builder.** Traces and
+  metrics call `build_resource`; the log provider hand-rolled
+  `Resource.create({"service.name": ..., "service.version": ...})`. Two things
+  followed. The identity on exported log records never went through
+  `floor < OTEL_* env < explicit`, so an operator's `OTEL_SERVICE_NAME` applied
+  to spans and not to logs. And `deployment.environment` was absent entirely, so
+  an exported record could not say which environment produced it.
+  `log_provider_config_key` gains `config.environment`, since a key blind to it
+  hands a second environment the first one's resource.
+
+  Go passes `_buildResource` to `sdklog`, TypeScript passes `buildOtelResource`
+  in `otel-logs.ts`, Rust hands one resource to `install_logger_provider`, and
+  C# gives all three signals the same resource. Python was the exception.
+
+- **Python's console and pretty renderers leave out the identity fields.**
+  `service`/`env`/`version` tell a backend which service a record came from; on
+  a console line they are three constants on every line, read by someone who
+  started the process and knows all three. A value the caller passed under one
+  of those keys is kept, whatever the format, and the `json` record is
+  unchanged.
+
+  This is a rendering choice, and the four other SDKs show the fields on those
+  renderers. `spec/telemetry-api.yaml` gains a `console_rendering` section that
+  states console output is language-local and records what each SDK does, so the
+  split is declared rather than invisible — no fixture covers console output, so
+  nothing in CI would otherwise report it.
+
+- **The dependency scanner no longer audits itself.** Its own environment was
+  inside the tree it walks, so its dependencies were reported as the project's.
+
 ## [0.10.0] — 2026-09-03
 
 ### Added

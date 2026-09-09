@@ -679,6 +679,11 @@ log_output_format:
     the behavioral parity output probe suite (spec/probes/ + --check-output).
     "required" fields must always be present. "optional" fields must use the
     canonical name when present. "noise" fields must be stripped before comparison.
+
+    This fixture covers the wire record only. What a console or pretty renderer
+    shows is language-local by decision, and which SDK shows what is recorded in
+    the console_rendering section of spec/telemetry-api.yaml -- the absence of a
+    console fixture here is that decision, not a gap in coverage.
   required_fields:
     msg:
       type: string
