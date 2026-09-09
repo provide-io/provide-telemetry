@@ -342,7 +342,7 @@ def _configure_logging_lazily(config: TelemetryConfig) -> None:
     # this only while ``_configured`` is False, and the early return the flag
     # feeds needs ``_configured`` True. What the flags are for is asserted in
     # tests/logger/test_lazy_get_logger_leaves_root_alone.py.
-    _configure_logging(config, force=False, claim_root=False)  # pragma: no mutate
+    _configure_logging(config, force=False, claim_root=False)  # pragma: no mutate — falsy flags; force unreachable
 
 
 def _configure_logging(config: TelemetryConfig, *, force: bool, claim_root: bool) -> None:
