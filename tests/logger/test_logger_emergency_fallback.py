@@ -269,15 +269,15 @@ class TestConfigureLoggingFallback:
         assert "specific-error-msg" in str(captured_exc[0])
 
     def test_get_logger_passes_config_not_none(self) -> None:
-        """Kills: configure_logging(TelemetryConfig.from_env()) -> configure_logging(None)."""
+        """Kills: _configure_logging_lazily(TelemetryConfig.from_env()) -> ...(None)."""
         captured_configs: list[TelemetryConfig | None] = []
-        original_configure = core_mod.configure_logging
+        original_configure = core_mod._configure_logging_lazily
 
         def spy_configure(config: TelemetryConfig, **kwargs: Any) -> None:
             captured_configs.append(config)
             original_configure(config, **kwargs)
 
-        with patch.object(core_mod, "configure_logging", side_effect=spy_configure):
+        with patch.object(core_mod, "_configure_logging_lazily", side_effect=spy_configure):
             core_mod.get_logger("test")
 
         assert len(captured_configs) == 1

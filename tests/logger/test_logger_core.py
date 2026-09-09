@@ -160,7 +160,7 @@ def test_get_logger_default_name_and_lazy_behavior(monkeypatch: pytest.MonkeyPat
 
     core_mod_any = cast(Any, core_mod)
     structlog_mod: Any = core_mod_any.structlog
-    monkeypatch.setattr(core_mod, "configure_logging", _configure)
+    monkeypatch.setattr(core_mod, "_configure_logging_lazily", _configure)
     monkeypatch.setattr(structlog_mod, "get_logger", _get_logger)
     wrapped = core_mod.get_logger()
     wrapped.info("auth.login.success")
