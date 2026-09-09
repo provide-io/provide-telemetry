@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.config import LoggingConfig, TelemetryConfig
 from provide.telemetry.logger import bind_context, clear_context, get_context, get_logger, unbind_context
 from provide.telemetry.logger import core as core_mod
 from provide.telemetry.logger.core import (
@@ -54,7 +54,9 @@ def test_context_helpers() -> None:
 
 
 def test_processors() -> None:
-    cfg = TelemetryConfig(service_name="svc", environment="prod", version="2")
+    # json: the identity fields are stamped for ingestion, not for the console
+    # renderers a person reads.
+    cfg = TelemetryConfig(service_name="svc", environment="prod", version="2", logging=LoggingConfig(fmt="json"))
     event = {"event": "auth.login.success", "password": "x"}
     bind_context(request_id="req")
     merged = merge_runtime_context(None, "info", event)
