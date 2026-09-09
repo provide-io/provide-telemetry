@@ -38,8 +38,13 @@ _SPEC = _REPO_ROOT / "spec" / "telemetry-api.yaml"
 KNOWN_LANGUAGES = frozenset({"python", "typescript", "go", "rust", "csharp"})
 
 # The languages whose log destination the host cannot reach once setup returns.
-# These are the only ones a sink is worth building for.
-_CLOSED_RUNTIMES = frozenset({"go", "rust"})
+# These are the only ones a sink is worth building for. Two things close a
+# runtime: the SDK owning the write, as Go's handler chain and Rust's emit do,
+# and the SDK owning the host's logging configuration, as Python's does by
+# taking the root logger with basicConfig(force=True) and building its console
+# handler unconditionally. The spec named only the first for as long as it took
+# someone to need the second.
+_CLOSED_RUNTIMES = frozenset({"go", "rust", "python"})
 
 # What each SDK's write path is, as a token that must appear in the file that
 # owns it. `host_control` in the spec describes these; if one moves, the
@@ -68,12 +73,23 @@ _SINKS = {
         ("rust/src/logger/sink.rs", "pub fn clear_log_output"),
         ("rust/src/logger/sink.rs", "fn flush_log_output"),
     ),
+    "python": (
+        ("src/provide/telemetry/logger/core.py", "def set_log_output"),
+        ("src/provide/telemetry/logger/core.py", "def clear_log_output"),
+        ("src/provide/telemetry/logger/core.py", "def _release_log_output"),
+        ("src/provide/telemetry/logger/core.py", "def _validate_writer"),
+    ),
 }
 
-# Colour follows the sink. Rust cannot ask a writer whether it is a terminal
-# without charging every host a trait implementation, so it assumes not — and
-# the assumption has to be in the code, not only in the clause that claims it.
-_RUST_COLOUR_GUARD = ("rust/src/logger/pretty.rs", "log_output_installed")
+# Colour follows the sink, and each SDK owes that in its own renderer. Rust
+# cannot ask a writer whether it is a terminal without charging every host a
+# trait implementation, so it assumes not; Python asks the writer's own isatty
+# through the destination helper. Both are claims about code, so both are
+# asserted against code rather than left in the clause that states them.
+_COLOUR_GUARDS = {
+    "rust": ("rust/src/logger/pretty.rs", "log_output_installed"),
+    "python": ("src/provide/telemetry/logger/core.py", "ansi_supported(_log_destination())"),
+}
 
 
 def _spec() -> dict[str, Any]:
@@ -142,14 +158,17 @@ def test_every_language_with_a_sink_is_listed() -> None:
     )
 
 
-def test_rust_decides_colour_from_the_destination() -> None:
-    """The clause says a sink Rust cannot establish as a terminal gets no colour.
+@pytest.mark.parametrize(("language", "guard"), sorted(_COLOUR_GUARDS.items()))
+def test_colour_is_decided_from_the_destination(language: str, guard: tuple[str, str]) -> None:
+    """The clause says a sink an SDK cannot establish as a terminal gets no colour.
 
     That is a claim about the renderer, so it is asserted against the renderer:
-    the pretty path has to consult the sink rather than probe the process.
+    the console path has to consult the destination rather than probe the
+    process. Python's regression is the one that proves the assertion earns its
+    place -- it rendered with stderr's answer and put escape codes in a file.
     """
-    relative_path, token = _RUST_COLOUR_GUARD
+    relative_path, token = guard
     assert token in _source(relative_path), (
-        f"{relative_path} no longer consults {token!r}, so pretty output can carry ANSI "
-        "into a writer that is not known to render it"
+        f"{language}: {relative_path} no longer consults {token!r}, so console output can carry "
+        "ANSI into a writer that is not known to render it"
     )

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 import threading
@@ -19,6 +20,7 @@ from provide.telemetry import levels as _levels
 from provide.telemetry._endpoint import validate_otlp_endpoint
 from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, to_stdlib_level
 from provide.telemetry.logger import _otel_logs
@@ -96,15 +98,60 @@ _LOG_OUTPUT: TextIO | None = None
 _LOG_OUTPUT_LOCK = threading.Lock()
 
 
+def _validate_writer(writer: TextIO) -> None:
+    """Refuse a writer nothing can be written to.
+
+    A sink that is supplied but unusable is a configuration error rather than a
+    silent fall back to the error stream: a host that asked for its logs
+    elsewhere must not find them on a stream it is not reading. Go rejects a nil
+    writer before installing it and Rust cannot be handed one; the equivalent
+    here is a writer whose ``write`` is missing or is not callable.
+
+    ``None`` is included in that, deliberately. ``clear_log_output`` is how a
+    writer is removed, so a ``None`` arriving here is a variable that never got
+    its value rather than an instruction.
+    """
+    if not callable(getattr(writer, "write", None)):
+        raise ConfigurationError(f"set_log_output: {type(writer).__name__} has no write() to send records to")
+
+
+def _reapply_log_output() -> None:
+    """Rebuild the pipeline so a change of destination is effective at once.
+
+    The destination reaches the records through two things built at
+    configuration time: the handler's stream, and the renderer's colour answer,
+    which follows the destination rather than the process. Swapping the stream
+    alone would leave a file rendering with the terminal's answer, so the
+    pipeline is rebuilt rather than patched.
+
+    Nothing to rebuild before the SDK is configured -- the first configuration
+    reads the slot on its way past.
+
+    ``claim_root`` is False because a change of destination is not a reason to
+    take the root logger's handler list; the reload path reuses the handler
+    already installed and swaps what sits behind it.
+    """
+    if not _configured or _active_config is None:
+        return
+    _configure_logging(_active_config, force=True, claim_root=False)
+
+
 def set_log_output(writer: TextIO) -> None:
     """Send rendered log records to *writer* instead of stderr.
 
-    Takes effect for handlers built after this call, so a host installing a
-    writer after ``setup_telemetry`` reconfigures to pick it up.
+    Effective at once, whether or not the SDK has been configured: a host that
+    installs a writer is asking for the records it has not seen yet, not for the
+    ones after some later reconfiguration. Colour follows the writer, so a file
+    or a pipe receives no ANSI even from a process whose stderr is a terminal.
+
+    Raises ``ConfigurationError`` for a writer that cannot be written to.
     """
     global _LOG_OUTPUT
+    _validate_writer(writer)
     with _LOG_OUTPUT_LOCK:
         _LOG_OUTPUT = writer
+    # Outside the lock: rebuilding reaches _stderr_handler, which takes it.
+    _reapply_log_output()
 
 
 def clear_log_output() -> None:
@@ -112,12 +159,50 @@ def clear_log_output() -> None:
     global _LOG_OUTPUT
     with _LOG_OUTPUT_LOCK:
         _LOG_OUTPUT = None
+    _reapply_log_output()
 
 
 def log_output_installed() -> bool:
     """Whether a host has installed a writer."""
     with _LOG_OUTPUT_LOCK:
         return _LOG_OUTPUT is not None
+
+
+def _log_destination() -> TextIO:
+    """Where rendered records land, which is what decides colour.
+
+    ``ansi_supported`` asks a stream whether it is a terminal, so a writer the
+    host installed answers for itself: a file or a buffer says no and receives
+    no escapes. Python can afford the question where Rust cannot -- every file
+    object carries ``isatty`` -- so this is Go's answer rather than Rust's
+    conservative one.
+    """
+    with _LOG_OUTPUT_LOCK:
+        installed = _LOG_OUTPUT
+    return installed if installed is not None else sys.stderr
+
+
+def _release_log_output() -> None:
+    """Flush the installed writer and let it go.
+
+    The host handed over a writer and is entitled to everything written to it,
+    so a buffered writer is drained before it is dropped. A writer the host has
+    already closed raises on flush; teardown is not the place to surface that,
+    and there is nowhere to report it to.
+
+    Released because the runtime that was given the writer is the one being torn
+    down, which is what Rust's shutdown does with its own.
+    """
+    global _LOG_OUTPUT
+    with _LOG_OUTPUT_LOCK:
+        writer = _LOG_OUTPUT
+        _LOG_OUTPUT = None
+    if writer is None:
+        return
+    flush = getattr(writer, "flush", None)
+    if callable(flush):
+        with contextlib.suppress(Exception):
+            flush()
 
 
 def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
@@ -377,9 +462,10 @@ def _install_pipeline(children: list[logging.Handler], level: int, *, reload: bo
 
     A reload reuses the handler already installed and swaps its children. The
     root's handler list is not rewritten, so a handler the host added after
-    setup survives — which it must, since redirecting through the stdlib is the
-    only mechanism Python's SDK offers, and that promise was worth nothing if
-    the next config change silently revoked it. Reuse also means the handler
+    setup survives — which it must, since a handler of the host's own is one of
+    the two ways records reach somewhere it chose, ``set_log_output`` being the
+    other, and that promise was worth nothing if the next config change silently
+    revoked it. Reuse also means the handler
     cannot accumulate: one fan-out handler however often config reloads.
 
     A reload that finds no handler of ours — a host removed it — rebuilds
@@ -502,7 +588,7 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
         from provide.telemetry.logger.pretty import resolve_color
 
         renderer = PrettyRenderer(  # pragma: no mutate — renderer constructor; outputs verified via snapshot/console tests
-            colors=ansi_supported(sys.stderr),
+            colors=ansi_supported(_log_destination()),
             key_color=resolve_color(
                 config.logging.pretty_key_color
             ),  # pragma: no mutate — color resolution is formatting-only
@@ -521,7 +607,7 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
         # Windows terminal without it lost the whole pipeline to the emergency
         # fallback rather than merely losing colour.
         renderer = structlog.dev.ConsoleRenderer(
-            colors=structlog_colors(sys.stderr), exception_formatter=structlog.dev.plain_traceback
+            colors=structlog_colors(_log_destination()), exception_formatter=structlog.dev.plain_traceback
         )
 
     processors.append(render_with_backpressure_extra(renderer))
@@ -543,6 +629,9 @@ def shutdown_logging(timeout_seconds: float | None = None) -> None:
     grace period passes what it has left.
     """
     global _configured, _active_config, _otel_log_provider
+    # Before the early return below: a host with a writer and no OTel provider
+    # is still owed the flush.
+    _release_log_output()
     with _lock:
         provider = _otel_log_provider
         active = _active_config
@@ -562,6 +651,10 @@ def shutdown_logging(timeout_seconds: float | None = None) -> None:
 
 def _reset_logging_for_tests() -> None:
     global _configured, _active_config, _otel_log_provider, _otel_log_global_set
+    # The writer is process-global like the rest of this state, so a test that
+    # installs one and does not clear it renders every later test in the worker
+    # into a buffer nobody reads.
+    _release_log_output()
     with _lock:
         _configured = False
         _active_config = None
