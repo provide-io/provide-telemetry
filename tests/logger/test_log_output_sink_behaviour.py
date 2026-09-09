@@ -150,6 +150,26 @@ def test_a_flush_that_raises_does_not_break_shutdown() -> None:
     assert log_output_installed() is False
 
 
+def test_a_writer_with_nothing_to_flush_is_released_all_the_same() -> None:
+    """``write`` is all a writer owes; buffering is optional and so is flushing."""
+
+    class _MinimalWriter:
+        """A sink with no buffer behind it, so no flush to call."""
+
+        def __init__(self) -> None:
+            self.written: list[str] = []
+
+        def write(self, text: str) -> int:
+            self.written.append(text)
+            return len(text)
+
+    set_log_output(_MinimalWriter())  # type: ignore[arg-type]
+
+    shutdown_logging()
+
+    assert log_output_installed() is False
+
+
 def test_installing_after_setup_takes_effect_without_a_reconfigure() -> None:
     """The timing half of the contract: an ambient switch is effective at once."""
     configure_logging(_console_config(), force=True)
