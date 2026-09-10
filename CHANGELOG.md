@@ -10,6 +10,8 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-09-09
+
 ### Added
 
 - **Python: `set_log_output` selects where rendered log records go.** With
