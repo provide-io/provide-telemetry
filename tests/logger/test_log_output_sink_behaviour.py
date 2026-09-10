@@ -18,8 +18,12 @@ from __future__ import annotations
 import io
 import logging
 import sys
+from typing import TYPE_CHECKING, cast
 
 import pytest
+
+if TYPE_CHECKING:
+    from typing import TextIO
 
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.exceptions import ConfigurationError
@@ -106,7 +110,7 @@ def test_a_sink_that_is_a_terminal_keeps_its_colour() -> None:
 def test_a_writer_without_write_is_a_configuration_error() -> None:
     """A host that asked for its logs elsewhere must not find them on stderr."""
     with pytest.raises(ConfigurationError):
-        set_log_output(object())  # type: ignore[arg-type]
+        set_log_output(cast("TextIO", object()))
 
     assert log_output_installed() is False
 
@@ -114,7 +118,7 @@ def test_a_writer_without_write_is_a_configuration_error() -> None:
 def test_none_is_rejected_rather_than_read_as_a_clear() -> None:
     """``clear_log_output`` is how a writer is removed; None is a mistake."""
     with pytest.raises(ConfigurationError):
-        set_log_output(None)  # type: ignore[arg-type]
+        set_log_output(cast("TextIO", None))
 
 
 def test_shutdown_flushes_and_releases_the_writer() -> None:
@@ -187,7 +191,7 @@ def test_a_writer_with_nothing_to_flush_is_released_all_the_same() -> None:
             self.written.append(text)
             return len(text)
 
-    set_log_output(_MinimalWriter())  # type: ignore[arg-type]
+    set_log_output(cast("TextIO", _MinimalWriter()))
 
     shutdown_logging()
 
