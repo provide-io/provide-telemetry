@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -67,10 +68,24 @@ class _BackpressureFanoutHandler(logging.Handler):
         Only exact ``StreamHandler`` children are moved. A ``FileHandler`` is one
         by inheritance and owns a file of its own to write to, which is not this
         SDK's to redirect.
+
+        The stream is assigned rather than handed to ``setStream``, which flushes
+        the outgoing one first. That stream belongs to the host, a host told its
+        writer has been let go is entitled to have closed it, and flushing a
+        closed file raises before the swap -- leaving the child on exactly the
+        dead stream this call exists to move it off. A live stream is still owed
+        its flush, so the flush is attempted and only its failure ignored.
         """
         for handler in self._handlers:
-            if type(handler) is logging.StreamHandler:
-                handler.setStream(stream)
+            if type(handler) is not logging.StreamHandler:
+                continue
+            handler.acquire()
+            try:
+                with contextlib.suppress(Exception):
+                    handler.flush()
+                handler.stream = stream
+            finally:
+                handler.release()
 
     def emit(self, record: logging.LogRecord) -> None:
         from provide.telemetry.backpressure import release

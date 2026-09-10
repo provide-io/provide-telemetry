@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from typing import TextIO
 
 from provide.telemetry.config import TelemetryConfig
@@ -229,6 +230,51 @@ def test_retargeting_leaves_a_child_that_is_not_a_plain_stream_alone() -> None:
 
     assert stream_child.stream is destination
     assert not hasattr(other_child, "stream")
+
+
+def test_retargeting_moves_a_child_whose_stream_has_been_closed(tmp_path: Path) -> None:
+    """Teardown cannot depend on the outgoing stream still being alive.
+
+    The stream a child holds belongs to whoever supplied it, and a host entitled
+    to close its writer leaves the child pointing at a dead file. Flushing a
+    closed file raises, and a retarget that flushes before it swaps abandons the
+    swap on the way out of that exception -- leaving the child on the dead
+    stream, which is the one thing this call exists to prevent.
+    """
+    dead = (tmp_path / "closed.log").open("w", encoding="utf-8")
+    dead.close()
+    child = logging.StreamHandler(dead)
+    fanout = _BackpressureFanoutHandler([child])
+    destination = (tmp_path / "live.log").open("w", encoding="utf-8")
+    try:
+        fanout.retarget_stream_children(destination)
+
+        assert child.stream is destination
+    finally:
+        destination.close()
+
+
+def test_retargeting_flushes_a_live_stream_before_it_lets_go(tmp_path: Path) -> None:
+    """What a stream is still holding is owed to it, not to the one taking over.
+
+    Records buffered in the outgoing stream belong in the destination the host
+    chose for them. Letting go without a flush would either lose them or land
+    them wherever the host's own close happens to put them.
+    """
+    outgoing_path = tmp_path / "outgoing.log"
+    outgoing = outgoing_path.open("w", encoding="utf-8")
+    child = logging.StreamHandler(outgoing)
+    fanout = _BackpressureFanoutHandler([child])
+    destination = (tmp_path / "live.log").open("w", encoding="utf-8")
+    try:
+        outgoing.write("buffered-before-the-swap")
+
+        fanout.retarget_stream_children(destination)
+
+        assert outgoing_path.read_text(encoding="utf-8") == "buffered-before-the-swap"
+    finally:
+        outgoing.close()
+        destination.close()
 
 
 def test_installing_after_setup_takes_effect_without_a_reconfigure() -> None:
