@@ -39,7 +39,10 @@ NuGet `Provide.Telemetry` — share a version number.
   is how a writer is removed. **Shutdown flushes it and lets it go**, ahead of
   the log provider's teardown so a host with a writer and no OTel provider is
   still drained; a writer the host already closed raises on flush, and teardown
-  is not the place to surface that. **Installing is effective at once** — a host
+  is not the place to surface that — which is why the handlers are pointed back
+  at the error stream by assignment rather than through `setStream`, whose flush
+  of the outgoing stream would raise on exactly that closed writer, before it
+  swapped anything. **Installing is effective at once** — a host
   installing a writer is asking for the records it has not seen yet, not for the
   ones after some later reconfiguration.
 

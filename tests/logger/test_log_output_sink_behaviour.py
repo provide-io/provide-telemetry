@@ -32,6 +32,7 @@ from provide.telemetry.logger.core import (
     _reset_logging_for_tests,
     clear_log_output,
     configure_logging,
+    detach_log_writer,
     log_output_installed,
     set_log_output,
     shutdown_logging,
@@ -110,7 +111,7 @@ def test_a_sink_that_is_a_terminal_keeps_its_colour() -> None:
 
 def test_a_writer_without_write_is_a_configuration_error() -> None:
     """A host that asked for its logs elsewhere must not find them on stderr."""
-    with pytest.raises(ConfigurationError):
+    with pytest.raises(ConfigurationError, match=r"object has no write\(\) to send records to"):
         set_log_output(cast("TextIO", object()))
 
     assert log_output_installed() is False
@@ -157,13 +158,18 @@ def test_a_flush_that_raises_does_not_break_shutdown() -> None:
     assert log_output_installed() is False
 
 
-def test_a_released_writer_stops_receiving_records() -> None:
+def test_a_released_writer_stops_receiving_records(monkeypatch: pytest.MonkeyPatch) -> None:
     """Releasing has to reach the handlers, not only the slot they were built from.
 
     A host told its writer has been let go is entitled to close it. A child
     handler took the writer when it was built and would go on holding it, so a
     record emitted after teardown would reach a file the host had closed.
+
+    Where those handlers point instead is the other half of it: the error stream
+    is where records go when nobody has asked for anywhere else, so a record
+    after teardown lands there rather than nowhere at all.
     """
+    stderr = _stderr_as_a_terminal(monkeypatch)
     sink = io.StringIO()
     set_log_output(sink)
     configure_logging(_console_config(), force=True)
@@ -177,6 +183,7 @@ def test_a_released_writer_stops_receiving_records() -> None:
 
     assert "before-teardown" in written_by_teardown
     assert "after-teardown" not in sink.getvalue()
+    assert "after-teardown" in stderr.getvalue()
 
 
 def test_a_writer_with_nothing_to_flush_is_released_all_the_same() -> None:
@@ -203,17 +210,25 @@ def test_a_writer_is_released_even_with_no_pipeline_to_detach_it_from() -> None:
     """A host may install a writer and tear down without ever configuring.
 
     Nothing holds the writer in that case, so there is nothing to point back at
-    the error stream -- but the flush and the release are still owed.
+    the error stream -- and nothing else to flush it either, which leaves the
+    flush owed by the release itself.
     """
+    flushed: list[bool] = []
+
+    class _Writer(io.StringIO):
+        def flush(self) -> None:
+            flushed.append(True)
+            super().flush()
+
     root = logging.getLogger()
     saved = root.handlers[:]
     root.handlers = []
-    sink = io.StringIO()
     try:
-        set_log_output(sink)
+        set_log_output(_Writer())
 
         shutdown_logging()
 
+        assert flushed == [True]
         assert log_output_installed() is False
     finally:
         root.handlers = saved
@@ -305,6 +320,81 @@ def test_clearing_after_setup_returns_records_to_the_error_stream(monkeypatch: p
 
     assert "back-to-stderr" not in sink.getvalue()
     assert "back-to-stderr" in stderr.getvalue()
+
+
+def test_installing_a_writer_leaves_a_host_handler_where_it_is() -> None:
+    """A change of destination is not a reason to take the root logger's handlers.
+
+    ``configure_logging`` claims the root, deliberately. The rebuild behind a
+    destination change does not: it reuses the handler already installed and
+    swaps what sits behind it, so a handler the host attached afterwards is
+    still there to receive records.
+    """
+    configure_logging(_console_config(), force=True)
+    root = logging.getLogger()
+    host_handler = logging.StreamHandler(io.StringIO())
+    root.addHandler(host_handler)
+    try:
+        set_log_output(io.StringIO())
+
+        assert host_handler in root.handlers
+    finally:
+        root.removeHandler(host_handler)
+        clear_log_output()
+
+
+def test_detaching_points_the_children_at_the_error_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Where a detached child writes matters as much as that it stopped writing.
+
+    Records still have somewhere to go once the writer is let go, and the error
+    stream is that somewhere -- pointing the children at anything else loses
+    them silently, which reads the same from the writer's side.
+    """
+    stderr = _stderr_as_a_terminal(monkeypatch)
+    sink = io.StringIO()
+    set_log_output(sink)
+    configure_logging(_console_config(), force=True)
+    try:
+        detach_log_writer()
+
+        import structlog
+
+        structlog.get_logger("probe").info("after-detach")
+
+        written = stderr.getvalue()
+        assert "after-detach" not in sink.getvalue()
+        assert "after-detach" in written
+        # A child left pointing at nothing writable raises inside emit, and
+        # logging's own error dump echoes the record onto stderr on its way
+        # past -- which reads like an arrival unless the dump is ruled out.
+        assert "Logging error" not in written
+    finally:
+        clear_log_output()
+
+
+def test_a_rebuild_that_finds_no_handler_of_ours_keeps_the_host_s() -> None:
+    """A host that removed the SDK's handler still gets its own left alone.
+
+    The rebuild behind a destination change reuses the handler already
+    installed, so the question only arises where a host has taken that handler
+    away: the pipeline comes back, beside whatever the host attached, rather
+    than through the ``basicConfig(force=True)`` that setup is entitled to and a
+    destination change is not.
+    """
+    configure_logging(_console_config(), force=True)
+    root = logging.getLogger()
+    for handler in root.handlers[:]:
+        if isinstance(handler, _BackpressureFanoutHandler):
+            root.removeHandler(handler)
+    host_handler = logging.StreamHandler(io.StringIO())
+    root.addHandler(host_handler)
+    try:
+        set_log_output(io.StringIO())
+
+        assert host_handler in root.handlers
+    finally:
+        root.removeHandler(host_handler)
+        clear_log_output()
 
 
 def test_the_test_reset_releases_an_installed_writer() -> None:

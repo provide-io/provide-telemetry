@@ -121,7 +121,14 @@ def reapply_log_output() -> None:
         config = _active_config if _configured else None
     if config is None:
         return
-    _configure_logging(config, force=True, claim_root=False)
+    # ``claim_root=None`` is the same falsy flag as False, so no test can tell the
+    # two apart. mutmut anchors an exemption to the statement rather than to one
+    # argument of it, so exempting that mutant exempts both flags; what the
+    # exemption gives up is pinned by tests in
+    # tests/logger/test_log_output_sink_behaviour.py instead -- a rebuild that finds
+    # no handler of ours keeps the host's, and a writer installed after setup takes
+    # effect at once.
+    _configure_logging(config, force=True, claim_root=False)  # pragma: no mutate — equivalent falsy claim_root mutant
 
 
 def detach_log_writer() -> None:
