@@ -16,6 +16,7 @@ reaches them here.
 from __future__ import annotations
 
 import io
+import logging
 import sys
 
 import pytest
@@ -30,6 +31,7 @@ from provide.telemetry.logger.core import (
     set_log_output,
     shutdown_logging,
 )
+from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
 
 ESC = "\x1b"
 
@@ -150,6 +152,28 @@ def test_a_flush_that_raises_does_not_break_shutdown() -> None:
     assert log_output_installed() is False
 
 
+def test_a_released_writer_stops_receiving_records() -> None:
+    """Releasing has to reach the handlers, not only the slot they were built from.
+
+    A host told its writer has been let go is entitled to close it. A child
+    handler took the writer when it was built and would go on holding it, so a
+    record emitted after teardown would reach a file the host had closed.
+    """
+    sink = io.StringIO()
+    set_log_output(sink)
+    configure_logging(_console_config(), force=True)
+    import structlog
+
+    structlog.get_logger("probe").info("before-teardown")
+    written_by_teardown = sink.getvalue()
+
+    shutdown_logging()
+    structlog.get_logger("probe").info("after-teardown")
+
+    assert "before-teardown" in written_by_teardown
+    assert "after-teardown" not in sink.getvalue()
+
+
 def test_a_writer_with_nothing_to_flush_is_released_all_the_same() -> None:
     """``write`` is all a writer owes; buffering is optional and so is flushing."""
 
@@ -168,6 +192,39 @@ def test_a_writer_with_nothing_to_flush_is_released_all_the_same() -> None:
     shutdown_logging()
 
     assert log_output_installed() is False
+
+
+def test_a_writer_is_released_even_with_no_pipeline_to_detach_it_from() -> None:
+    """A host may install a writer and tear down without ever configuring.
+
+    Nothing holds the writer in that case, so there is nothing to point back at
+    the error stream -- but the flush and the release are still owed.
+    """
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    root.handlers = []
+    sink = io.StringIO()
+    try:
+        set_log_output(sink)
+
+        shutdown_logging()
+
+        assert log_output_installed() is False
+    finally:
+        root.handlers = saved
+
+
+def test_retargeting_leaves_a_child_that_is_not_a_plain_stream_alone() -> None:
+    """A FileHandler owns a file of its own, which is not this SDK's to redirect."""
+    stream_child = logging.StreamHandler(io.StringIO())
+    other_child = logging.Handler()
+    fanout = _BackpressureFanoutHandler([other_child, stream_child])
+    destination = io.StringIO()
+
+    fanout.retarget_stream_children(destination)
+
+    assert stream_child.stream is destination
+    assert not hasattr(other_child, "stream")
 
 
 def test_installing_after_setup_takes_effect_without_a_reconfigure() -> None:

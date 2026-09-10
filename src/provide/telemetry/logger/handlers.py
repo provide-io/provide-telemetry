@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
 
@@ -52,6 +53,24 @@ class _BackpressureFanoutHandler(logging.Handler):
             self.setFormatter(self.formatter)
         for handler in previous:
             handler.close()
+
+    def retarget_stream_children(self, stream: Any) -> None:
+        """Point the plain stream children at *stream*, leaving the rest alone.
+
+        A released writer is not enough on its own: a child handler took the
+        writer when it was built and goes on holding it, so a host told its
+        writer had been let go could close it and still have records arrive.
+        Retargeting is narrower than a rebuild, which would reconstruct the OTLP
+        child and its provider on the way out of a teardown that exists to
+        dismantle them.
+
+        Only exact ``StreamHandler`` children are moved. A ``FileHandler`` is one
+        by inheritance and owns a file of its own to write to, which is not this
+        SDK's to redirect.
+        """
+        for handler in self._handlers:
+            if type(handler) is logging.StreamHandler:
+                handler.setStream(stream)
 
     def emit(self, record: logging.LogRecord) -> None:
         from provide.telemetry.backpressure import release

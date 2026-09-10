@@ -887,10 +887,11 @@ log_output:
     rather than left as an absence, since an unrecorded gap reads as an
     oversight.
 
-    Python's line here was wrong until it was tested rather than reasoned about,
-    which is the same way the windows_console list was corrected: the stdlib
-    root logger is only a control the host has if something leaves it one, and
-    basicConfig(force=True) does not.
+    Each line above is a claim about code, and tests/tooling/test_log_output_contract.py
+    asserts it against the source rather than trusting the prose -- the same way
+    the windows_console list is held. A host's control over the stdlib root
+    logger is only real if something leaves it one, and basicConfig(force=True)
+    does not.
 
     The three reach the capability by different routes, because their setup
     surfaces differ. Go takes the writer as a setup option, lifecycle-scoped and

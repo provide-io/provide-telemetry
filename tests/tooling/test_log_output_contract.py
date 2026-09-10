@@ -5,10 +5,10 @@
 
 """The `log_output` contract is checked against the code, not just written.
 
-The section records a decision, not only a capability: four of the five SDKs
-deliberately have no log sink, because their runtimes leave the host a native
-way to redirect and a second SDK-specific one would be a second way to do what
-already works. A decision that lives only in prose gets re-litigated, or quietly
+The section records a decision, not only a capability: the SDKs outside
+`applicability` deliberately have no log sink, because their runtimes leave the
+host a native way to redirect and a second SDK-specific one would be a second
+way to do what already works. A decision that lives only in prose gets re-litigated, or quietly
 reversed by someone adding a sink to one more SDK because Go has one.
 
 So the claims are asserted against the sources. `applicability` must name the
@@ -74,10 +74,10 @@ _SINKS = {
         ("rust/src/logger/sink.rs", "fn flush_log_output"),
     ),
     "python": (
-        ("src/provide/telemetry/logger/core.py", "def set_log_output"),
-        ("src/provide/telemetry/logger/core.py", "def clear_log_output"),
-        ("src/provide/telemetry/logger/core.py", "def _release_log_output"),
-        ("src/provide/telemetry/logger/core.py", "def _validate_writer"),
+        ("src/provide/telemetry/logger/sink.py", "def set_log_output"),
+        ("src/provide/telemetry/logger/sink.py", "def clear_log_output"),
+        ("src/provide/telemetry/logger/sink.py", "def release_log_output"),
+        ("src/provide/telemetry/logger/sink.py", "def _validate_writer"),
     ),
 }
 
@@ -88,7 +88,7 @@ _SINKS = {
 # asserted against code rather than left in the clause that states them.
 _COLOUR_GUARDS = {
     "rust": ("rust/src/logger/pretty.rs", "log_output_installed"),
-    "python": ("src/provide/telemetry/logger/core.py", "ansi_supported(_log_destination())"),
+    "python": ("src/provide/telemetry/logger/core.py", "ansi_supported(destination)"),
 }
 
 
@@ -164,8 +164,9 @@ def test_colour_is_decided_from_the_destination(language: str, guard: tuple[str,
 
     That is a claim about the renderer, so it is asserted against the renderer:
     the console path has to consult the destination rather than probe the
-    process. Python's regression is the one that proves the assertion earns its
-    place -- it rendered with stderr's answer and put escape codes in a file.
+    process. A renderer that probes the process instead puts escape codes in
+    whatever file the host installed, which is what this assertion exists to
+    stop.
     """
     relative_path, token = guard
     assert token in _source(relative_path), (
