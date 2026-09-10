@@ -860,26 +860,54 @@ log_output:
     terminal gets none. Recovering colour for one that is a terminal is a
     permitted refinement where the runtime makes it free, not a requirement —
     Go probes a file-like destination and asks any other through an optional
-    IsTerminal method its structural interfaces make costless, while Rust would
-    have to charge every host a trait implementation for the same answer, so it
-    assumes not-a-terminal.
-  applicability: [go, rust]
+    IsTerminal method its structural interfaces make costless, and Python asks
+    the writer's own isatty, which every file object carries. Rust would have to
+    charge every host a trait implementation for the same answer, so it assumes
+    not-a-terminal.
+  applicability: [go, rust, python]
   host_control:
     go: none after setup — the SDK owns the slog handler chain
     rust: none after setup — emit writes to stderr unless a sink is installed
-    python: the stdlib root logger, configured by logging.basicConfig
+    python: >
+      none after setup -- configure_logging takes the root with
+      basicConfig(force=True) and _build_handlers installs the console handler
+      unconditionally, so neither the handler nor its destination is reachable
+      from outside
     csharp: Console.SetError
     typescript: the console methods and Node's stdio
   note: >
     The list is short because the capability is only worth having where the
-    runtime is closed, and only Go and Rust are. Adding a sink to the three
-    open ones would be a second way to do what the platform already does.
+    host cannot reach the destination once setup returns. Two things close it:
+    a runtime that owns the write, as Go's handler chain and Rust's emit do,
+    and an SDK that owns the host's logging configuration, as Python's does by
+    taking the root logger. TypeScript and C# are open in both senses -- their
+    hosts redirect through the console methods and Console.SetError, and those
+    work -- so a sink there would be a second way to do what the platform
+    already does. That is a three-language contract by decision, recorded here
+    rather than left as an absence, since an unrecorded gap reads as an
+    oversight.
 
-    Go and Rust reach the capability by different routes, because their setup
-    surfaces differ. Go takes the writer as a setup option; Rust installs it
-    through set_log_output, independent of setup, which also settles when the
-    writer may change: reconfiguration does not touch it, a host can swap or
-    drop it without reconfiguring, and shutdown flushes and releases it.
+    Each line above is a claim about code, and tests/tooling/test_log_output_contract.py
+    asserts it against the source rather than trusting the prose -- the same way
+    the windows_console list is held. A host's control over the stdlib root
+    logger is only real if something leaves it one, and basicConfig(force=True)
+    does not.
+
+    The three reach the capability by different routes, because their setup
+    surfaces differ. Go takes the writer as a setup option, lifecycle-scoped and
+    moved by ReconfigureTelemetry. Rust and Python install it through
+    set_log_output, independent of setup, which also settles when the writer may
+    change: reconfiguration does not touch it, a host can swap or drop it
+    without reconfiguring, and shutdown flushes and releases it. Python follows
+    Rust rather than Go because setup_telemetry takes a config and no options,
+    so there is nothing for a setup option to attach to.
+
+    Ambient means effective at once, in both. A writer installed after setup
+    applies to the next record, not to the next reconfiguration -- a host
+    installing one is asking for the records it has not seen yet. Python rebuilds
+    the pipeline to do it, because the destination reaches a record through the
+    handler's stream and the renderer's colour answer alike, and swapping only
+    the stream would leave a file rendering with the terminal's answer.
 
     Prefixing is the case that drove both. A host running several language
     runtimes into one stream needs the writer from every SDK involved, not one

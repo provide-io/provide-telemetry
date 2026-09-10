@@ -22,6 +22,7 @@ from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, to_stdlib_level
 from provide.telemetry.logger import _otel_logs
+from provide.telemetry.logger import sink as _sink
 from provide.telemetry.logger.console import ansi_supported, structlog_colors, utf8_writer
 from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
 from provide.telemetry.logger.pretty import PrettyRenderer
@@ -88,39 +89,67 @@ _CALLSITE_IGNORES: list[str] = [__name__]
 _LEVEL_NAME_TO_NUMERIC: dict[str, int] = {name: severity.stdlib_level for name, severity in _LEVEL_TABLE.items()}
 
 
-# Where rendered records go. None means stderr, which is what a process that
-# says nothing gets. Guarded by its own lock rather than the config lock: a host
-# may install a writer at any point, including from a thread that is not the one
-# configuring telemetry.
-_LOG_OUTPUT: TextIO | None = None
-_LOG_OUTPUT_LOCK = threading.Lock()
+# The destination is a module of its own: process-global state with its own lock
+# and its own lifecycle, answerable to a host rather than to a config. The two
+# bindings below are explicit rather than aliased re-imports, which mypy's
+# no_implicit_reexport rejects, and a module attribute is what the tests patch.
+set_log_output = _sink.set_log_output
+clear_log_output = _sink.clear_log_output
+log_output_installed = _sink.log_output_installed
 
 
-def set_log_output(writer: TextIO) -> None:
-    """Send rendered log records to *writer* instead of stderr.
+def reapply_log_output() -> None:
+    """Rebuild the pipeline after the log destination changed.
 
-    Takes effect for handlers built after this call, so a host installing a
-    writer after ``setup_telemetry`` reconfigures to pick it up.
+    Called by the sink rather than by a host: which records a writer catches is
+    decided by when it was installed, never by a caller remembering to
+    reconfigure afterwards.
+
+    Nothing to rebuild before the SDK is configured -- the first configuration
+    reads the destination on its way past. ``claim_root`` is False because a
+    change of destination is not a reason to take the root logger's handler
+    list; the reload path reuses the handler already installed and swaps what
+    sits behind it.
+
+    The config is taken under the lock that guards it and then used outside,
+    because a teardown running concurrently clears it: reading the global twice
+    lets a shutdown land between the guard and the call, and configuring with
+    the ``None`` it left is an exception the fallback would swallow into an
+    emergency pipeline nobody asked for.
     """
-    global _LOG_OUTPUT
-    with _LOG_OUTPUT_LOCK:
-        _LOG_OUTPUT = writer
+    with _lock:
+        config = _active_config if _configured else None
+    if config is None:
+        return
+    # ``claim_root=None`` is the same falsy flag as False, so no test can tell the
+    # two apart. mutmut anchors an exemption to the statement rather than to one
+    # argument of it, so exempting that mutant exempts both flags; what the
+    # exemption gives up is pinned by tests in
+    # tests/logger/test_log_output_sink_behaviour.py instead -- a rebuild that finds
+    # no handler of ours keeps the host's, and a writer installed after setup takes
+    # effect at once.
+    _configure_logging(config, force=True, claim_root=False)  # pragma: no mutate — equivalent falsy claim_root mutant
 
 
-def clear_log_output() -> None:
-    """Return rendered log records to stderr, dropping any installed writer."""
-    global _LOG_OUTPUT
-    with _LOG_OUTPUT_LOCK:
-        _LOG_OUTPUT = None
+def detach_log_writer() -> None:
+    """Point the live stream handlers back at the error stream.
+
+    Releasing the writer from the sink's slot decides where the *next* pipeline
+    writes; a handler built earlier is still holding the writer itself. A host
+    told its writer has been let go is entitled to close it, so the handlers
+    have to stop referring to it in the same breath.
+
+    Narrower than a rebuild on purpose: this runs during teardown, and rebuilding
+    would reconstruct the OTLP child and its provider on the way out of the call
+    dismantling them.
+    """
+    installed = _installed_fanout()
+    if installed is None:
+        return
+    installed.retarget_stream_children(utf8_writer(sys.stderr))
 
 
-def log_output_installed() -> bool:
-    """Whether a host has installed a writer."""
-    with _LOG_OUTPUT_LOCK:
-        return _LOG_OUTPUT is not None
-
-
-def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
+def _console_handler(installed: TextIO | None) -> logging.StreamHandler:  # type: ignore[type-arg]
     """Default handler, writing UTF-8 whatever the stream's own encoding is.
 
     A redirected stream on Windows carries the locale encoding — cp1252, not
@@ -132,11 +161,18 @@ def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
     A writer installed by the host is taken as given: it is not passed through
     utf8_writer, which exists for the console stream this process did not choose.
     """
-    with _LOG_OUTPUT_LOCK:
-        installed = _LOG_OUTPUT
     if installed is not None:
         return logging.StreamHandler(installed)
     return logging.StreamHandler(utf8_writer(sys.stderr))  # pragma: no mutate — None also defaults to stderr
+
+
+def _stderr_handler() -> logging.StreamHandler:  # type: ignore[type-arg]
+    """The console handler for whatever destination is installed right now.
+
+    A configuration pass resolves the destination once and hands it down, so
+    this is for a caller with no pass of its own to inherit from.
+    """
+    return _console_handler(_sink.installed_writer())
 
 
 # structlog_level never exceeds CRITICAL, so this entry's `<` test never fires:
@@ -244,7 +280,7 @@ def _can_reuse_otel_log_provider(previous: TelemetryConfig | None, current: Tele
 def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler]:
     global _otel_log_provider, _otel_log_global_set
     handlers: list[logging.Handler] = [
-        _stderr_handler()
+        _console_handler(_sink.installed_writer())
     ]  # pragma: no mutate — StreamHandler(None) defaults to sys.stderr; the None mutant is behaviorally equivalent and cannot be killed
 
     if not config.logging.otlp_endpoint or not config.logging.otlp_enabled:
@@ -377,9 +413,10 @@ def _install_pipeline(children: list[logging.Handler], level: int, *, reload: bo
 
     A reload reuses the handler already installed and swaps its children. The
     root's handler list is not rewritten, so a handler the host added after
-    setup survives — which it must, since redirecting through the stdlib is the
-    only mechanism Python's SDK offers, and that promise was worth nothing if
-    the next config change silently revoked it. Reuse also means the handler
+    setup survives — which it must, since a handler of the host's own is one of
+    the two ways records reach somewhere it chose, ``set_log_output`` being the
+    other, and that promise was worth nothing if the next config change silently
+    revoked it. Reuse also means the handler
     cannot accumulate: one fan-out handler however often config reloads.
 
     A reload that finds no handler of ours — a host removed it — rebuilds
@@ -431,6 +468,15 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
         lowers = module_numeric < effective_level  # pragma: no mutate — equal reassign is a no-op; < and <= agree
         if lowers:
             effective_level = module_numeric
+
+    # The handler's stream and the renderer's colour answer each ask the sink,
+    # so a host changing destination from another thread can land between the
+    # two reads and pair a handler bound to the writer with the colour answer
+    # for a terminal. The pairing does not survive: whichever call moved the
+    # slot is itself waiting on this pass's lock to rebuild the pipeline, and
+    # rebuilds it from one settled answer. Holding the sink's lock across a
+    # whole configuration would close the window and deadlock the rebuild.
+    destination = _sink.log_destination()
 
     _install_pipeline(
         _build_handlers(config, effective_level),
@@ -502,7 +548,7 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
         from provide.telemetry.logger.pretty import resolve_color
 
         renderer = PrettyRenderer(  # pragma: no mutate — renderer constructor; outputs verified via snapshot/console tests
-            colors=ansi_supported(sys.stderr),
+            colors=ansi_supported(destination),
             key_color=resolve_color(
                 config.logging.pretty_key_color
             ),  # pragma: no mutate — color resolution is formatting-only
@@ -521,7 +567,7 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
         # Windows terminal without it lost the whole pipeline to the emergency
         # fallback rather than merely losing colour.
         renderer = structlog.dev.ConsoleRenderer(
-            colors=structlog_colors(sys.stderr), exception_formatter=structlog.dev.plain_traceback
+            colors=structlog_colors(destination), exception_formatter=structlog.dev.plain_traceback
         )
 
     processors.append(render_with_backpressure_extra(renderer))
@@ -543,6 +589,9 @@ def shutdown_logging(timeout_seconds: float | None = None) -> None:
     grace period passes what it has left.
     """
     global _configured, _active_config, _otel_log_provider
+    # Before the early return below: a host with a writer and no OTel provider
+    # is still owed the flush.
+    _sink.release_log_output()
     with _lock:
         provider = _otel_log_provider
         active = _active_config
@@ -562,6 +611,10 @@ def shutdown_logging(timeout_seconds: float | None = None) -> None:
 
 def _reset_logging_for_tests() -> None:
     global _configured, _active_config, _otel_log_provider, _otel_log_global_set
+    # The writer is process-global like the rest of this state, so a test that
+    # installs one and does not clear it renders every later test in the worker
+    # into a buffer nobody reads.
+    _sink.release_log_output()
     with _lock:
         _configured = False
         _active_config = None
