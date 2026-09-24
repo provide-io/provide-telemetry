@@ -283,7 +283,7 @@ _DEFAULT_SENSITIVE_KEYS = {
     "account_number",
     "cookie",
 }
-_lock = threading.Lock()
+_lock = threading.RLock()
 _rules: list[PIIRule] = []
 
 # Governance hooks — set by classification.py / receipts.py if present.
