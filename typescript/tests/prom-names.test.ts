@@ -98,6 +98,18 @@ describe('translator edges', () => {
     expect(err?.name).toBe('PromNameError');
   });
 
+  it('an empty name translates to nothing', () => {
+    expect(() => metricName('', '', KIND_GAUGE, 'UnderscoreEscapingWithoutSuffixes')).toThrow(
+      PromNameError,
+    );
+  });
+
+  it('only a leading digit is prefixed', () => {
+    expect(metricName('a1', '', KIND_GAUGE, 'UnderscoreEscapingWithSuffixes')).toBe('a1');
+    expect(metricName('a1', '', KIND_GAUGE, 'UnderscoreEscapingWithoutSuffixes')).toBe('a1');
+    expect(labelName('a1', 'UnderscoreEscapingWithSuffixes')).toBe('a1');
+  });
+
   it('an already valid name without suffixes is unchanged', () => {
     expect(metricName('_', '', KIND_GAUGE, 'UnderscoreEscapingWithoutSuffixes')).toBe('_');
   });

@@ -11,9 +11,10 @@
 
 import { ConfigurationError } from './exceptions.js';
 
+// The exporter names are spelled inline below rather than as constants: a
+// mutated module-level constant is evaluated once at load, before Stryker
+// activates the mutant, so its tests could never see it.
 export const EXPORTER_OTLP = 'otlp';
-export const EXPORTER_PROMETHEUS = 'prometheus';
-export const EXPORTER_NONE = 'none';
 export const LISTEN_VALUES = ['false', 'true', 'auto'] as const;
 export const MAX_PORT = 65535;
 export const DEFAULT_HOST = '127.0.0.1';
@@ -54,16 +55,14 @@ export function parseMetricsExporters(raw: string | undefined): string[] {
     .split(',')
     .map((part) => part.trim().toLowerCase())
     .filter((part) => part !== '');
-  const unknown = names.find(
-    (n) => n !== EXPORTER_OTLP && n !== EXPORTER_PROMETHEUS && n !== EXPORTER_NONE,
-  );
+  const unknown = names.find((n) => n !== 'otlp' && n !== 'prometheus' && n !== 'none');
   if (unknown !== undefined) {
     throw new ConfigurationError(
       `OTEL_METRICS_EXPORTER: unknown exporter ${JSON.stringify(unknown)}`,
     );
   }
-  const exporters = names.filter((n) => n !== EXPORTER_NONE);
-  if (names.includes(EXPORTER_NONE)) {
+  const exporters = names.filter((n) => n !== 'none');
+  if (names.includes('none')) {
     if (exporters.length > 0) {
       throw new ConfigurationError(
         'OTEL_METRICS_EXPORTER: none cannot be combined with other exporters',
@@ -71,12 +70,12 @@ export function parseMetricsExporters(raw: string | undefined): string[] {
     }
     return [];
   }
-  return exporters.length > 0 ? exporters : [EXPORTER_OTLP];
+  return exporters.length > 0 ? exporters : ['otlp'];
 }
 
 /** Reject an exporter list built in code with a name the env parser would refuse. */
 export function validateExporters(exporters: string[]): void {
-  const unknown = exporters.find((e) => e !== EXPORTER_OTLP && e !== EXPORTER_PROMETHEUS);
+  const unknown = exporters.find((e) => e !== 'otlp' && e !== 'prometheus');
   if (unknown !== undefined) {
     throw new ConfigurationError(`metricsExporters: unknown exporter ${JSON.stringify(unknown)}`);
   }
@@ -147,18 +146,18 @@ export function envStr(raw: string | undefined, fallback: string): string {
 export function prometheusListenerEnabled(cfg: PrometheusSettings): boolean {
   if (!cfg.metricsEnabled) return false;
   if (cfg.prometheusListen === 'true') return true;
-  return cfg.prometheusListen === 'auto' && cfg.metricsExporters.includes(EXPORTER_PROMETHEUS);
+  return cfg.prometheusListen === 'auto' && cfg.metricsExporters.includes('prometheus');
 }
 
 /** Whether the Prometheus pull reader is attached; asking for the listener implies it. */
 export function prometheusReaderEnabled(cfg: PrometheusSettings): boolean {
   return (
     cfg.metricsEnabled &&
-    (cfg.metricsExporters.includes(EXPORTER_PROMETHEUS) || prometheusListenerEnabled(cfg))
+    (cfg.metricsExporters.includes('prometheus') || prometheusListenerEnabled(cfg))
   );
 }
 
 /** Whether the OTLP metrics reader is selected (it still needs an endpoint). */
 export function otlpMetricsReaderEnabled(cfg: PrometheusSettings): boolean {
-  return cfg.metricsEnabled && cfg.metricsExporters.includes(EXPORTER_OTLP);
+  return cfg.metricsEnabled && cfg.metricsExporters.includes('otlp');
 }

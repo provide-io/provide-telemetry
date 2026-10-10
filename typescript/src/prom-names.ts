@@ -90,8 +90,9 @@ function tokens(separators: RegExp, name: string): string[] {
   return name.split(separators).filter((t) => t !== '');
 }
 
-function stripUnderscores(text: string): string {
-  return text.replace(/^_+/, '').replace(/_+$/, '');
+/** Whether text is empty or only underscores (Python's `not text.strip("_")`). */
+function onlyUnderscores(text: string): boolean {
+  return /^_*$/.test(text);
 }
 
 function removeSuffix(text: string, suffix: string): string {
@@ -195,7 +196,7 @@ export function metricName(name: string, unit: string, kind: string, strategy: s
   const result = addsSuffixes(strategy)
     ? normalize(name, unit, kind)
     : prefixLeadingDigit(tokens(METRIC_SEPARATORS_KEEPING_UNDERSCORE, name).join('_'));
-  if (!result || (result !== name && !stripUnderscores(result))) {
+  if (!result || (result !== name && onlyUnderscores(result))) {
     throw new PromNameError(`metric name ${JSON.stringify(name)} translates to nothing usable`);
   }
   return result;
@@ -210,7 +211,7 @@ export function labelName(attribute: string, strategy: string): string {
   const rejected = new PromNameError(
     `attribute ${JSON.stringify(attribute)} cannot be a label name`,
   );
-  if (!stripUnderscores(attribute)) throw rejected;
+  if (onlyUnderscores(attribute)) throw rejected;
   if (!escapes(strategy)) return attribute;
   // A key that starts and ends with "__" keeps both; shorter such keys are all
   // underscores and were rejected above.
@@ -219,6 +220,6 @@ export function labelName(attribute: string, strategy: string): string {
   let sanitized = body.replace(INVALID_LABEL_RUNS, '_');
   if (reserved) sanitized = `__${sanitized}__`;
   if (/^[0-9]/.test(sanitized)) sanitized = `key_${sanitized}`;
-  if (!stripUnderscores(sanitized)) throw rejected;
+  if (onlyUnderscores(sanitized)) throw rejected;
   return sanitized;
 }
