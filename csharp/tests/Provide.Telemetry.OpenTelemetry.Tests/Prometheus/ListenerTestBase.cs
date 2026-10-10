@@ -22,6 +22,34 @@ public abstract class ListenerTestBase : PromTestBase
 
     internal TestPki Pki { get; } = new();
 
+    private static volatile bool _unanswered;
+
+    /// <summary>
+    /// Run one exchange with the listener, bounded; once one goes unanswered,
+    /// every later one fails at once.
+    /// </summary>
+    /// <remarks>
+    /// A listener that stops accepting leaves its clients waiting rather than
+    /// failing. Bounding the first wait and short-circuiting the rest makes such
+    /// a regression fail the suite in seconds instead of hanging it, which is
+    /// also what lets the mutation gate count those mutants as killed rather
+    /// than timed out.
+    /// </remarks>
+    internal static async Task<T> Answered<T>(Func<CancellationToken, Task<T>> exchange)
+    {
+        if (_unanswered) throw new TimeoutException("an earlier exchange with the listener went unanswered");
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        try
+        {
+            return await exchange(deadline.Token);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            _unanswered = true;
+            throw new TimeoutException("the listener did not answer");
+        }
+    }
+
     protected ListenerTestBase() => MarkReady();
 
     protected static void MarkReady() =>
@@ -68,7 +96,7 @@ public abstract class ListenerTestBase : PromTestBase
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, errors) =>
             trust && OtlpTls.Validate(certificate as X509Certificate2, errors, Pki.Roots());
         if (clientCert is not null) handler.SslOptions.ClientCertificates = [clientCert];
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+        using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         using var request = new HttpRequestMessage(new HttpMethod(method), url);
         if (auth)
         {
@@ -76,7 +104,7 @@ public abstract class ListenerTestBase : PromTestBase
                 "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"e2e:{Password}")));
         }
         if (authorization is not null) request.Headers.TryAddWithoutValidation("Authorization", authorization);
-        return await client.SendAsync(request);
+        return await Answered(token => client.SendAsync(request, token));
     }
 
     internal async Task<int> Status(

@@ -102,7 +102,9 @@ internal sealed class OtlpTls
         }
         catch (CryptographicException)
         {
-            return null;
+            // A malformed block anywhere means the file is not a usable bundle,
+            // even when a certificate before it was imported.
+            roots.Clear();
         }
         return roots.Count > 0 ? roots : null;
     }
@@ -111,12 +113,12 @@ internal sealed class OtlpTls
     /// The PEM pair as a certificate with a persisted key: an ephemeral PEM key
     /// cannot sign a TLS handshake on Windows, so it is round-tripped through PKCS#12.
     /// </summary>
-    private static (X509Certificate2? Certificate, string Reason) LoadClientCertificate(string certFile, string keyFile)
+    private static (X509Certificate2? Certificate, string? Reason) LoadClientCertificate(string certFile, string keyFile)
     {
         try
         {
             using var pem = X509Certificate2.CreateFromPemFile(certFile, keyFile);
-            return (X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pkcs12), null), "");
+            return (X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pkcs12), null), null);
         }
         catch (Exception ex) when (ex is CryptographicException or ArgumentException)
         {

@@ -204,7 +204,7 @@ public sealed class PrometheusWebConfigTests : ListenerTestBase
         await stream.WriteAsync(request);
         if (close) client.Client.Shutdown(SocketShutdown.Send);
         using var reader = new StreamReader(stream, Encoding.Latin1);
-        return await reader.ReadToEndAsync();
+        return await Answered(token => reader.ReadToEndAsync(token));
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public sealed class PrometheusWebConfigTests : ListenerTestBase
             using var client = new TcpClient();
             await client.ConnectAsync(IPAddress.Loopback, PrometheusListener.Address!.Port);
             var started = DateTime.UtcNow;
-            var read = await client.GetStream().ReadAsync(new byte[16]).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            var read = await Answered(token => client.GetStream().ReadAsync(new byte[16], token).AsTask());
             Assert.Equal(0, read);
             Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(5));
 
@@ -243,7 +243,7 @@ public sealed class PrometheusWebConfigTests : ListenerTestBase
             await blank.ConnectAsync(IPAddress.Loopback, PrometheusListener.Address!.Port);
             await blank.GetStream().WriteAsync("\r\n\r\n"u8.ToArray());
             using var reader = new StreamReader(blank.GetStream(), Encoding.Latin1);
-            Assert.StartsWith("HTTP/1.1 400 Bad Request\r\n", await reader.ReadToEndAsync());
+            Assert.StartsWith("HTTP/1.1 400 Bad Request\r\n", await Answered(token => reader.ReadToEndAsync(token)));
             Assert.Equal(200, await Status(Url()));
         }
         finally

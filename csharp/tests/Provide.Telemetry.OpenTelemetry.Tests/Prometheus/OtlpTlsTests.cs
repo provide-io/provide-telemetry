@@ -63,6 +63,14 @@ public sealed class OtlpTlsTests : ListenerTestBase
     }
 
     [Fact]
+    public void Resolve_ACaBundleWithAMalformedBlockAfterAGoodOne()
+    {
+        var path = Pki.Write("mixed-ca.crt",
+            File.ReadAllText(Pki.CaFile) + "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n");
+        Assert.Equal($"OTEL_EXPORTER_OTLP_CERTIFICATE={path}: no PEM certificates", OtlpTls.Resolve("metrics", path, "", "").Problem);
+    }
+
+    [Fact]
     public void Resolve_HalfAPairIsAProblem()
     {
         Assert.Equal(
@@ -131,17 +139,17 @@ public sealed class OtlpTlsTests : ListenerTestBase
                    .CreateClient(TimeSpan.FromSeconds(7)))
         {
             Assert.Equal(TimeSpan.FromSeconds(7), client.Timeout);
-            using var response = await client.GetAsync(Url("https"));
+            using var response = await Answered(token => client.GetAsync(Url("https"), token));
             Assert.Equal(200, (int)response.StatusCode);
         }
         using (var noClientCert = OtlpTls.Resolve("metrics", Pki.CaFile, "", "").Tls!.CreateClient(TimeSpan.FromSeconds(5)))
         {
-            await Assert.ThrowsAnyAsync<HttpRequestException>(() => noClientCert.GetAsync(Url("https")));
+            await Assert.ThrowsAnyAsync<HttpRequestException>(() => Answered(token => noClientCert.GetAsync(Url("https"), token)));
         }
         using var stranger = new TestPki();
         using var wrongCa = OtlpTls.Resolve("metrics", stranger.CaFile, Pki.ClientCert, Pki.ClientKey).Tls!
             .CreateClient(TimeSpan.FromSeconds(5));
-        await Assert.ThrowsAnyAsync<HttpRequestException>(() => wrongCa.GetAsync(Url("https")));
+        await Assert.ThrowsAnyAsync<HttpRequestException>(() => Answered(token => wrongCa.GetAsync(Url("https"), token)));
     }
 
     [Fact]

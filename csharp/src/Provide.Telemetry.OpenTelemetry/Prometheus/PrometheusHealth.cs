@@ -93,17 +93,18 @@ internal static class HealthInstruments
 {
     public static void Register(Meter meter)
     {
-        foreach (var family in PrometheusHealth.Families(Health.GetHealthSnapshot()))
+        // Families come back in a fixed order, so each instrument reads its own by position.
+        var families = PrometheusHealth.Families(Health.GetHealthSnapshot());
+        for (var i = 0; i < families.Count; i++)
         {
-            var name = family.Name;
-            if (family.Kind == "counter") meter.CreateObservableCounter(name, () => Measurements(name));
-            else meter.CreateObservableGauge(name, () => Measurements(name));
+            var index = i;
+            if (families[i].Kind == "counter") meter.CreateObservableCounter(families[i].Name, () => Measurements(index));
+            else meter.CreateObservableGauge(families[i].Name, () => Measurements(index));
         }
     }
 
-    internal static IEnumerable<Measurement<double>> Measurements(string name) =>
-        PrometheusHealth.Families(Health.GetHealthSnapshot())
-            .Single(f => f.Name == name)
+    internal static IEnumerable<Measurement<double>> Measurements(int index) =>
+        PrometheusHealth.Families(Health.GetHealthSnapshot())[index]
             .Samples
             .Select(s => new Measurement<double>(
                 s.Value, s.Labels.Select(kv => new KeyValuePair<string, object?>(kv.Key, kv.Value))))

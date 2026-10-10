@@ -112,7 +112,7 @@ public sealed class PrometheusListenerTests : ListenerTestBase
             await raw.ConnectAsync(IPAddress.Loopback, PrometheusListener.Address!.Port);
             var stream = raw.GetStream();
             await stream.WriteAsync("GET /metrics HTTP/1.1\r\n\r\n"u8.ToArray());
-            try { _ = await stream.ReadAsync(new byte[1024]); }
+            try { _ = await Answered(token => stream.ReadAsync(new byte[1024], token).AsTask()); }
             catch (IOException) { /* the server drops the failed handshake */ }
         }
         Assert.Equal(200, await Status(Url("https")));
