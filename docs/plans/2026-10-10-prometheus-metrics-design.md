@@ -351,9 +351,11 @@ Each stage is its own PR and leaves `main` releasable.
    `prometheus` capabilities, and `spec/prometheus_fixtures.yaml`. Each
    capability's language set in `spec/validate_conformance.py` starts empty
    and gains a language in the PR that ships it, after which a missing export
-   fails conformance. New config keys sit in `prometheus_metrics.planned_config`
-   until an SDK parses them, then move to `config_defaults`, whose
-   applicability list cannot be empty.
+   fails conformance. New config keys sat in `prometheus_metrics.planned_config`
+   until an SDK parsed them, then moved to `config_defaults`, whose
+   applicability list cannot be empty. The OTLP TLS variables that remained
+   are read by the exporter builders rather than parsed as config, so the
+   section is now `prometheus_metrics.push_tls_env`.
    `tests/tooling/test_prometheus_contract.py` keeps the spec section, the
    fixtures and the capability gates consistent with each other.
 2. **Tier 1 everywhere** (done). Prometheus 3.13.4 in `docker-compose.yml`
@@ -394,7 +396,10 @@ Each stage is its own PR and leaves `main` releasable.
    `http.server` with the web config subset, certificate reload and fail-closed
    startup (`bcrypt` and `PyYAML` in the `prometheus` extra); observable
    instruments. Python is in both capability sets and in the scrape E2E.
-   `PROVIDE_METRICS_HEALTH_OTLP` is parsed but, as in Go, not yet acted on.
+   `PROVIDE_METRICS_HEALTH_OTLP` registers the health families as observable
+   instruments on the installed provider in Python and Go alike
+   (`prometheus_metrics.health_metrics.health_otlp`); a scrape still carries
+   each family once.
 5. **Rust and C#**, including the push-security gaps (private CA in both,
    per-signal headers in C#). `metrics_handler` becomes `required: true` in the
    spec once all five ship.

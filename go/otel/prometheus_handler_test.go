@@ -27,7 +27,7 @@ func _promReset(t *testing.T) {
 	resetSetupState(t)
 	for _, k := range []string{
 		"OTEL_METRICS_EXPORTER", "PROVIDE_METRICS_ENABLED", "PROVIDE_METRICS_PROMETHEUS_LISTEN",
-		"PROVIDE_METRICS_PROMETHEUS_TRANSLATION",
+		"PROVIDE_METRICS_PROMETHEUS_TRANSLATION", "PROVIDE_METRICS_HEALTH_OTLP",
 	} {
 		t.Setenv(k, "")
 	}
@@ -176,15 +176,17 @@ func TestMetricsHandler_ProviderBuildFailure(t *testing.T) {
 	_want503(t, "failed to start")
 }
 
-// _failingRegistry fails the Register call numbered failOn (1-based).
+// _failingRegistry fails the Register call numbered failOn (1-based), counted
+// across every registry sharing calls.
 type _failingRegistry struct {
 	*prometheus.Registry
-	calls, failOn int
+	calls  *int
+	failOn int
 }
 
 func (r *_failingRegistry) Register(c prometheus.Collector) error {
-	r.calls++
-	if r.calls == r.failOn {
+	*r.calls++
+	if *r.calls == r.failOn {
 		return errors.New("register refused")
 	}
 	return r.Registry.Register(c)
@@ -196,12 +198,14 @@ func TestPrometheusReader_RegistrationFailuresSurface(t *testing.T) {
 	cfg := telemetry.DefaultTelemetryConfig()
 	cfg.Metrics.Exporters = []string{"prometheus"}
 	for _, failOn := range []int{1, 2} { // 1: the exporter's collector, 2: the health collector
+		calls := 0
 		_newPromRegistry = func() _promRegistryLike {
-			return &_failingRegistry{Registry: prometheus.NewRegistry(), failOn: failOn}
+			return &_failingRegistry{Registry: prometheus.NewRegistry(), calls: &calls, failOn: failOn}
 		}
 		if reader, reg, err := _newPrometheusReader(cfg); err == nil || reader != nil || reg != nil {
 			t.Fatalf("failOn %d: got %v %v %v, want an error and nothing else", failOn, reader, reg, err)
 		}
+		calls = 0
 		if mp, reg, err := _buildDefaultMeterProvider(cfg); err == nil || mp != nil || reg != nil {
 			t.Fatalf("failOn %d: provider build should fail, got %v %v %v", failOn, mp, reg, err)
 		}

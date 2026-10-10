@@ -320,7 +320,9 @@ snapshot's setup error. Certificates are re-read when they change.
 The scrape also carries the SDK's own health as `provide_telemetry_*` series
 (`provide_telemetry_export_failures_total{signal}`,
 `provide_telemetry_circuit_state{signal}` and so on), which stay visible when
-OTLP export is failing. Callback-reported values use observable instruments,
+OTLP export is failing. Set `PROVIDE_METRICS_HEALTH_OTLP=true` to export the
+same series over OTLP as well; a scrape still carries each one once.
+Callback-reported values use observable instruments,
 whose callbacks run on each scrape: `NewObservableGauge`,
 `NewObservableCounter` and `NewObservableUpDownCounter` in Go;
 `observable_gauge`, `observable_counter` and `observable_up_down_counter` in
