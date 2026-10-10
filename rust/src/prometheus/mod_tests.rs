@@ -319,3 +319,13 @@ fn options_follow_the_config() {
         }
     );
 }
+
+#[test]
+fn without_the_sdk_the_status_says_why() {
+    let mut config = crate::config::TelemetryConfig::default();
+    assert_eq!(status_without_sdk(&config), Status::NotSelected);
+    config.metrics.exporters = vec!["prometheus".to_string()];
+    assert_eq!(status_without_sdk(&config), Status::OtelMissing);
+    config.metrics.enabled = false;
+    assert_eq!(status_without_sdk(&config), Status::MetricsDisabled);
+}

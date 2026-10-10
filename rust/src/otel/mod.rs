@@ -55,17 +55,11 @@ fn map_exporter_build<T, E: std::fmt::Display>(
 }
 
 /// Without the SDK nothing is installed; the pull endpoint records why it
-/// cannot serve.
+/// cannot serve (`prometheus::status_without_sdk`, which is compiled, and so
+/// tested and mutated, under every feature set).
 #[cfg(not(feature = "otel"))]
 pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError> {
-    use crate::prometheus::{set_status, Status};
-    set_status(if !config.metrics.enabled {
-        Status::MetricsDisabled
-    } else if config.metrics.prometheus_reader_enabled() {
-        Status::OtelMissing
-    } else {
-        Status::NotSelected
-    });
+    crate::prometheus::set_status(crate::prometheus::status_without_sdk(config));
     Ok(())
 }
 

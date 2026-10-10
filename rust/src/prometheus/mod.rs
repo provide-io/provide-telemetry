@@ -96,6 +96,18 @@ pub(crate) fn mark_ready(collector: Collector, options: RenderOptions) {
     *crate::_lock::lock(state()) = State::Ready(collector, options);
 }
 
+/// Why the endpoint cannot serve when the crate is built without the SDK.
+#[cfg_attr(feature = "otel", allow(dead_code))] // only setup without the otel feature asks
+pub(crate) fn status_without_sdk(config: &crate::config::TelemetryConfig) -> Status {
+    if !config.metrics.enabled {
+        return Status::MetricsDisabled;
+    }
+    if config.metrics.prometheus_reader_enabled() {
+        return Status::OtelMissing;
+    }
+    Status::NotSelected
+}
+
 /// The render options a config selects (scrape-time negotiation adds UTF-8).
 #[cfg_attr(not(feature = "otel"), allow(dead_code))]
 pub(crate) fn options_for(config: &crate::config::TelemetryConfig) -> RenderOptions {
