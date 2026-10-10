@@ -52,7 +52,7 @@ func TestBuildDefaultProviders_ExporterInitErrors(t *testing.T) {
 	_newOTLPMetricsExporter = func(context.Context, ...otlpmetrichttp.Option) (sdkmetric.Exporter, error) {
 		return nil, metricErr
 	}
-	if mp, err := _buildDefaultMeterProvider(cfg); !errors.Is(err, metricErr) || mp != nil {
+	if mp, reg, err := _buildDefaultMeterProvider(cfg); !errors.Is(err, metricErr) || mp != nil || reg != nil {
 		t.Fatalf("expected meter exporter error %v, got mp=%v err=%v", metricErr, mp, err)
 	}
 

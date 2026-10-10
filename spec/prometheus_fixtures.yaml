@@ -4,6 +4,9 @@
 #
 # Cases for the prometheus_metrics contract in spec/telemetry-api.yaml.
 #
+# OTel instrument names must start with a letter, so no case starts with a
+# digit: every SDK rejects such a name before it reaches the translator.
+#
 # metric_names and label_names were generated with the contract's translation
 # reference, github.com/prometheus/otlptranslator v1.0.0, by building each case
 # with NewMetricNamer("", strategy) and LabelNamer{UTF8Allowed: false|true}.
@@ -114,15 +117,6 @@ metric_names:
       UnderscoreEscapingWithoutSuffixes: "litevirt_rpc_requests_total"
       NoUTF8EscapingWithSuffixes: "litevirt_rpc_requests_total"
       NoTranslation: "litevirt_rpc_requests_total"
-  - id: leading_digit
-    name: "2xx.responses"
-    unit: ""
-    instrument: counter
-    expected:
-      UnderscoreEscapingWithSuffixes: "_2xx_responses_total"
-      UnderscoreEscapingWithoutSuffixes: "_2xx_responses"
-      NoUTF8EscapingWithSuffixes: "2xx.responses_total"
-      NoTranslation: "2xx.responses"
   - id: observable_gauge_celsius
     name: "device.temperature"
     unit: "Cel"
@@ -208,7 +202,7 @@ handler_status:
   - {id: after_shutdown, state: shut_down, status: 503}
   - {id: metrics_disabled, state: metrics_disabled, status: 503}
   - {id: host_owned_provider, state: host_provider, status: 503}
-  - {id: serving, state: ready, status: 200, content_type: "text/plain; version=0.0.4; charset=utf-8"}
+  - {id: serving, state: ready, status: 200, content_type_prefix: "text/plain; version=0.0.4; charset=utf-8"}
   - {id: wrong_method, state: ready, method: POST, status: 405}
 
 health_metrics:

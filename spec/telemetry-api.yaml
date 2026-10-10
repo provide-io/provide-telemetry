@@ -1214,7 +1214,7 @@ prometheus_metrics:
 
   handler:
     - "GET (and HEAD) only; other methods return 405."
-    - "Content-Type is text/plain; version=0.0.4; charset=utf-8 unless the scraper negotiates another supported format."
+    - "Content-Type starts with text/plain; version=0.0.4; charset=utf-8 unless the scraper negotiates another supported format. It may carry an escaping parameter (client_golang adds escaping=underscores)."
     - "Before setup, after shutdown, with metrics disabled, or when the host owns the MeterProvider: 503 with a one-line text body naming the reason. Never an empty 200."
     - "Each request runs one collection: observable callbacks, then the health collector."
 
@@ -1258,6 +1258,7 @@ prometheus_metrics:
       PROVIDE_METRICS_HEALTH_OTLP is true; when both are on, the pull output
       carries only the collector's copy.
     circuit_state_values: {closed: 0, half-open: 1, open: 2}
+    circuit_state_unknown_value: -1
     per_signal:
       - {field: emitted, metric: provide_telemetry_emitted_total, type: counter}
       - {field: dropped, metric: provide_telemetry_dropped_total, type: counter}

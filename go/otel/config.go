@@ -170,7 +170,38 @@ func _buildDefaultTracerProvider(cfg *telemetry.TelemetryConfig) (*sdktrace.Trac
 	), nil
 }
 
-func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.MeterProvider, error) {
+// _wantsDefaultMeterProvider reports whether setup should build a meter
+// provider of its own: an OTLP endpoint with otlp selected, or the Prometheus
+// reader.
+func _wantsDefaultMeterProvider(cfg *telemetry.TelemetryConfig) bool {
+	return (cfg.Metrics.OTLPReaderEnabled() && cfg.Metrics.OTLPEndpoint != "") || cfg.Metrics.PrometheusReaderEnabled()
+}
+
+// _buildDefaultMeterProvider builds the provider with the readers cfg selects:
+// a periodic OTLP reader, the Prometheus pull reader, or both. The returned
+// registry is the Prometheus reader's, or nil when it is not attached.
+func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.MeterProvider, _promRegistryLike, error) {
+	opts := []sdkmetric.Option{sdkmetric.WithResource(_buildResource(cfg))}
+	if cfg.Metrics.OTLPReaderEnabled() && cfg.Metrics.OTLPEndpoint != "" {
+		reader, err := _newOTLPMetricsReader(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		opts = append(opts, sdkmetric.WithReader(reader))
+	}
+	var registry _promRegistryLike
+	if cfg.Metrics.PrometheusReaderEnabled() {
+		reader, reg, err := _newPrometheusReader(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		opts = append(opts, sdkmetric.WithReader(reader))
+		registry = reg
+	}
+	return sdkmetric.NewMeterProvider(opts...), registry, nil
+}
+
+func _newOTLPMetricsReader(cfg *telemetry.TelemetryConfig) (sdkmetric.Reader, error) {
 	metricsURL, err := _validatedSignalEndpointURL(cfg.Metrics.OTLPEndpoint, "/v1/metrics")
 	if err != nil {
 		return nil, err
@@ -182,10 +213,7 @@ func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.Mete
 	if err != nil {
 		return nil, err
 	}
-	return sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(_wrapMetricsExporter(exporter))),
-		sdkmetric.WithResource(_buildResource(cfg)),
-	), nil
+	return sdkmetric.NewPeriodicReader(_wrapMetricsExporter(exporter)), nil
 }
 
 func _buildLoggerProvider(cfg *telemetry.TelemetryConfig) (*sdklog.LoggerProvider, error) {

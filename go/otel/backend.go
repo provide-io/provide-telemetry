@@ -213,6 +213,7 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
 	_resetGlobalsWeSet(installedTP, installedMP, installedLP)
+	_setPromState(_promShutDown, nil)
 	_providersMu.Unlock()
 
 	return _drainConcurrently(ctx, providers, _drainable.Shutdown)
@@ -267,6 +268,7 @@ func (b *_backend) ResetForTests() {
 	_weSetTracerGlobal = false
 	_weSetMeterGlobal = false
 	_weSetLoggerGlobal = false
+	_setPromState(_promNotSetUp, nil)
 	_newOTLPTraceExporter = _defaultOTLPTraceExporterFactory
 	_newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory
 	_newOTLPLogExporter = _defaultOTLPLogExporterFactory

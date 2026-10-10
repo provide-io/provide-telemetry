@@ -149,9 +149,12 @@ func TestCoverageLowLevel_ConfigAndProviderHelpers(t *testing.T) {
 	cfg := telemetry.DefaultTelemetryConfig()
 	cfg.Metrics.OTLPEndpoint = "http://collector:4318"
 
-	mp, err := _buildDefaultMeterProvider(cfg)
+	mp, reg, err := _buildDefaultMeterProvider(cfg)
 	if err != nil {
 		t.Fatalf("expected meter provider build to succeed, got %v", err)
+	}
+	if reg != nil {
+		t.Fatal("an OTLP-only provider must not carry a Prometheus registry")
 	}
 	if err := mp.Shutdown(context.Background()); err != nil {
 		t.Fatalf("expected built meter provider to shut down cleanly, got %v", err)
