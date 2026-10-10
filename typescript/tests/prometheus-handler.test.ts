@@ -38,11 +38,7 @@ afterEach(async () => {
 
 describe('metricsHandler', () => {
   it('exports exactly the Tier 2 surface', () => {
-    expect(Object.keys(entry).sort()).toEqual([
-      'metricsHandler',
-      'renderPrometheus',
-      'writeResponse',
-    ]);
+    expect(Object.keys(entry).sort()).toEqual(['metricsHandler', 'renderPrometheus']);
     expect(renderPrometheus).toBe(pull.renderPrometheus);
   });
 

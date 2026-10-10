@@ -30,7 +30,7 @@ import { dirname, resolve } from 'node:path';
 import { createSecureContext, type SecureContextOptions, type TLSSocket } from 'node:tls';
 import { dynImportOtel } from './otel-dynimport.js';
 import { PLAIN_TEXT, responseFor, type PrometheusResponse } from './prom-pull.js';
-import { writeResponse } from './prometheus.js';
+import { writeResponse } from './prom-http.js';
 
 export const READ_TIMEOUT_MS = 10_000;
 export const INSTALL_HINT =

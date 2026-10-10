@@ -37,6 +37,7 @@ cat >probe.mjs <<'EOF'
 const checks = [
   ['@provide-io/telemetry', 'getLogger'],
   ['@provide-io/telemetry/otel', null],
+  ['@provide-io/telemetry/prometheus', 'metricsHandler'],
   ['@provide-io/telemetry/react', null],
 ];
 

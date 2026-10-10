@@ -16,7 +16,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { responseFor, type PrometheusResponse } from './prom-pull.js';
+import { writeResponse } from './prom-http.js';
+import { responseFor } from './prom-pull.js';
 
 export { renderPrometheus } from './prom-pull.js';
 export type { PrometheusResponseBody } from './prom-pull.js';
@@ -38,12 +39,4 @@ export function metricsHandler(): MetricsHandler {
       writeResponse(res, answer);
     });
   };
-}
-
-/** Send an answer: its status, its headers in order, then Content-Length and the body. */
-export function writeResponse(res: ServerResponse, answer: PrometheusResponse): void {
-  res.statusCode = answer.status;
-  for (const [name, value] of answer.headers) res.setHeader(name, value);
-  res.setHeader('content-length', Buffer.byteLength(answer.body));
-  res.end(answer.body);
 }
