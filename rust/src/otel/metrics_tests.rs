@@ -7,12 +7,14 @@ use super::*;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::testing::acquire_test_state_lock;
+use crate::testing::{acquire_test_state_lock, reset_telemetry_state};
 use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::metrics::data::ResourceMetrics;
 use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
 use opentelemetry_sdk::metrics::periodic_reader_with_async_runtime::PeriodicReader;
 use opentelemetry_sdk::metrics::Temporality;
+
+use crate::metrics::{counter, gauge, histogram};
 
 fn test_config() -> TelemetryConfig {
     TelemetryConfig {
@@ -129,9 +131,14 @@ fn install_with_unreachable_endpoint_succeeds_under_fail_open() {
     let resource = super::super::resource::build_resource(&cfg);
     install_meter_provider(&cfg, resource).expect("install must succeed under fail_open");
 
-    record_counter_add("test.counter", 1.0, None);
-    record_gauge_set("test.gauge", 42.0, None);
-    record_histogram("test.histogram", 0.123, None);
+    let meta = |name| InstrumentMeta {
+        name,
+        description: None,
+        unit: None,
+    };
+    record_counter_add(meta("test.counter"), 1.0, None);
+    record_gauge_set(meta("test.gauge"), 42.0, None);
+    record_histogram(meta("test.histogram"), 0.123, None);
 
     shutdown_meter_provider(None);
 }
@@ -199,12 +206,12 @@ fn get_or_create_instruments_reuse_cached_instances() {
     crate::_lock::lock(GAUGES.get_or_init(empty_gauge_cache_mutex)).clear();
     crate::_lock::lock(HISTOGRAMS.get_or_init(empty_histogram_cache_mutex)).clear();
 
-    let _ = get_or_create_counter("reuse.counter");
-    let _ = get_or_create_counter("reuse.counter");
-    let _ = get_or_create_gauge("reuse.gauge");
-    let _ = get_or_create_gauge("reuse.gauge");
-    let _ = get_or_create_histogram("reuse.histogram");
-    let _ = get_or_create_histogram("reuse.histogram");
+    let _ = get_or_create_counter("reuse.counter", None, None);
+    let _ = get_or_create_counter("reuse.counter", None, None);
+    let _ = get_or_create_gauge("reuse.gauge", None, None);
+    let _ = get_or_create_gauge("reuse.gauge", None, None);
+    let _ = get_or_create_histogram("reuse.histogram", None, None);
+    let _ = get_or_create_histogram("reuse.histogram", None, None);
 
     assert_eq!(
         crate::_lock::lock(COUNTERS.get().expect("counter cache must exist")).len(),
@@ -316,4 +323,141 @@ fn shutdown_meter_provider_logs_error_when_provider_is_already_shutdown() {
     shutdown_meter_provider(None);
 
     assert!(!meter_provider_installed());
+}
+
+/// (name, description, unit) of one exported metric.
+type ExportedMeta = (String, String, String);
+
+/// Records the identity metadata of every metric the SDK hands it, so a test
+/// can assert on what an OTLP backend would actually receive.
+#[derive(Debug, Default)]
+struct CapturingMetricExporter {
+    exported: Arc<Mutex<Vec<ExportedMeta>>>,
+}
+
+impl PushMetricExporter for CapturingMetricExporter {
+    async fn export(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
+        let mut exported = crate::_lock::lock(&self.exported);
+        for scope in metrics.scope_metrics() {
+            for metric in scope.metrics() {
+                exported.push((
+                    metric.name().to_string(),
+                    metric.description().to_string(),
+                    metric.unit().to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn force_flush(&self) -> OTelSdkResult {
+        Ok(())
+    }
+
+    fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
+        Ok(())
+    }
+
+    fn temporality(&self) -> Temporality {
+        Temporality::Cumulative
+    }
+}
+
+/// Installs a provider whose only reader is a capturing exporter, both as the
+/// global provider (which `get_or_create_*` builds instruments from) and in
+/// the slot the facade checks before recording.
+fn install_capturing_provider() -> (SdkMeterProvider, Arc<Mutex<Vec<ExportedMeta>>>) {
+    let exporter = CapturingMetricExporter::default();
+    let exported = Arc::clone(&exporter.exported);
+    let reader = PeriodicReader::builder(exporter, ProvideTokioRuntime::test())
+        .with_interval(Duration::from_secs(3600))
+        .build();
+    let provider = SdkMeterProvider::builder().with_reader(reader).build();
+    global::set_meter_provider(provider.clone());
+    install_meter_provider_for_tests(provider.clone());
+    (provider, exported)
+}
+
+fn exported_named(exported: &Arc<Mutex<Vec<ExportedMeta>>>, name: &str) -> Vec<ExportedMeta> {
+    crate::_lock::lock(exported)
+        .iter()
+        .filter(|(n, _, _)| n == name)
+        .cloned()
+        .collect()
+}
+
+fn meta(name: &str, description: &str, unit: &str) -> ExportedMeta {
+    (name.to_string(), description.to_string(), unit.to_string())
+}
+
+#[test]
+fn facade_unit_and_description_reach_the_exported_instruments() {
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
+    let (provider, exported) = install_capturing_provider();
+
+    counter("units.counter", Some("requests served"), Some("{request}")).add(1.0, None);
+    gauge("units.gauge", Some("pool utilisation"), Some("1")).set(0.5, None);
+    gauge("units.gauge.add", Some("queue depth"), Some("{item}")).add(2.0, None);
+    histogram("units.histogram", Some("request latency"), Some("ms")).record(12.0, None);
+    provider.force_flush().expect("flush must export");
+
+    assert_eq!(
+        exported_named(&exported, "units.counter"),
+        vec![meta("units.counter", "requests served", "{request}")]
+    );
+    assert_eq!(
+        exported_named(&exported, "units.gauge"),
+        vec![meta("units.gauge", "pool utilisation", "1")]
+    );
+    assert_eq!(
+        exported_named(&exported, "units.gauge.add"),
+        vec![meta("units.gauge.add", "queue depth", "{item}")]
+    );
+    assert_eq!(
+        exported_named(&exported, "units.histogram"),
+        vec![meta("units.histogram", "request latency", "ms")]
+    );
+    reset_telemetry_state();
+}
+
+#[test]
+fn instruments_without_unit_or_description_export_them_empty() {
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
+    let (provider, exported) = install_capturing_provider();
+
+    counter("bare.counter", None, None).add(1.0, None);
+    gauge("bare.gauge", None, None).set(1.0, None);
+    histogram("bare.histogram", None, None).record(1.0, None);
+    provider.force_flush().expect("flush must export");
+
+    for name in ["bare.counter", "bare.gauge", "bare.histogram"] {
+        assert_eq!(exported_named(&exported, name), vec![meta(name, "", "")]);
+    }
+    reset_telemetry_state();
+}
+
+#[test]
+fn first_recorded_unit_and_description_win_for_a_name() {
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
+    let (provider, exported) = install_capturing_provider();
+
+    counter("dup.counter", Some("first"), Some("ms")).add(1.0, None);
+    counter("dup.counter", Some("second"), Some("s")).add(1.0, None);
+    gauge("dup.gauge", Some("first"), Some("ms")).set(1.0, None);
+    gauge("dup.gauge", Some("second"), Some("s")).set(2.0, None);
+    histogram("dup.histogram", Some("first"), Some("ms")).record(1.0, None);
+    histogram("dup.histogram", None, None).record(2.0, None);
+    provider.force_flush().expect("flush must export");
+
+    for name in ["dup.counter", "dup.gauge", "dup.histogram"] {
+        assert_eq!(
+            exported_named(&exported, name),
+            vec![meta(name, "first", "ms")],
+            "a second registration must reuse the first instrument, not add a stream"
+        );
+    }
+    reset_telemetry_state();
 }

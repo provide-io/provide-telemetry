@@ -229,11 +229,13 @@ What to expect on the Prometheus side:
   `http_request_duration_milliseconds_bucket`, `_sum` and `_count`.
 - Prometheus rejects delta temporality by default. The SDKs export cumulative
   metrics, which is what it expects.
-- Units currently reach Prometheus from Python, TypeScript, Go and C#. Rust
-  drops the unit it is given, so its names carry no unit suffix. Python and
-  TypeScript gauges are sent as non-monotonic sums, so a gauge with unit `1`
-  does not gain `_ratio` there. These are tracked as `known_divergences` in
-  `spec/telemetry-api.yaml`.
+- Units reach Prometheus from every SDK. In Rust the first
+  `counter()`/`gauge()`/`histogram()` to record under a name fixes its unit and
+  description until teardown; a later one with the same name and a different
+  unit reuses the first instrument rather than exporting a second stream.
+  Python and TypeScript gauges are sent as non-monotonic sums, so a gauge with
+  unit `1` does not gain `_ratio` there. This is tracked as a
+  `known_divergences` entry in `spec/telemetry-api.yaml`.
 
 For a Prometheus that requires TLS or basic auth (its `--web.config.file`),
 use the standard OTLP variables:

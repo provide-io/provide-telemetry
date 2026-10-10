@@ -240,59 +240,118 @@ fn attrs_to_kvs(attrs: Option<&BTreeMap<String, String>>) -> Vec<KeyValue> {
 }
 
 /// Get-or-create an OTel Counter<f64> by name (cached).
-fn get_or_create_counter(name: &str) -> Counter<f64> {
+///
+/// The cache is keyed by name alone, so the first call for a name since the
+/// provider was installed fixes the instrument's unit and description. A later
+/// call naming the same instrument with a different unit or description gets
+/// the cached instrument and its original metadata; the new values are
+/// ignored. OTel identifies an instrument by name, kind, unit and description,
+/// so creating a second one would export two streams under one name, which
+/// backends such as Prometheus reject or collide. The same rule applies to
+/// gauges and histograms. A teardown clears the caches.
+fn get_or_create_counter(
+    name: &str,
+    description: Option<&str>,
+    unit: Option<&str>,
+) -> Counter<f64> {
     let map = COUNTERS.get_or_init(empty_counter_cache_mutex);
     let mut guard = crate::_lock::lock(map);
     if let Some(c) = guard.get(name).cloned() {
         return c.clone();
     }
     let meter = global::meter(METER_NAME);
-    let counter = meter.f64_counter(name.to_string()).build();
+    let mut builder = meter.f64_counter(name.to_string());
+    if let Some(description) = description {
+        builder = builder.with_description(description.to_string());
+    }
+    if let Some(unit) = unit {
+        builder = builder.with_unit(unit.to_string());
+    }
+    let counter = builder.build();
     guard.insert(name.to_string(), counter.clone());
     counter
 }
 
-fn get_or_create_gauge(name: &str) -> Gauge<f64> {
+fn get_or_create_gauge(name: &str, description: Option<&str>, unit: Option<&str>) -> Gauge<f64> {
     let map = GAUGES.get_or_init(empty_gauge_cache_mutex);
     let mut guard = crate::_lock::lock(map);
     if let Some(g) = guard.get(name).cloned() {
         return g.clone();
     }
     let meter = global::meter(METER_NAME);
-    let gauge = meter.f64_gauge(name.to_string()).build();
+    let mut builder = meter.f64_gauge(name.to_string());
+    if let Some(description) = description {
+        builder = builder.with_description(description.to_string());
+    }
+    if let Some(unit) = unit {
+        builder = builder.with_unit(unit.to_string());
+    }
+    let gauge = builder.build();
     guard.insert(name.to_string(), gauge.clone());
     gauge
 }
 
-fn get_or_create_histogram(name: &str) -> Histogram<f64> {
+fn get_or_create_histogram(
+    name: &str,
+    description: Option<&str>,
+    unit: Option<&str>,
+) -> Histogram<f64> {
     let map = HISTOGRAMS.get_or_init(empty_histogram_cache_mutex);
     let mut guard = crate::_lock::lock(map);
     if let Some(h) = guard.get(name).cloned() {
         return h.clone();
     }
     let meter = global::meter(METER_NAME);
-    let histogram = meter.f64_histogram(name.to_string()).build();
+    let mut builder = meter.f64_histogram(name.to_string());
+    if let Some(description) = description {
+        builder = builder.with_description(description.to_string());
+    }
+    if let Some(unit) = unit {
+        builder = builder.with_unit(unit.to_string());
+    }
+    let histogram = builder.build();
     guard.insert(name.to_string(), histogram.clone());
     histogram
+}
+
+/// Name, description and unit of a facade instrument, as passed to
+/// `metrics::counter()`/`gauge()`/`histogram()`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct InstrumentMeta<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) description: Option<&'a str>,
+    pub(crate) unit: Option<&'a str>,
 }
 
 /// Hot-path emission helpers. Called from metrics.rs after the
 /// existing consent / sampling / backpressure gates have approved
 /// the operation. No-op when no MeterProvider is installed (the
 /// global default returns a noop meter that swallows the write).
-pub(crate) fn record_counter_add(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
+pub(crate) fn record_counter_add(
+    meta: InstrumentMeta<'_>,
+    value: f64,
+    attrs: Option<&BTreeMap<String, String>>,
+) {
     let kvs = attrs_to_kvs(attrs);
-    get_or_create_counter(name).add(value, &kvs);
+    get_or_create_counter(meta.name, meta.description, meta.unit).add(value, &kvs);
 }
 
-pub(crate) fn record_gauge_set(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
+pub(crate) fn record_gauge_set(
+    meta: InstrumentMeta<'_>,
+    value: f64,
+    attrs: Option<&BTreeMap<String, String>>,
+) {
     let kvs = attrs_to_kvs(attrs);
-    get_or_create_gauge(name).record(value, &kvs);
+    get_or_create_gauge(meta.name, meta.description, meta.unit).record(value, &kvs);
 }
 
-pub(crate) fn record_histogram(name: &str, value: f64, attrs: Option<&BTreeMap<String, String>>) {
+pub(crate) fn record_histogram(
+    meta: InstrumentMeta<'_>,
+    value: f64,
+    attrs: Option<&BTreeMap<String, String>>,
+) {
     let kvs = attrs_to_kvs(attrs);
-    get_or_create_histogram(name).record(value, &kvs);
+    get_or_create_histogram(meta.name, meta.description, meta.unit).record(value, &kvs);
 }
 
 #[cfg(test)]

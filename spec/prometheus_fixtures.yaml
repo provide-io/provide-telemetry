@@ -290,10 +290,6 @@ push_ingestion:
       "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"
     typescript:
       "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"
-    rust:
-      "{escaped}_request_duration_milliseconds_count": "{escaped}_request_duration_count"
-      "{escaped}_request_duration_milliseconds_sum": "{escaped}_request_duration_sum"
-      "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"
   # Secured push modes a language cannot complete today with the standard OTel
   # variables (OTEL_EXPORTER_OTLP_METRICS_HEADERS for basic auth,
   # OTEL_EXPORTER_OTLP_CERTIFICATE / _METRICS_CERTIFICATE for a private CA).
