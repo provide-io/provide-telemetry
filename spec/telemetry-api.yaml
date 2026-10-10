@@ -541,52 +541,52 @@ config_defaults:
       type: str
       default: "otlp"
       description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader."
-      applicability: [go]
+      applicability: [python, go]
     - env: OTEL_EXPORTER_PROMETHEUS_HOST
       type: str
       default: "127.0.0.1"
       description: "Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup."
-      applicability: [go]
+      applicability: [python, go]
     - env: OTEL_EXPORTER_PROMETHEUS_PORT
       type: int
       default: "9464"
       description: "Tier 3 bind port."
-      applicability: [go]
+      applicability: [python, go]
     - env: PROVIDE_METRICS_PROMETHEUS_LISTEN
       type: str
       default: "false"
       description: "Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER)."
-      applicability: [go]
+      applicability: [python, go]
     - env: PROVIDE_METRICS_PROMETHEUS_PATH
       type: str
       default: "/metrics"
       description: "Tier 3 path. Ignored by Tier 2, where the host picks the mount path."
-      applicability: [go]
+      applicability: [python, go]
     - env: PROVIDE_METRICS_PROMETHEUS_TRANSLATION
       type: str
       default: "UnderscoreEscapingWithSuffixes"
       description: "Metric and label name translation strategy; one of translation.strategies."
-      applicability: [go]
+      applicability: [python, go]
     - env: PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS
       type: bool
       default: "false"
       description: "Add otel_scope_name / otel_scope_version labels to every series."
-      applicability: [go]
+      applicability: [python, go]
     - env: PROVIDE_METRICS_PROMETHEUS_TARGET_INFO
       type: bool
       default: "true"
       description: "Emit the target_info series carrying resource attributes."
-      applicability: [go]
+      applicability: [python, go]
     - env: PROVIDE_METRICS_HEALTH_OTLP
       type: bool
       default: "false"
       description: "Also export the health metrics over OTLP as observable instruments."
-      applicability: [go]
+      applicability: [python, go]
     - env: PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG
       type: str
       default: ""
       description: "Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth."
-      applicability: [go]
+      applicability: [python, go]
 
   otlp:
     - env: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -1210,7 +1210,7 @@ prometheus_metrics:
       - "Histogram series append _bucket, _sum and _count to the translated name."
       - "The two NoUTF8/NoTranslation strategies emit UTF-8 names only to a scraper that negotiates them; any other scrape gets UnderscoreEscaping output with the same suffix choice."
     known_divergences:
-      - "gauge: Python and TypeScript currently back gauge() with an OTel UpDownCounter, while Go, Rust and C# use an OTel Gauge. The contract is gauge semantics (unit 1 becomes _ratio under the WithSuffixes strategies). Python and TypeScript must align before they ship the prometheus capability."
+      - "gauge: TypeScript currently backs gauge() with an OTel UpDownCounter, while the other SDKs use an OTel Gauge. The contract is gauge semantics (unit 1 becomes _ratio under the WithSuffixes strategies). TypeScript must align before it ships the prometheus capability."
 
   handler:
     - "GET (and HEAD) only; other methods return 405."

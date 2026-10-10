@@ -51,6 +51,11 @@ _PROBE_VALUES = (
     "http://probe.invalid:4318",
     "probe-module=DEBUG",  # module-level overrides: name=<valid level>
     "probe-key=probe-value",
+    # Valid values for the Prometheus enums, which reject everything above.
+    "prometheus",
+    "auto",
+    "/probe-path",
+    "UnderscoreEscapingWithoutSuffixes",
 )
 
 # Environment prefixes the config reads. Everything under them is cleared so a

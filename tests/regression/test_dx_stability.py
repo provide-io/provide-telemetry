@@ -203,7 +203,7 @@ class TestMetricCreationLogging:
         from provide.telemetry.metrics.api import gauge
 
         broken_meter = MagicMock()
-        broken_meter.create_up_down_counter.side_effect = TypeError("bad gauge")
+        broken_meter.create_gauge.side_effect = TypeError("bad gauge")
 
         with (
             patch("provide.telemetry.metrics.api.get_meter", return_value=broken_meter),

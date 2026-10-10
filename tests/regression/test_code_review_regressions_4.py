@@ -381,11 +381,11 @@ class TestReconfigureUsesLockedAccessors:
         assert called.get("meter") is True
 
 
-# ── Issue 6: Gauge.set() delta is computed and sent atomically ────────
+# ── Issue 6: Gauge state and the OTel write happen atomically ────────
 
 
 class TestGaugeDeltaAtomicity:
-    def test_gauge_set_calls_otel_add_with_correct_delta(self) -> None:
+    def test_gauge_set_calls_otel_set_with_absolute_value(self) -> None:
         from unittest.mock import MagicMock
 
         from provide.telemetry.metrics.fallback import Gauge
@@ -393,11 +393,12 @@ class TestGaugeDeltaAtomicity:
         mock_otel = MagicMock()
         g = Gauge("test.gauge", otel_gauge=mock_otel)
         g.set(10)
-        mock_otel.add.assert_called_once_with(10, {})
+        mock_otel.set.assert_called_once_with(10, {})
         g.set(7)
-        mock_otel.add.assert_called_with(-3, {})
+        mock_otel.set.assert_called_with(7, {})
+        assert g.value == 7
 
-    def test_gauge_add_calls_otel_add_under_lock(self) -> None:
+    def test_gauge_add_calls_otel_set_under_lock(self) -> None:
         from unittest.mock import MagicMock
 
         from provide.telemetry.metrics.fallback import Gauge
@@ -405,18 +406,18 @@ class TestGaugeDeltaAtomicity:
         mock_otel = MagicMock()
         g = Gauge("test.gauge.add", otel_gauge=mock_otel)
         g.add(5)
-        mock_otel.add.assert_called_once_with(5, {})
+        mock_otel.set.assert_called_once_with(5, {})
 
     def test_gauge_set_otel_call_inside_lock_prevents_drift(self) -> None:
-        """Concurrent set() calls produce consistent total delta (no phantom drift)."""
+        """Concurrent set() calls leave the last OTel write equal to the stored value (no drift)."""
         import threading
         from unittest.mock import MagicMock
 
         from provide.telemetry.metrics.fallback import Gauge
 
-        add_calls: list[int] = []
+        set_calls: list[int] = []
         mock_otel = MagicMock()
-        mock_otel.add.side_effect = lambda delta, attrs: add_calls.append(delta)
+        mock_otel.set.side_effect = lambda value, attrs: set_calls.append(value)
 
         g = Gauge("test.concurrent", otel_gauge=mock_otel)
         g.set(100)
@@ -438,6 +439,7 @@ class TestGaugeDeltaAtomicity:
         t1.join()
         t2.join()
 
-        # Total of all deltas must equal final value - initial (100)
-        total_delta = sum(add_calls)
-        assert total_delta == g.value - 0  # started from 0 before initial set(100)
+        # The OTel write happens under the same lock as the state update, so the
+        # last value written is the value the gauge holds.
+        assert set_calls[-1] == g.value
+        assert g.value in (50, 200)

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -63,7 +63,7 @@ def test_metric_wrappers_with_meter(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_gauge = Mock()
     mock_hist = Mock()
     mock_meter.create_counter.return_value = mock_counter
-    mock_meter.create_up_down_counter.return_value = mock_gauge
+    mock_meter.create_gauge.return_value = mock_gauge
     mock_meter.create_histogram.return_value = mock_hist
     _set_meter_for_test(mock_meter)
     monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() requires non-None provider
@@ -83,7 +83,7 @@ def test_metric_wrappers_with_meter(monkeypatch: pytest.MonkeyPatch) -> None:
     g.add(-1)
     h.record(2.0)
     assert mock_counter.add.call_count == 2
-    assert mock_gauge.add.call_count == 2
+    assert mock_gauge.set.call_count == 2
     assert mock_hist.record.call_count == 2
     assert c.value == 2
     assert g.value == -2
@@ -91,21 +91,19 @@ def test_metric_wrappers_with_meter(monkeypatch: pytest.MonkeyPatch) -> None:
     assert h.total == 3.0
     mock_counter.add.assert_any_call(1, {"k": "v"})
     mock_counter.add.assert_any_call(1, {})
-    mock_gauge.add.assert_any_call(-1, {"k": "v"})
-    mock_gauge.add.assert_any_call(-1, {})
+    # The OTel instrument is a synchronous Gauge: add() reports each attribute
+    # set's new absolute value.
+    mock_gauge.set.assert_any_call(-1, {"k": "v"})
+    mock_gauge.set.assert_any_call(-1, {})
     mock_hist.record.assert_any_call(1.0, {"k": "v"})
     mock_hist.record.assert_any_call(2.0, {})
 
 
-def test_gauge_set_per_attribute_delta(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Gauge.set() must compute delta against per-attribute state, not a global scalar.
-
-    Bug: without per-attr tracking, g.set(50, B) after g.set(100, A) computes
-    delta = 50-100 = -50 and sends add(-50, B) to OTel instead of add(+50, B).
-    """
+def test_gauge_set_per_attribute_absolute(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gauge.set() reports each attribute set's absolute value; value sums across sets."""
     mock_meter = Mock()
     mock_otel_gauge = Mock()
-    mock_meter.create_up_down_counter.return_value = mock_otel_gauge
+    mock_meter.create_gauge.return_value = mock_otel_gauge
     _set_meter_for_test(mock_meter)
     monkeypatch.setattr(provider_mod, "_meter_provider", True)
     monkeypatch.setattr(provider_mod, "_load_otel_metrics_api", lambda: SimpleNamespace())
@@ -115,19 +113,18 @@ def test_gauge_set_per_attribute_delta(monkeypatch: pytest.MonkeyPatch) -> None:
     g.set(50, {"container": "B"})
     g.set(200, {"container": "A"})
 
-    # First call: A goes from 0→100, delta=+100
-    mock_otel_gauge.add.assert_any_call(100, {"container": "A"})
-    # Second call: B goes from 0→50, delta=+50 (was -50 before fix)
-    mock_otel_gauge.add.assert_any_call(50, {"container": "B"})
-    # Third call: A goes from 100→200, delta=+100
-    mock_otel_gauge.add.assert_any_call(100, {"container": "A"})
-    assert g.value == 250  # deltas: +100 (A) + 50 (B) + 100 (A update) = 250
+    assert mock_otel_gauge.set.call_args_list == [
+        call(100, {"container": "A"}),
+        call(50, {"container": "B"}),
+        call(200, {"container": "A"}),
+    ]
+    assert g.value == 250  # A is now 200 and B is 50
 
 
 def test_metric_wrapper_exceptions_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_meter = Mock()
     mock_meter.create_counter.side_effect = RuntimeError("boom")
-    mock_meter.create_up_down_counter.side_effect = RuntimeError("boom")
+    mock_meter.create_gauge.side_effect = RuntimeError("boom")
     mock_meter.create_histogram.side_effect = RuntimeError("boom")
     _set_meter_for_test(mock_meter)
     monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() uses cache with mock meter
@@ -143,7 +140,7 @@ def test_metric_factory_calls_expected_meter_methods(monkeypatch: pytest.MonkeyP
     mock_gauge = Mock()
     mock_hist = Mock()
     mock_meter.create_counter.return_value = mock_counter
-    mock_meter.create_up_down_counter.return_value = mock_gauge
+    mock_meter.create_gauge.return_value = mock_gauge
     mock_meter.create_histogram.return_value = mock_hist
     _set_meter_for_test(mock_meter)
     monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() requires non-None provider
@@ -154,7 +151,7 @@ def test_metric_factory_calls_expected_meter_methods(monkeypatch: pytest.MonkeyP
     histogram("hh", "desc3", "s")
 
     mock_meter.create_counter.assert_called_once_with(name="ctr", description="desc", unit="ms")
-    mock_meter.create_up_down_counter.assert_called_once_with(name="gg", description="desc2", unit="1")
+    mock_meter.create_gauge.assert_called_once_with(name="gg", description="desc2", unit="1")
     mock_meter.create_histogram.assert_called_once_with(name="hh", description="desc3", unit="s")
 
 
@@ -379,7 +376,7 @@ def test_get_meter_caches_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_metric_factories_default_description_and_unit(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_meter = Mock()
     mock_meter.create_counter.return_value = Mock()
-    mock_meter.create_up_down_counter.return_value = Mock()
+    mock_meter.create_gauge.return_value = Mock()
     mock_meter.create_histogram.return_value = Mock()
     _set_meter_for_test(mock_meter)
     monkeypatch.setattr(provider_mod, "_meter_provider", True)  # gate: get_meter() requires non-None provider
@@ -397,14 +394,14 @@ def test_metric_factories_default_description_and_unit(monkeypatch: pytest.Monke
     # 3.6's function trampoline nulls out (it broke the baseline "collect stats").
     # get_meter()'s name=None default is covered by test_get_meter_caches_by_name.
     mock_meter.create_counter.assert_called_once_with(name="ctr", description="", unit="")
-    mock_meter.create_up_down_counter.assert_called_once_with(name="gg", description="", unit="")
+    mock_meter.create_gauge.assert_called_once_with(name="gg", description="", unit="")
     mock_meter.create_histogram.assert_called_once_with(name="hh", description="", unit="")
 
 
 def test_metric_exception_fallback_preserves_name() -> None:
     meter = Mock()
     meter.create_counter.side_effect = RuntimeError("x")
-    meter.create_up_down_counter.side_effect = RuntimeError("x")
+    meter.create_gauge.side_effect = RuntimeError("x")
     meter.create_histogram.side_effect = RuntimeError("x")
     _set_meter_for_test(meter)
     assert counter("c").name == "c"

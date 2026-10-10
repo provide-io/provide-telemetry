@@ -186,7 +186,14 @@ class TestOtelDelegationArgs:
         otel_gauge = Mock()
         g = Gauge("g", otel_gauge=otel_gauge)
         g.add(5, {"region": "us"})
-        otel_gauge.add.assert_called_once_with(5, {"region": "us"})
+        g.add(2, {"region": "us"})
+        g.add(4, {"region": "eu"})
+        assert otel_gauge.set.call_args_list == [
+            ((5, {"region": "us"}),),
+            ((7, {"region": "us"}),),
+            ((4, {"region": "eu"}),),
+        ]
+        assert g.value == 11
 
     def test_histogram_otel_record_receives_exact_value_and_attrs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(fallback_mod, "get_trace_id", lambda: None)
@@ -256,12 +263,13 @@ class TestGaugeSet:
         assert g.value == 7
 
     def test_gauge_set_with_otel(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Gauge.set() with OTel forwards delta to otel_gauge.add."""
+        """Gauge.set() with OTel forwards the absolute value to otel_gauge.set."""
         otel_gauge = Mock()
         g = Gauge("g", otel_gauge=otel_gauge)
         g.set(10)
         assert g.value == 10
-        otel_gauge.add.assert_called_with(10, {})
+        otel_gauge.set.assert_called_with(10, {})
+        otel_gauge.add.assert_not_called()
 
     def test_gauge_set_evicts_oldest_when_attr_values_exceed_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When _attr_values exceeds _ATTR_VALUES_MAX, oldest half is evicted."""

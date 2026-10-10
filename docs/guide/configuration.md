@@ -233,8 +233,8 @@ What to expect on the Prometheus side:
   `counter()`/`gauge()`/`histogram()` to record under a name fixes its unit and
   description until teardown; a later one with the same name and a different
   unit reuses the first instrument rather than exporting a second stream.
-  Python and TypeScript gauges are sent as non-monotonic sums, so a gauge with
-  unit `1` does not gain `_ratio` there. This is tracked as a
+  TypeScript gauges are sent as non-monotonic sums, so a gauge with unit `1`
+  does not gain `_ratio` there. This is tracked as a
   `known_divergences` entry in `spec/telemetry-api.yaml`.
 
 For a Prometheus that requires TLS or basic auth (its `--web.config.file`),

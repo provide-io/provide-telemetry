@@ -38,7 +38,7 @@ def gauge(name: str, description: str | None = None, unit: str | None = None) ->
     meter = get_meter()
     if meter is not None:
         try:
-            return Gauge(name, meter.create_up_down_counter(name=name, description=desc, unit=metric_unit))
+            return Gauge(name, meter.create_gauge(name=name, description=desc, unit=metric_unit))
         except Exception:
             _logger.warning(
                 "metrics.gauge.create_failed", exc_info=True

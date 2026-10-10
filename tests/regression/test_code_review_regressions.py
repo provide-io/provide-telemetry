@@ -301,16 +301,16 @@ class TestGaugeSetMethod:
         g.set(10)
         assert released == [sentinel]
 
-    def test_gauge_set_with_otel_sends_delta(self) -> None:
-        """Gauge.set sends the delta to the OTel UpDownCounter."""
+    def test_gauge_set_with_otel_sends_absolute_value(self) -> None:
+        """Gauge.set sends the absolute value to the OTel Gauge."""
         from unittest.mock import Mock
 
         mock_otel = Mock()
         g = Gauge("test.gauge", otel_gauge=mock_otel)
         g.set(50)
-        mock_otel.add.assert_called_once_with(50, {})
+        mock_otel.set.assert_called_once_with(50, {})
         g.set(75)
-        mock_otel.add.assert_called_with(25, {})  # delta = 75 - 50
+        mock_otel.set.assert_called_with(75, {})
 
 
 # ── Issue #8: env var parsing gives descriptive errors ────────────────
