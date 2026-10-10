@@ -9,6 +9,7 @@
 
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
+import type { HealthSnapshot } from '../../src/health.js';
 import { specFixturePath } from './spec-fixtures.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -34,4 +35,20 @@ export function withEnv<T>(vars: Record<string, string>, fn: () => T): T {
     for (const key of Object.keys(process.env)) delete process.env[key];
     Object.assign(process.env, saved);
   }
+}
+
+/** Turn a fixture snapshot (snake_case, per spec) into this SDK's HealthSnapshot. */
+export function snapshotFrom(values: Record<string, unknown>): HealthSnapshot {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values)) {
+    const match = /^(emitted|dropped)_(logs|traces|metrics)$/.exec(key);
+    if (match) {
+      out[
+        `${match[2]}${(match[1] as string).charAt(0).toUpperCase()}${(match[1] as string).slice(1)}`
+      ] = value;
+      continue;
+    }
+    out[key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())] = value;
+  }
+  return out as unknown as HealthSnapshot;
 }

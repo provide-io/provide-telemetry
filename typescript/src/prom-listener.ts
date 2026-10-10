@@ -157,16 +157,14 @@ export class WebSecurity {
   /** Whether an Authorization header satisfies basic auth (always, with no users). */
   async authorized(header: string | undefined): Promise<boolean> {
     if (this.users.size === 0) return true;
-    const value = header ?? '';
-    const space = value.indexOf(' ');
-    const scheme = space < 0 ? value : value.slice(0, space);
-    if (scheme.toLowerCase() !== 'basic') return false;
-    const encoded = space < 0 ? '' : value.slice(space + 1);
-    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded) || encoded.length % 4 !== 0) return false;
-    const decoded = Buffer.from(encoded, 'base64');
+    // Strict base64, padding included, as Python's b64decode(validate=True).
+    const match = /^basic ([A-Za-z0-9+/]*={0,2})$/i.exec(header ?? '');
+    if (match === null || (match[1] as string).length % 4 !== 0) return false;
     let text: string;
     try {
-      text = new TextDecoder('utf-8', { fatal: true }).decode(decoded);
+      text = new TextDecoder('utf-8', { fatal: true }).decode(
+        Buffer.from(match[1] as string, 'base64'),
+      );
     } catch {
       return false;
     }
@@ -199,7 +197,7 @@ export async function loadWebConfig(path: string): Promise<WebSecurity> {
   } catch (err) {
     throw new WebConfigError(`web config ${path}: ${errorText(err)}`);
   }
-  if (data === null || data === undefined) return new WebSecurity();
+  if (data === null) return new WebSecurity(); // an empty file
   if (!isMapping(data) || Object.keys(data).some((k) => !TOP_KEYS.includes(k))) {
     throw new WebConfigError(`web config ${path}: only ${TOP_KEYS.join(', ')} are supported`);
   }
@@ -335,18 +333,14 @@ function watchCertificates(server: HttpsServer, tls: TlsReloader): void {
     const offered = Object.keys(socket.getPeerCertificate()).length > 0;
     if (offered && !socket.authorized) socket.destroy();
   });
-  server.on('tlsClientError', () => {
-    // A failed handshake or a dropped client is not worth a stack trace.
-  });
 }
 
 function listen(server: ListenerServer, host: string, port: number): Promise<void> {
   return new Promise((done, fail) => {
+    // Left attached once listening: a later server error then has a listener
+    // and is ignored, instead of crashing the host.
     server.once('error', fail);
-    server.listen(port, host, () => {
-      server.off('error', fail);
-      done();
-    });
+    server.listen(port, host, () => done());
   });
 }
 

@@ -7,12 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { must } from './support/must.js';
 import * as sdkMetrics from '@opentelemetry/sdk-metrics';
 import { TelemetryError } from '../src/exceptions.js';
-import {
-  _resetHealthForTests,
-  getHealthSnapshot,
-  setSetupError,
-  type HealthSnapshot,
-} from '../src/health.js';
+import { _resetHealthForTests, getHealthSnapshot, setSetupError } from '../src/health.js';
 import {
   _resetPullForTests,
   COLLECTION_FAILED,
@@ -36,7 +31,7 @@ import {
   type SdkMetricsModule,
 } from '../src/prom-pull.js';
 import { CONTENT_TYPE_TEXT, CONTENT_TYPE_UTF8 } from '../src/prom-render.js';
-import { promFixtures } from './support/prometheus-fixtures.js';
+import { promFixtures, snapshotFrom } from './support/prometheus-fixtures.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const DEFAULT_OPTIONS = {
@@ -71,20 +66,6 @@ const APP_REQUESTS = {
     },
   ],
 };
-
-/** Turn a fixture snapshot (snake_case, per spec) into this SDK's HealthSnapshot. */
-function snapshotFrom(values: Record<string, any>): HealthSnapshot {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values)) {
-    const match = /^(emitted|dropped)_(logs|traces|metrics)$/.exec(key);
-    if (match) {
-      out[`${match[2]}${must(match[1]).charAt(0).toUpperCase()}${must(match[1]).slice(1)}`] = value;
-      continue;
-    }
-    out[key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())] = value;
-  }
-  return out as unknown as HealthSnapshot;
-}
 
 beforeEach(() => {
   _resetPullForTests();

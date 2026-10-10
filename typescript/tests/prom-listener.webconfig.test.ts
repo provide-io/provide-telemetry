@@ -76,6 +76,14 @@ describe('web config validation', () => {
     ['42', ': only basic_auth_users, tls_server_config are supported'],
     [{ http_server_config: {} }, ': only basic_auth_users, tls_server_config are supported'],
     [
+      { basic_auth_users: {}, http_server_config: {} },
+      ': only basic_auth_users, tls_server_config are supported',
+    ],
+    [
+      { tls_server_config: { cert_file: '{cert}', key_file: '{key}', http2: true } },
+      'tls_server_config: only',
+    ],
+    [
       { tls_server_config: 'x' },
       'tls_server_config: only cert_file, client_auth_type, client_ca_file, key_file, min_version are supported',
     ],
@@ -276,6 +284,40 @@ describe('basic auth', () => {
       await security.authorized(`basic ${Buffer.from(`e2e:${PASSWORD}`).toString('base64')}`),
     ).toBe(true);
     expect(await security.authorized(`BASIC ${basic('e2e', PASSWORD).slice(6)}`)).toBe(true);
+  });
+
+  it('parses the header exactly: scheme, strict base64 with padding, UTF-8, the first colon', async () => {
+    const b64 = (bytes: Buffer | string): string => Buffer.from(bytes).toString('base64');
+    const security = new WebSecurity(
+      new Map([
+        ['e2e', hashed],
+        ['', bcrypt.hashSync(PASSWORD, 4)],
+        ['nocolon', bcrypt.hashSync('nocolonX', 4)],
+        ['bad', bcrypt.hashSync('\uFFFD', 4)],
+      ]),
+      undefined,
+      bcrypt,
+    );
+    const good = b64(`e2e:${PASSWORD}`); // 26 bytes, so one '=' of padding
+    expect(good.endsWith('=')).toBe(true);
+    const ok = new WebSecurity(new Map([['e2e', hashed]]), undefined, bcrypt);
+    expect(await ok.authorized(`Basic ${good}`)).toBe(true);
+    expect(await ok.authorized(`Basic ${good.replace(/=+$/, '')}`)).toBe(false); // unpadded
+    expect(await ok.authorized(`Basic ${good}!`)).toBe(false); // trailing junk
+    expect(await ok.authorized(`XBasic ${good}`)).toBe(false); // scheme prefix
+    expect(await ok.authorized(`Basic  ${good}`)).toBe(false); // two spaces
+    expect(await ok.authorized(`bAsIc ${good}`)).toBe(true); // scheme is case-insensitive
+    // An empty user name is a user name.
+    expect(await security.authorized(basic('', PASSWORD))).toBe(true);
+    // No colon: not user "nocolon" with password "nocolonX".
+    expect(await security.authorized(`Basic ${b64('nocolonX')}`)).toBe(false);
+    // Invalid UTF-8 is refused, not decoded with replacement characters.
+    expect(
+      await security.authorized(
+        `Basic ${b64(Buffer.concat([Buffer.from('bad:'), Buffer.from([0xff])]))}`,
+      ),
+    ).toBe(false);
+    expect(await security.authorized(basic('bad', '\uFFFD'))).toBe(true);
   });
 
   it('a password containing a colon splits at the first one', async () => {

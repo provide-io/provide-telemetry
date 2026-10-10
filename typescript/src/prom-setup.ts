@@ -31,14 +31,14 @@ export interface ListenerModule {
 }
 
 // Relative to otel-dynimport.js, which sits beside prom-listener.js in dist/.
-const LISTENER_MODULE = './prom-listener.js';
+const realLoader = (): Promise<ListenerModule> => dynImportOtel('./prom-listener.js');
 
 let loaded: ListenerModule | undefined;
-let loader: () => Promise<ListenerModule> = () => dynImportOtel(LISTENER_MODULE);
+let loader: () => Promise<ListenerModule> = realLoader;
 
 /** Replace the listener loader (tests), or restore the real one. */
 export function _setListenerLoaderForTests(next?: () => Promise<ListenerModule>): void {
-  loader = next ?? (() => dynImportOtel(LISTENER_MODULE));
+  loader = next ?? realLoader;
   loaded = undefined;
 }
 
