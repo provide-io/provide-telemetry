@@ -21,6 +21,7 @@ import { _resetRootLogger } from './logger.js';
 import { _resetOtelLogProviderForTests } from './otel-logs.js';
 import { _resetTraceContext } from './tracing.js';
 import { _resetRuntimeForTests } from './runtime.js';
+import { _resetPullForTests } from './prom-pull.js';
 
 function resetInstalledOtelGlobalsForTests(): void {
   trace.disable();
@@ -44,6 +45,7 @@ export function resetTelemetryState(): void {
   _resetRootLogger();
   _resetOtelLogProviderForTests();
   _resetRuntimeForTests();
+  _resetPullForTests();
 }
 
 /** Clear manual trace context (traceId / spanId set via setTraceContext). */

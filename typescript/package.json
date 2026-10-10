@@ -37,6 +37,10 @@
       "browser": "./dist/otel-noop.js",
       "default": "./dist/otel.js"
     },
+    "./prometheus": {
+      "types": "./dist/prometheus.d.ts",
+      "import": "./dist/prometheus.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
@@ -81,7 +85,9 @@
     "@opentelemetry/sdk-logs": "^0.221.0",
     "@opentelemetry/sdk-metrics": "^2.9.0",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
-    "react": ">=18"
+    "bcryptjs": "^3.0.3",
+    "react": ">=18",
+    "yaml": "^2.8.3"
   },
   "peerDependenciesMeta": {
     "@opentelemetry/api-logs": {
@@ -111,6 +117,12 @@
     "@opentelemetry/sdk-trace-base": {
       "optional": true
     },
+    "bcryptjs": {
+      "optional": true
+    },
+    "yaml": {
+      "optional": true
+    },
     "react": {
       "optional": true
     }
@@ -126,6 +138,7 @@
     "@opentelemetry/sdk-logs": "^0.221.0",
     "@opentelemetry/sdk-metrics": "^2.9.0",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
+    "@peculiar/x509": "^2.1.0",
     "@stryker-mutator/core": "^9.6.0",
     "@stryker-mutator/vitest-runner": "^9.6.0",
     "@testing-library/dom": "^10.4.1",
@@ -135,6 +148,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "^4.1.2",
     "bcryptjs": "^3.0.3",
+    "esbuild": "^0.28.1",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.0.0",
     "fast-check": "^4.6.0",
@@ -143,6 +157,7 @@
     "prettier": "^3.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "reflect-metadata": "^0.2.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.58.0",
