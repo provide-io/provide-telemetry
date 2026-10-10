@@ -24,7 +24,7 @@ import yaml
 from provide.telemetry import _otel as otel_helpers
 from provide.telemetry.config import MetricsConfig, PrometheusConfig, TelemetryConfig
 from provide.telemetry.exceptions import TelemetryError
-from provide.telemetry.health import HealthSnapshot
+from provide.telemetry.health import HealthSnapshot, get_health_snapshot
 from provide.telemetry.metrics import _prom_render as render
 from provide.telemetry.metrics import prometheus as prom
 from provide.telemetry.metrics import provider as provider_mod
@@ -126,7 +126,15 @@ def test_options_for_reads_the_prometheus_config() -> None:
             prometheus=PrometheusConfig(translation="NoTranslation", scope_labels=True, target_info=False)
         )
     )
-    assert prom.options_for(config) == render.RenderOptions("NoTranslation", scope_labels=True, target_info=False)
+    assert prom.options_for(config) == render.RenderOptions(
+        "NoTranslation", scope_labels=True, target_info=False, skip=prom.HEALTH_METRIC_NAMES
+    )
+
+
+def test_health_metric_names_are_the_collector_families() -> None:
+    families = prom.health_families(get_health_snapshot())
+    assert {f.name for f in families} == prom.HEALTH_METRIC_NAMES
+    assert len(families) == 10
 
 
 # ── health families ─────────────────────────────────────────────────────────
@@ -272,7 +280,7 @@ def test_setup_attaches_the_pull_reader_and_marks_ready(monkeypatch: pytest.Monk
     readers = provider_cls.call_args.kwargs["metric_readers"]
     assert len(readers) == 1 and isinstance(readers[0], _FakeBase)
     assert _status() == prom.READY
-    assert prom._serving == (readers[0], render.RenderOptions("NoTranslation"))
+    assert prom._serving == (readers[0], render.RenderOptions("NoTranslation", skip=prom.HEALTH_METRIC_NAMES))
     shutdown_metrics(timeout_seconds=0.1)
     assert _status() == prom.SHUT_DOWN
 

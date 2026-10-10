@@ -147,17 +147,20 @@ def test_listener_port_cases_are_in_range(fixtures: dict[str, Any]) -> None:
             assert 0 <= case["port"] <= 65535, case["id"]
 
 
-def test_planned_config_has_not_also_landed_in_config_defaults(spec: dict[str, Any], contract: dict[str, Any]) -> None:
-    """A key moves from planned_config to config_defaults; it must not be in both."""
+def test_push_tls_env_is_not_config(spec: dict[str, Any], contract: dict[str, Any]) -> None:
+    """The OTLP TLS variables are read by the exporter builders, not by config parsing."""
     landed = {entry["env"] for entries in spec["config_defaults"].values() for entry in entries}
-    planned = {entry["env"] for entry in contract["planned_config"]}
-    assert not planned & landed
+    tls_env = {entry["env"] for entry in contract["push_tls_env"]}
+    assert tls_env == {
+        "OTEL_EXPORTER_OTLP_CERTIFICATE",
+        "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE",
+        "OTEL_EXPORTER_OTLP_CLIENT_KEY",
+    }
+    assert not tls_env & landed
 
 
 def test_prometheus_config_defaults_match_the_contract(spec: dict[str, Any], contract: dict[str, Any]) -> None:
-    """Defaults live in planned_config or config_defaults depending on stage; check wherever they are."""
-    entries = [*contract["planned_config"], *(e for es in spec["config_defaults"].values() for e in es)]
-    defaults = {entry["env"]: entry["default"] for entry in entries}
+    defaults = {entry["env"]: entry["default"] for es in spec["config_defaults"].values() for entry in es}
     assert defaults["PROVIDE_METRICS_PROMETHEUS_TRANSLATION"] == contract["translation"]["default"]
     assert defaults["OTEL_EXPORTER_PROMETHEUS_HOST"] == "127.0.0.1"
     assert defaults["PROVIDE_METRICS_PROMETHEUS_LISTEN"] == "false"

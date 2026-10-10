@@ -1160,7 +1160,9 @@ prometheus_metrics:
   # PR that makes the first SDK parse them; config_defaults rejects an empty
   # applicability, so planned keys cannot live there yet. The Prometheus keys
   # moved with the Go implementation; see config_defaults.metrics.
-  planned_config:
+  # Read from the environment by each signal's OTLP exporter builder, not by
+  # config parsing (so they are not in config_defaults); push_security says how.
+  push_tls_env:
     - env: OTEL_EXPORTER_OTLP_CERTIFICATE
       type: str
       default: ""
@@ -1232,7 +1234,7 @@ prometheus_metrics:
     client_auth_type_values: [NoClientCert, RequireAndVerifyClientCert, VerifyClientCertIfGiven]
     min_version_values: [TLS12, TLS13]
     rules:
-      - "Fail closed: if the file is unreadable, malformed, names an unsupported key, or a referenced certificate or key cannot be loaded, the listener does not start, setup_error is recorded, and strict mode raises. It never falls back to plain HTTP or to no auth."
+      - "Fail closed: if the file is unreadable, malformed, names an unsupported key, or a referenced certificate or key cannot be loaded, the listener does not start, and setup_error is recorded and logged; setup itself does not fail. It never falls back to plain HTTP or to no auth."
       - "Relative paths in the file resolve against the file's directory."
       - "min_version defaults to TLS12. client_auth_type defaults to NoClientCert, or RequireAndVerifyClientCert when client_ca_file is set."
       - "Certificate and key files are re-read when their modification time changes, checked on each new connection, so rotation needs no restart."
@@ -1243,7 +1245,7 @@ prometheus_metrics:
   push_security:
     - "Headers: OTEL_EXPORTER_OTLP_HEADERS and the per-signal OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_HEADERS, per-signal winning, in every SDK."
     - "TLS: OTEL_EXPORTER_OTLP_CERTIFICATE, _CLIENT_CERTIFICATE and _CLIENT_KEY and their per-signal forms, per-signal winning, in every SDK."
-    - "A configured certificate or key that cannot be read leaves that signal's exporter uninstalled, records setup_error, and raises in strict mode. It is never silently ignored in favour of the system trust store."
+    - "A configured certificate or key that cannot be read or loaded (a CA file with no PEM certificates; a client certificate and key, both set, that do not form a pair) leaves that signal's OTLP exporter unbuilt, logs otlp.tls_file_unreadable, and records setup_error naming the variable and path (several joined with '; '); setup itself does not fail, and the other signals and the Prometheus pull reader are unaffected. It is never silently ignored in favour of the system trust store."
     - "Current gaps are recorded in spec/prometheus_fixtures.yaml push_ingestion.unsupported_modes and asserted by e2e/test_prometheus_push_e2e.py."
 
   temporality:
@@ -1257,6 +1259,11 @@ prometheus_metrics:
       strategy and are emitted unchanged. They bypass the MeterProvider unless
       PROVIDE_METRICS_HEALTH_OTLP is true; when both are on, the pull output
       carries only the collector's copy.
+    health_otlp:
+      - "With PROVIDE_METRICS_HEALTH_OTLP=true, setup registers one observable instrument per family below on the MeterProvider it installs (never on a host's), once per installed provider: named verbatim, no unit, no description; counter entries as observable counters, gauge entries as observable gauges."
+      - "Per-signal families report one observation per signal with the signal attribute; the globals report one observation with no attributes. Values come from a fresh health snapshot at each collection."
+      - "These observations describe the SDK, not user data: they are not consent-gated and do not count toward emitted_metrics."
+      - "The pull renderer leaves out any reader metric named like a health family, so each health family appears exactly once in a scrape whether or not the flag is set."
     circuit_state_values: {closed: 0, half-open: 1, open: 2}
     circuit_state_unknown_value: -1
     per_signal:
