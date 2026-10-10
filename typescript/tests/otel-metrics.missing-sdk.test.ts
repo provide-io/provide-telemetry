@@ -18,6 +18,8 @@ const { setupOtelMeterProvider } = await import('../src/otel-metrics.js');
 const { getPullStatus, NOT_SELECTED, OTEL_MISSING, SETUP_FAILED, _resetPullForTests } =
   await import('../src/prom-pull.js');
 
+const { unreadableTls } = await import('../src/otlp-tls.js');
+
 const ENDPOINT = 'http://127.0.0.1:9/v1/metrics';
 
 function cfg(overrides: Partial<TelemetryConfig>): TelemetryConfig {
@@ -69,5 +71,10 @@ describe('a missing SDK package', () => {
     expect(provider).toBeUndefined();
     expect(getPullStatus()).toBe(SETUP_FAILED);
     expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('the TLS check imports no Node built-in when nothing is configured', async () => {
+    missing.add('node:fs');
+    await expect(unreadableTls('metrics', () => undefined)).resolves.toBeUndefined();
   });
 });

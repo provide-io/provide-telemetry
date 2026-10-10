@@ -121,6 +121,43 @@ describe('prom-pull, freshly loaded', () => {
   });
 });
 
+describe('prom-render, freshly loaded', () => {
+  it('content types, target_info, and which names and labels are quoted', async () => {
+    vi.resetModules();
+    const r = await import('../src/prom-render.js');
+    expect(r.CONTENT_TYPE_TEXT).toBe(
+      'text/plain; version=0.0.4; charset=utf-8; escaping=underscores',
+    );
+    expect(r.CONTENT_TYPE_UTF8).toBe(
+      'text/plain; version=1.0.0; charset=utf-8; escaping=allow-utf-8',
+    );
+    const out = r.render(
+      r.familiesFrom(
+        { resource: { attributes: { 'service.name': 'svc' } }, scopeMetrics: [] },
+        { strategy: 'NoTranslation', scopeLabels: false, targetInfo: true, utf8: true },
+      ),
+    );
+    expect(out).toBe(
+      '# HELP target_info Target metadata\n# TYPE target_info gauge\ntarget_info{"service.name"="svc"} 1\n',
+    );
+    const line = (name: string, label: string): string => {
+      const fam = r.family(name, 'gauge');
+      fam.samples.push(['', { [label]: 'v' }, 1]);
+      return r.render([fam]).split('\n')[1] as string;
+    };
+    expect(line('abc', 'xyz')).toBe('abc{xyz="v"} 1');
+    expect(line('_a:b9', '_k9')).toBe('_a:b9{_k9="v"} 1');
+    expect(line('a.b', 'k')).toBe('{"a.b",k="v"} 1');
+    expect(line('9a', 'k')).toBe('{"9a",k="v"} 1');
+    expect(line('ab.', 'k')).toBe('{"ab.",k="v"} 1');
+    expect(line('a', 'k.l')).toBe('a{"k.l"="v"} 1');
+    expect(line('a', '9k')).toBe('a{"9k"="v"} 1');
+    expect(line('a', 'kl.')).toBe('a{"kl."="v"} 1');
+    expect(line('a', '.kl')).toBe('a{".kl"="v"} 1');
+    expect(line('.ab', 'k')).toBe('{".ab",k="v"} 1');
+  });
+});
+
 describe('prom-listener, freshly loaded', () => {
   async function fresh(): Promise<typeof import('../src/prom-listener.js')> {
     vi.resetModules();

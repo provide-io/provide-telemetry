@@ -66,15 +66,17 @@ export async function unreadableTls(
     const { X509Certificate } = (await dynImportOtel(
       'node:crypto',
     )) as typeof import('node:crypto');
-    const blocks = (contents.get(ca) as Buffer).toString('utf8').match(PEM_CERTIFICATE) ?? [];
+    // createSecureContext() accepts a CA with no usable certificate, so each
+    // PEM block is parsed. No block at all: iterating null throws, caught below.
+    const blocks = (contents.get(ca) as Buffer).toString('utf8').match(PEM_CERTIFICATE);
     try {
-      if (blocks.length === 0) throw new Error('none');
-      for (const block of blocks) new X509Certificate(block);
+      for (const block of blocks as RegExpMatchArray) new X509Certificate(block);
     } catch {
       return `${caName}=${ca}: no PEM certificates`;
     }
   }
-  if (cert && key) {
+  // Only a cert and key together can mismatch; either alone loads without complaint.
+  {
     const { createSecureContext } = (await dynImportOtel('node:tls')) as typeof import('node:tls');
     try {
       createSecureContext({ cert: contents.get(cert), key: contents.get(key) });
@@ -103,7 +105,7 @@ export async function tlsReady(signal: string): Promise<boolean> {
  */
 export function beginTlsChecks(readSetupError: () => string | null, clear: () => void): void {
   problems.length = 0;
-  if (lastReported !== null && readSetupError() === lastReported) clear();
+  if (readSetupError() === lastReported) clear(); // clearing a null error is harmless
   lastReported = null;
 }
 

@@ -158,7 +158,7 @@ export class WebSecurity {
   async authorized(header: string | undefined): Promise<boolean> {
     if (this.users.size === 0) return true;
     // Strict base64, padding included, as Python's b64decode(validate=True).
-    const match = /^basic ([A-Za-z0-9+/]*={0,2})$/i.exec(header ?? '');
+    const match = /^basic ([A-Za-z0-9+/]*={0,2})$/i.exec(String(header)); // undefined reads as "undefined", which never matches
     if (match === null || (match[1] as string).length % 4 !== 0) return false;
     let text: string;
     try {

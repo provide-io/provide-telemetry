@@ -115,6 +115,10 @@ describe('registerOtelProviders with metricsHealthOtlp', () => {
         0,
       );
       expect(callbacks).toBe(healthOtlp ? 10 : 0);
+      if (healthOtlp) {
+        const names = [...provider._sharedState.meterSharedStates.keys()].join(' ');
+        expect(names).toContain('@provide-io/telemetry');
+      }
     });
   }
 
