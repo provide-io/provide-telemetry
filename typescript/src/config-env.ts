@@ -24,7 +24,7 @@ import {
 
 /** Read a string from Node process.env. Silently returns undefined in non-Node environments. */
 // Stryker disable BlockStatement
-function nodeEnv(key: string): string | undefined {
+export function nodeEnv(key: string): string | undefined {
   try {
     // process.env is not available in browser builds after tree-shaking,
     // but some bundlers (esbuild, Vite) leave process.env.X inline replacements.

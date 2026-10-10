@@ -43,6 +43,7 @@ import { wrapResilientExporter } from './resilient-exporter.js';
 import { prometheusReaderEnabled } from './config-prometheus.js';
 import { recordPullStatusWithoutProvider, setupOtelMeterProvider } from './otel-metrics.js';
 import { syncPrometheusListener } from './prom-setup.js';
+import { beginTlsChecks, takeTlsProblems, tlsReady } from './otlp-tls.js';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
 // entirely (safe no-export path per docs/internal/architecture.md).
@@ -71,7 +72,14 @@ function appendSignalPath(endpoint: string, signalPath: string): string {
  * registered, except that the Prometheus listener is brought in line with cfg.
  */
 export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void> {
+  beginTlsChecks(
+    () => getHealthSnapshot().setupError,
+    () => setSetupError(null),
+  );
   await registerProviders(cfg);
+  // An unreadable OTLP TLS file kept that signal's exporter unbuilt; say which.
+  const tlsProblems = takeTlsProblems();
+  if (tlsProblems !== null) setSetupError(tlsProblems);
   // After the providers, so the listener serves the reader just attached; on
   // every path, since a listener with nothing to serve still answers 503s.
   await syncPrometheusListener(cfg);
@@ -151,7 +159,7 @@ async function registerProviders(cfg: TelemetryConfig): Promise<void> {
       } = traceBase;
       const { OTLPTraceExporter } = otlpTrace;
 
-      if (tracesEndpoint) {
+      if (tracesEndpoint && (await tlsReady('traces'))) {
         validateOtlpEndpoint(tracesEndpoint);
         const traceHeaders = cfg.otlpTracesHeaders ?? headers;
         const rawTraceExporter = new OTLPTraceExporter({
@@ -197,7 +205,7 @@ async function registerProviders(cfg: TelemetryConfig): Promise<void> {
   // the trace/metrics flags. When disabled, no OTLP log handler is attached
   // even if the endpoint is configured — useful to escape shutdown hangs
   // against unreachable collectors without unsetting OTEL_EXPORTER_OTLP_ENDPOINT.
-  if (logsEndpoint && cfg.otlpLogsEnabled) {
+  if (logsEndpoint && cfg.otlpLogsEnabled && (await tlsReady('logs'))) {
     try {
       registered.push(await setupOtelLogProvider(cfg));
       signals.push('logs');

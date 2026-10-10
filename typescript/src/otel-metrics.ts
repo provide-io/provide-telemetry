@@ -17,6 +17,8 @@ import { validateOtlpEndpoint } from './endpoint.js';
 import { dynImportOtel } from './otel-dynimport.js';
 import { _isLiveMeterProviderInstalled } from './otel-probe.js';
 import { buildOtelResource } from './otel-resource.js';
+import { tlsReady } from './otlp-tls.js';
+import { registerHealthOtlp } from './prom-health-otlp.js';
 import {
   createPullReader,
   HOST_PROVIDER,
@@ -50,7 +52,9 @@ export async function setupOtelMeterProvider(
   headers: Record<string, string>,
 ): Promise<ShutdownableProvider | undefined> {
   const wantPull = prometheusReaderEnabled(cfg);
-  const wantOtlp = otlpEndpoint !== undefined && otlpMetricsReaderEnabled(cfg);
+  // A pull reader is unaffected by an unreadable OTLP TLS file; only OTLP is skipped.
+  const wantOtlp =
+    otlpEndpoint !== undefined && otlpMetricsReaderEnabled(cfg) && (await tlsReady('metrics'));
   if (!wantPull && !wantOtlp) {
     recordPullStatusWithoutProvider(cfg);
     return undefined;
@@ -104,6 +108,8 @@ export async function setupOtelMeterProvider(
     readers,
   });
   metrics.setGlobalMeterProvider(provider);
+  // Never on a host's provider: this one is ours, built just above.
+  if (cfg.metricsHealthOtlp) registerHealthOtlp(provider.getMeter('@provide-io/telemetry'));
   if (pull !== undefined) markPullReady(pull, optionsFor(cfg));
   else setPullStatus(wantPull ? HOST_PROVIDER : NOT_SELECTED);
   return provider as ShutdownableProvider;
