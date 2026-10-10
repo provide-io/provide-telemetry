@@ -297,7 +297,6 @@ push_ingestion:
     basic_auth:
       csharp: "OTEL_EXPORTER_OTLP_METRICS_HEADERS is not read; only the shared OTEL_EXPORTER_OTLP_HEADERS is."
     tls_basic_auth:
-      rust: "OTEL_EXPORTER_OTLP_CERTIFICATE / _METRICS_CERTIFICATE are not honoured, so a private CA cannot be trusted."
       csharp: "OTEL_EXPORTER_OTLP_CERTIFICATE / _METRICS_CERTIFICATE are not honoured, and per-signal headers are not read."
 
 # Edge cases for the translator, generated from the same reference

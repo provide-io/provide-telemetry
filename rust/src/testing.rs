@@ -45,6 +45,8 @@ pub fn acquire_test_state_lock() -> MutexGuard<'static, ()> {
 /// Reset all telemetry state to keep tests isolated.
 pub fn reset_telemetry_state() {
     let _ = shutdown_telemetry(None);
+    // Back to the never-set-up endpoint status, not the shut-down one.
+    crate::prometheus::set_status(crate::prometheus::Status::NotSetUp);
     _reset_otel_for_tests();
     // Restore the stranded-drain-worker budget. Sound even with workers still
     // pending: each decrements with a saturating subtraction on its way out.
