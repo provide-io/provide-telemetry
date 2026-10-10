@@ -24,6 +24,11 @@ type BackendSetupState struct {
 	loggerProvider any
 }
 
+// ReportSetupError records a failure a backend recovered from without failing
+// setup, such as a Prometheus listener that could not bind. It surfaces as
+// HealthSnapshot.SetupError until the next setup.
+func (s BackendSetupState) ReportSetupError(msg string) { _setSetupError(msg) }
+
 // TracerProvider returns the caller-supplied tracer provider, if any.
 func (s BackendSetupState) TracerProvider() any { return s.tracerProvider }
 
@@ -182,6 +187,7 @@ func _setupBackendLocked(state *_setupState, cfg *TelemetryConfig) error {
 		_wireBackendBindingsLocked(cfg)
 		return nil
 	}
+	_setSetupError("")
 	if err := backend.Setup(cfg, _backendSetupState(state)); err != nil {
 		return err
 	}

@@ -47,6 +47,7 @@ func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.Backend
 	_setupTracerProvider(state, cfg)
 	_setupMeterProvider(state, cfg)
 	_setupLoggerProvider(state, cfg)
+	_syncPromListener(cfg, state.ReportSetupError)
 	return nil
 }
 
@@ -197,6 +198,8 @@ func _joinFlushErrors(errs []error) error {
 // sequence — shutdown is the last chance to get queued records out, so a
 // stalled traces exporter must not cost metrics and logs their drain.
 func (b *_backend) Shutdown(ctx context.Context) error {
+	// Stop scrapes first: once shutdown starts there is nothing left to serve.
+	_stopPromListener()
 	// Detach the providers under the lock, then drain them outside it. Holding
 	// the write lock across the drain would block every RLock reader — a
 	// concurrent FlushTelemetry resolving providers, Providers(), LoggerHandler
@@ -259,6 +262,7 @@ func _shutdownOTelProviders(ctx context.Context) error {
 }
 
 func (b *_backend) ResetForTests() {
+	_stopPromListener()
 	_providersMu.Lock()
 	defer _providersMu.Unlock()
 

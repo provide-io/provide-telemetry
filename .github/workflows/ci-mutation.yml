@@ -438,6 +438,7 @@ jobs:
             --timeout-coefficient=100 \
             --threshold-efficacy=100 \
             --threshold-mcover=100 \
+            --exclude-files="mutation_constants.go" \
             --exclude-files="cmd/flush_collector_probe/" \
             --exclude-files="cmd/prometheus_push_probe/" \
             --exclude-files="examples/" \

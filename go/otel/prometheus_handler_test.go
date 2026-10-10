@@ -15,8 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	telemetry "github.com/provide-io/provide-telemetry/go"
 	"github.com/prometheus/client_golang/prometheus"
+	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
