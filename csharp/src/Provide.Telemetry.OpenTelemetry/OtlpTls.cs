@@ -44,16 +44,21 @@ internal sealed class OtlpTls
         {
             throw new ConfigurationError("OTLP client certificate and client key must be set together");
         }
+        // The failure is captured and thrown after the catch: a throw inside it
+        // lets a mutant leave the method without a return, which does not compile.
+        Exception? failure = null;
+        OtlpTls? tls = null;
         try
         {
-            return new OtlpTls(
+            tls = new OtlpTls(
                 caFile.Length > 0 ? LoadRoots(caFile) : null,
                 certFile.Length > 0 ? LoadClientCertificate(certFile, keyFile) : null);
         }
         catch (Exception ex) when (ex is not ConfigurationError)
         {
-            throw new ConfigurationError($"OTLP TLS files: {ex.Message}", ex);
+            failure = ex;
         }
+        return tls ?? throw new ConfigurationError($"OTLP TLS files: {failure!.Message}", failure);
     }
 
     private static X509Certificate2Collection LoadRoots(string path)

@@ -198,26 +198,38 @@ internal static class WebConfigLoader
         ["TLS13"] = SslProtocols.Tls13,
     };
 
+    // No pattern variables in || conditions and no throw inside a catch block
+    // below: a mutant of either leaves a variable unassigned or a path without a
+    // return, which fails to compile, and Stryker then drops every mutant of the
+    // whole method unscored. The failure is captured and thrown afterwards.
     public static WebSecurity Load(string path)
     {
-        object? data;
+        var data = ReadYaml(path);
+        if (data is null) return new WebSecurity();
+        var top = data as Dictionary<object, object?> ?? throw Unsupported(path);
+        if (top.Keys.Any(k => !TopKeys.Contains(Key(k)))) throw Unsupported(path);
+        var baseDir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        return new WebSecurity(
+            Users(top.GetValueOrDefault("basic_auth_users"), path),
+            top.TryGetValue("tls_server_config", out var tls) ? Tls(tls, baseDir) : null);
+    }
+
+    private static WebConfigException Unsupported(string path) =>
+        new($"web config {path}: only [basic_auth_users, tls_server_config] are supported");
+
+    private static object? ReadYaml(string path)
+    {
+        Exception? failure = null;
+        object? data = null;
         try
         {
             data = new DeserializerBuilder().Build().Deserialize<object?>(File.ReadAllText(path));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or YamlException)
         {
-            throw new WebConfigException($"web config {path}: {ex.Message}");
+            failure = ex;
         }
-        if (data is null) return new WebSecurity();
-        if (data is not Dictionary<object, object?> top || top.Keys.Any(k => !TopKeys.Contains(Key(k))))
-        {
-            throw new WebConfigException($"web config {path}: only [basic_auth_users, tls_server_config] are supported");
-        }
-        var baseDir = Path.GetDirectoryName(Path.GetFullPath(path))!;
-        return new WebSecurity(
-            Users(top.GetValueOrDefault("basic_auth_users"), path),
-            top.TryGetValue("tls_server_config", out var tls) ? Tls(tls, baseDir) : null);
+        return failure is null ? data : throw new WebConfigException($"web config {path}: {failure.Message}");
     }
 
     private static string Key(object key) => key as string ?? "";
@@ -225,19 +237,13 @@ internal static class WebConfigLoader
     private static Dictionary<string, string> Users(object? raw, string path)
     {
         if (raw is null) return [];
-        if (raw is not Dictionary<object, object?> map)
-        {
-            throw new WebConfigException($"web config {path}: basic_auth_users must map user names to bcrypt hashes");
-        }
+        var map = raw as Dictionary<object, object?> ?? throw new WebConfigException(
+            $"web config {path}: basic_auth_users must map user names to bcrypt hashes");
         var users = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (user, hashed) in map)
         {
             var hash = hashed as string ?? "";
-            try
-            {
-                BCrypt.Net.BCrypt.Verify("", hash);
-            }
-            catch (Exception ex) when (ex is BCrypt.Net.SaltParseException or ArgumentException)
+            if (!IsBcryptHash(hash))
             {
                 throw new WebConfigException($"web config {path}: basic_auth_users[{user}] is not a bcrypt hash");
             }
@@ -246,13 +252,25 @@ internal static class WebConfigLoader
         return users;
     }
 
+    /// <summary>Whether bcrypt can parse <paramref name="hash"/>; it throws for a malformed one whatever the password.</summary>
+    private static bool IsBcryptHash(string hash)
+    {
+        var valid = true;
+        try
+        {
+            BCrypt.Net.BCrypt.Verify("", hash);
+        }
+        catch (Exception ex) when (ex is BCrypt.Net.SaltParseException or ArgumentException)
+        {
+            valid = false;
+        }
+        return valid;
+    }
+
     private static TlsReloader Tls(object? raw, string baseDir)
     {
-        if (raw is not Dictionary<object, object?> map || map.Keys.Any(k => !TlsKeys.Contains(Key(k))))
-        {
-            throw new WebConfigException(
-                "tls_server_config: only [cert_file, client_auth_type, client_ca_file, key_file, min_version] are supported");
-        }
+        var map = raw as Dictionary<object, object?> ?? throw UnsupportedTls();
+        if (map.Keys.Any(k => !TlsKeys.Contains(Key(k)))) throw UnsupportedTls();
         string Get(string key) => map.GetValueOrDefault(key) as string ?? "";
         var cert = Get("cert_file");
         var key = Get("key_file");
@@ -272,15 +290,21 @@ internal static class WebConfigLoader
         {
             throw new WebConfigException($"tls_server_config.client_auth_type {auth} needs client_ca_file");
         }
+        Exception? failure = null;
+        TlsReloader? reloader = null;
         try
         {
-            return new TlsReloader(
+            reloader = new TlsReloader(
                 Path.Combine(baseDir, cert), Path.Combine(baseDir, key),
                 ca.Length > 0 ? Path.Combine(baseDir, ca) : null, auth, protocols);
         }
         catch (Exception ex) when (ex is IOException or CryptographicException or UnauthorizedAccessException)
         {
-            throw new WebConfigException($"tls_server_config: {ex.Message}");
+            failure = ex;
         }
+        return reloader ?? throw new WebConfigException($"tls_server_config: {failure!.Message}");
     }
+
+    private static WebConfigException UnsupportedTls() =>
+        new("tls_server_config: only [cert_file, client_auth_type, client_ca_file, key_file, min_version] are supported");
 }
