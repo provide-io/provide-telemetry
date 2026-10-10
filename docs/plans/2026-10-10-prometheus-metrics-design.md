@@ -95,6 +95,7 @@ under `config.metrics` in `spec/telemetry-api.yaml`:
 | `OTEL_EXPORTER_PROMETHEUS_HOST` | `127.0.0.1` | Tier 3 bind host. The OTel spec default is `localhost`; we pin loopback so a library never exposes a port by accident. `0.0.0.0` is an explicit opt-in and logs a warning once at setup. |
 | `OTEL_EXPORTER_PROMETHEUS_PORT` | `9464` | Tier 3 bind port. |
 | `PROVIDE_METRICS_PROMETHEUS_LISTEN` | `false` | Starts the Tier 3 listener. Kept separate from `OTEL_METRICS_EXPORTER=prometheus` so a host can enable the reader for Tier 2 without the SDK opening a port. Set it to `auto` to follow the OTel convention, where `OTEL_METRICS_EXPORTER=prometheus` alone starts the listener. |
+| `PROVIDE_METRICS_PROMETHEUS_PATH` | `/metrics` | Tier 3 path. Must start with `/` and carry no query or fragment; an invalid value falls back to `/metrics` with the usual strict-mode error and one-time warning. Tier 2 ignores it, since the host picks the mount path. |
 | `PROVIDE_METRICS_PROMETHEUS_TRANSLATION` | `UnderscoreEscapingWithSuffixes` | How metric names are translated; see [Metric names](#metric-names). |
 | `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS` | `false` | Add `otel_scope_name` / `otel_scope_version` labels to every series. |
 | `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO` | `true` | Emit the `target_info` series carrying resource attributes. |
@@ -139,7 +140,8 @@ Behavior shared by all languages:
 - Started by `setup()` when `PROVIDE_METRICS_PROMETHEUS_LISTEN=true` (or `auto`
   with `prometheus` in `OTEL_METRICS_EXPORTER`), stopped
   by `shutdown()`, restarted on reconfiguration only if host or port changed.
-- Serves the Tier 2 handler at `/metrics`; every other path is `404`.
+- Serves the Tier 2 handler at `PROVIDE_METRICS_PROMETHEUS_PATH` (default
+  `/metrics`, Prometheus's default `metrics_path`); every other path is `404`.
 - Server timeouts set (read-header, read, write, idle) so a slow client cannot
   hold the listener; litevirt's `server_timeouts_test.go` covers the same
   concern.
