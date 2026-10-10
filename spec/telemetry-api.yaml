@@ -1160,7 +1160,9 @@ prometheus_metrics:
   # PR that makes the first SDK parse them; config_defaults rejects an empty
   # applicability, so planned keys cannot live there yet. The Prometheus keys
   # moved with the Go implementation; see config_defaults.metrics.
-  planned_config:
+  # Read from the environment by each signal's OTLP exporter builder, not by
+  # config parsing (so they are not in config_defaults); push_security says how.
+  push_tls_env:
     - env: OTEL_EXPORTER_OTLP_CERTIFICATE
       type: str
       default: ""

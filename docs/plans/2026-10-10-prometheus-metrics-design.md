@@ -351,9 +351,11 @@ Each stage is its own PR and leaves `main` releasable.
    `prometheus` capabilities, and `spec/prometheus_fixtures.yaml`. Each
    capability's language set in `spec/validate_conformance.py` starts empty
    and gains a language in the PR that ships it, after which a missing export
-   fails conformance. New config keys sit in `prometheus_metrics.planned_config`
-   until an SDK parses them, then move to `config_defaults`, whose
-   applicability list cannot be empty.
+   fails conformance. New config keys sat in `prometheus_metrics.planned_config`
+   until an SDK parsed them, then moved to `config_defaults`, whose
+   applicability list cannot be empty. The OTLP TLS variables that remained
+   are read by the exporter builders rather than parsed as config, so the
+   section is now `prometheus_metrics.push_tls_env`.
    `tests/tooling/test_prometheus_contract.py` keeps the spec section, the
    fixtures and the capability gates consistent with each other.
 2. **Tier 1 everywhere** (done). Prometheus 3.13.4 in `docker-compose.yml`
