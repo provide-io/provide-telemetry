@@ -21,6 +21,14 @@ import { setSetupError } from './health.js';
 import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation.js';
 import { _setActiveConfig } from './runtime.js';
 import { configFromEnv } from './config-env.js';
+import {
+  DEFAULT_HOST,
+  DEFAULT_PATH,
+  DEFAULT_PORT,
+  DEFAULT_TRANSLATION,
+  EXPORTER_OTLP,
+  validatePrometheusSettings,
+} from './config-prometheus.js';
 export { configFromEnv } from './config-env.js';
 export { parseOtlpHeaders, redactConfig } from './config-redact.js';
 export interface TelemetryConfig {
@@ -98,6 +106,26 @@ export interface TelemetryConfig {
 
   /** Enable metrics collection. */
   metricsEnabled: boolean;
+  /** Metric exporters: otlp and/or prometheus; empty means none. Env: `OTEL_METRICS_EXPORTER`. */
+  metricsExporters: string[];
+  /** Also export the health metrics over OTLP (parsed; not yet acted on). Env: `PROVIDE_METRICS_HEALTH_OTLP`. */
+  metricsHealthOtlp: boolean;
+  /** Start the Tier 3 listener: 'false', 'true' or 'auto'. Env: `PROVIDE_METRICS_PROMETHEUS_LISTEN`. */
+  prometheusListen: string;
+  /** Tier 3 bind host. Env: `OTEL_EXPORTER_PROMETHEUS_HOST`. */
+  prometheusHost: string;
+  /** Tier 3 bind port; 0 picks a free one. Env: `OTEL_EXPORTER_PROMETHEUS_PORT`. */
+  prometheusPort: number;
+  /** Tier 3 path. Env: `PROVIDE_METRICS_PROMETHEUS_PATH`. */
+  prometheusPath: string;
+  /** Metric and label name translation strategy. Env: `PROVIDE_METRICS_PROMETHEUS_TRANSLATION`. */
+  prometheusTranslation: string;
+  /** Add otel_scope_name / otel_scope_version labels. Env: `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS`. */
+  prometheusScopeLabels: boolean;
+  /** Emit the target_info series. Env: `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO`. */
+  prometheusTargetInfo: boolean;
+  /** Prometheus web config file securing the listener; '' means plain HTTP. Env: `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`. */
+  prometheusWebConfig: string;
 
   /** Probabilistic sampling rate for logs (0.0–1.0). */
   samplingLogsRate: number;
@@ -239,6 +267,16 @@ export const DEFAULTS: TelemetryConfig = {
   traceSampleRate: 1.0,
   tracingEnabled: true,
   metricsEnabled: true,
+  metricsExporters: [EXPORTER_OTLP],
+  metricsHealthOtlp: false,
+  prometheusListen: 'false',
+  prometheusHost: DEFAULT_HOST,
+  prometheusPort: DEFAULT_PORT,
+  prometheusPath: DEFAULT_PATH,
+  prometheusTranslation: DEFAULT_TRANSLATION,
+  prometheusScopeLabels: false,
+  prometheusTargetInfo: true,
+  prometheusWebConfig: '',
   samplingLogsRate: 1.0,
   samplingTracesRate: 1.0,
   samplingMetricsRate: 1.0,
@@ -265,7 +303,7 @@ export const DEFAULTS: TelemetryConfig = {
   securityMaxAttrCount: 64,
 };
 
-let _config: TelemetryConfig = { ...DEFAULTS };
+let _config: TelemetryConfig = { ...DEFAULTS, metricsExporters: [...DEFAULTS.metricsExporters] };
 
 /** Incremented on every setupTelemetry() call so getRootLogger() knows to rebuild. */
 let _configVersion = 0;
@@ -447,11 +485,12 @@ function _validateConfig(cfg: TelemetryConfig): void {
   requireNonNegInt('securityMaxAttrValueLength', cfg.securityMaxAttrValueLength);
   requireNonNegInt('securityMaxAttrCount', cfg.securityMaxAttrCount);
   requireNonNegInt('piiMaxDepth', cfg.piiMaxDepth);
+  validatePrometheusSettings(cfg);
 }
 
 /** Reset to defaults (used in tests). */
 export function _resetConfig(): void {
-  _config = { ...DEFAULTS };
+  _config = { ...DEFAULTS, metricsExporters: [...DEFAULTS.metricsExporters] };
   _configVersion = 0;
 }
 

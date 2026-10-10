@@ -115,68 +115,70 @@ describe('CounterInstrument — backpressure gate', () => {
 });
 
 describe('GaugeInstrument — set semantics', () => {
-  it('set(65) then set(65) — underlying gets add(65) then add(0)', () => {
-    const inner = { add: vi.fn() };
+  it('set(65) twice records the absolute value both times', () => {
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(65);
-    expect(inner.add).toHaveBeenLastCalledWith(65, undefined);
+    expect(inner.record).toHaveBeenLastCalledWith(65, undefined);
     g.set(65);
-    expect(inner.add).toHaveBeenLastCalledWith(0, undefined);
+    expect(inner.record).toHaveBeenLastCalledWith(65, undefined);
+    expect(inner.record).toHaveBeenCalledTimes(2);
   });
 
-  it('set(80) after set(65) — underlying gets add(65) then add(15)', () => {
-    const inner = { add: vi.fn() };
+  it('set(80) after set(65) records 80, not the delta', () => {
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(65);
-    expect(inner.add).toHaveBeenLastCalledWith(65, undefined);
     g.set(80);
-    expect(inner.add).toHaveBeenLastCalledWith(15, undefined);
+    expect(inner.record).toHaveBeenLastCalledWith(80, undefined);
+    expect(g.value).toBe(80);
   });
 
-  it('tracks per-attribute-key values independently', () => {
-    const inner = { add: vi.fn() };
+  it('add() records the running total per attribute set', () => {
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
-    g.set(10, { resource: 'cpu' });
-    g.set(20, { resource: 'mem' });
-    g.set(15, { resource: 'cpu' });
-    // cpu: delta = 15 - 10 = 5
-    expect(inner.add).toHaveBeenLastCalledWith(5, { resource: 'cpu' });
+    g.add(10, { resource: 'cpu' });
+    g.add(20, { resource: 'mem' });
+    g.add(-3, { resource: 'cpu' });
+    expect(inner.record).toHaveBeenLastCalledWith(7, { resource: 'cpu' });
+    g.add(1, { resource: 'mem' });
+    expect(inner.record).toHaveBeenLastCalledWith(21, { resource: 'mem' });
   });
 
   it('does NOT call underlying when sampling rate is 0 (set)', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     setSamplingPolicy('metrics', { defaultRate: 0.0 });
     g.set(100);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('does NOT call underlying when sampling rate is 0 (add)', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     setSamplingPolicy('metrics', { defaultRate: 0.0 });
     g.add(10);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('drops set() when backpressure queue is full', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     setQueuePolicy({ maxMetrics: 1 });
     const ticket = tryAcquire('metrics');
     expect(ticket).not.toBeNull();
     g.set(50);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('drops add() when backpressure queue is full', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     setQueuePolicy({ maxMetrics: 1 });
     const ticket = tryAcquire('metrics');
     expect(ticket).not.toBeNull();
     g.add(10);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 });
 
@@ -306,18 +308,18 @@ describe('exemplar attachment', () => {
 
   it('gauge.add() does NOT attach exemplars even when active trace exists', () => {
     vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.add(10, { key: 'val' });
-    expect(inner.add).toHaveBeenCalledWith(10, { key: 'val' });
+    expect(inner.record).toHaveBeenCalledWith(10, { key: 'val' });
   });
 
   it('gauge.set() does NOT attach exemplars even when active trace exists', () => {
     vi.spyOn(tracing, 'getActiveTraceIds').mockReturnValue({ trace_id: 'abc', span_id: 'def' });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(50, { key: 'val' });
-    expect(inner.add).toHaveBeenCalledWith(50, { key: 'val' });
+    expect(inner.record).toHaveBeenCalledWith(50, { key: 'val' });
   });
 
   it('counter.add() does not attach exemplars when only trace_id present (no span_id)', () => {

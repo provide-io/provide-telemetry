@@ -14,6 +14,7 @@
 import {
   type Attributes,
   type Counter,
+  type Gauge,
   type Histogram,
   type Meter,
   type UpDownCounter,
@@ -26,7 +27,7 @@ import { getActiveTraceIds } from './tracing.js';
 import { getConfig } from './config.js';
 import { shouldAllow } from './consent.js';
 
-export type { Counter, Histogram, Meter, UpDownCounter };
+export type { Counter, Gauge, Histogram, Meter, UpDownCounter };
 
 // Stryker disable next-line StringLiteral: meter name not observable with no-op OTEL SDK in tests
 const METER_NAME = '@provide-io/telemetry';
@@ -89,16 +90,19 @@ export class CounterInstrument {
 }
 
 /**
- * Wrapper around OTel UpDownCounter with set semantics.
- * Gates add()/set() through sampling + backpressure.
+ * Wrapper around an OTel Gauge, matching the other SDKs' gauge semantics.
+ *
+ * set() records the absolute value; add() records the running total for that
+ * attribute set, so a gauge driven by deltas still reports a level. Both are
+ * gated through sampling + backpressure.
  */
 export class GaugeInstrument {
   readonly name: string;
-  private readonly _inner: UpDownCounter;
+  private readonly _inner: Gauge;
   private readonly _values: Map<string, number> = new Map();
   private _lastValue = 0;
 
-  constructor(name: string, inner: UpDownCounter) {
+  constructor(name: string, inner: Gauge) {
     this.name = name;
     this._inner = inner;
   }
@@ -117,7 +121,10 @@ export class GaugeInstrument {
     if (!ticket) return;
     try {
       _incrementHealth(_emittedField('metrics'));
-      this._inner.add(value, attributes);
+      const key = _canonicalAttrsKey(attributes);
+      const current = (this._values.get(key) ?? 0) + value;
+      this._values.set(key, current);
+      this._inner.record(current, attributes);
       this._lastValue += value;
     } finally {
       release(ticket);
@@ -133,11 +140,8 @@ export class GaugeInstrument {
     if (!ticket) return;
     try {
       _incrementHealth(_emittedField('metrics'));
-      const key = _canonicalAttrsKey(attributes);
-      const prev = this._values.get(key) ?? 0;
-      const delta = value - prev;
-      this._values.set(key, value);
-      this._inner.add(delta, attributes);
+      this._values.set(_canonicalAttrsKey(attributes), value);
+      this._inner.record(value, attributes);
       this._lastValue = value;
     } finally {
       release(ticket);
@@ -202,11 +206,11 @@ export function counter(name: string, options?: MetricOptions): CounterInstrumen
 }
 
 /**
- * Create an up-down counter (gauge — can increase or decrease).
+ * Create a gauge backed by an OTel Gauge (the value can go up and down).
  * Mirrors Python: gauge(name, description, unit)
  */
 export function gauge(name: string, options?: MetricOptions): GaugeInstrument {
-  const inner = metrics.getMeter(METER_NAME).createUpDownCounter(name, options);
+  const inner = metrics.getMeter(METER_NAME).createGauge(name, options);
   return new GaugeInstrument(name, inner);
 }
 

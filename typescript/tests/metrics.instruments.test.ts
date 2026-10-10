@@ -33,26 +33,26 @@ describe('metricsEnabled toggle', () => {
 
   it('gauge.set() does NOT call inner instrument when metricsEnabled is false', () => {
     setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(50);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('gauge.add() does NOT call inner instrument when metricsEnabled is false', () => {
     setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.add(10);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('gauge.set() DOES call inner instrument when metricsEnabled is true', () => {
     setupTelemetry({ metricsEnabled: true });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(50);
-    expect(inner.add).toHaveBeenCalledWith(50, undefined);
+    expect(inner.record).toHaveBeenCalledWith(50, undefined);
   });
 
   it('histogram.record() does NOT call inner instrument when metricsEnabled is false', () => {
@@ -98,13 +98,13 @@ describe('.value property — CounterInstrument', () => {
 
 describe('.value property — GaugeInstrument', () => {
   it('starts at 0', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     expect(g.value).toBe(0);
   });
 
   it('reflects the most recent set() value', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(65);
     expect(g.value).toBe(65);
@@ -113,7 +113,7 @@ describe('.value property — GaugeInstrument', () => {
   });
 
   it('accumulates via add()', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.add(10);
     g.add(5);
@@ -122,7 +122,7 @@ describe('.value property — GaugeInstrument', () => {
 
   it('does NOT update when metricsEnabled is false', () => {
     setupTelemetry({ metricsEnabled: false });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(65);
     expect(g.value).toBe(0);
@@ -176,25 +176,25 @@ describe('CounterInstrument — releases backpressure ticket after add()', () =>
 describe('GaugeInstrument — releases backpressure ticket after set()', () => {
   it('releases ticket so subsequent set() calls succeed under bounded queue', () => {
     setQueuePolicy({ maxMetrics: 1 });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(10);
-    expect(inner.add).toHaveBeenCalledTimes(1);
+    expect(inner.record).toHaveBeenCalledTimes(1);
     // If release was removed (mutant), this second call would be blocked
     g.set(20);
-    expect(inner.add).toHaveBeenCalledTimes(2);
+    expect(inner.record).toHaveBeenCalledTimes(2);
     expect(g.value).toBe(20);
   });
 
   it('releases ticket so subsequent add() calls succeed under bounded queue', () => {
     setQueuePolicy({ maxMetrics: 1 });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.add(5);
-    expect(inner.add).toHaveBeenCalledTimes(1);
+    expect(inner.record).toHaveBeenCalledTimes(1);
     // If release was removed (mutant), this second call would be blocked
     g.add(10);
-    expect(inner.add).toHaveBeenCalledTimes(2);
+    expect(inner.record).toHaveBeenCalledTimes(2);
     expect(g.value).toBe(15);
   });
 });
@@ -230,7 +230,7 @@ describe('CounterInstrument — _value += value accumulation', () => {
 
 describe('GaugeInstrument — _lastValue += value accumulation in add()', () => {
   it('value property reflects accumulated adds', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.add(4);
     expect(g.value).toBe(4);
@@ -273,22 +273,22 @@ describe('CounterInstrument — tryAcquire uses "metrics" signal', () => {
 describe('GaugeInstrument — tryAcquire uses "metrics" signal for both add and set', () => {
   it('add() is gated by metrics backpressure', () => {
     setQueuePolicy({ maxMetrics: 1, maxLogs: 0, maxTraces: 0 });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     const ticket = tryAcquire('metrics');
     expect(ticket).not.toBeNull();
     g.add(1);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('set() is gated by metrics backpressure', () => {
     setQueuePolicy({ maxMetrics: 1, maxLogs: 0, maxTraces: 0 });
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     const ticket = tryAcquire('metrics');
     expect(ticket).not.toBeNull();
     g.set(50);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 });
 
@@ -306,26 +306,23 @@ describe('HistogramInstrument — tryAcquire uses "metrics" signal', () => {
 
 // ─── Mutation-killing: GaugeInstrument.set JSON.stringify key ───────────
 
-describe('GaugeInstrument — set() attribute key via JSON.stringify', () => {
-  it('tracks different attribute sets independently via JSON key', () => {
-    const inner = { add: vi.fn() };
+describe('GaugeInstrument — per-attribute running totals via JSON key', () => {
+  it('add() continues from the value set for the same attribute set', () => {
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(10, { resource: 'cpu' });
     g.set(20, { resource: 'mem' });
-    // Now set cpu again — delta should be based on previous cpu value (10), not mem (20)
-    g.set(15, { resource: 'cpu' });
-    // If JSON.stringify were mutated (e.g. to ''), all attributes would share one key
-    // and delta would be 15 - 20 = -5 instead of 15 - 10 = 5
-    expect(inner.add).toHaveBeenLastCalledWith(5, { resource: 'cpu' });
+    // If the key collapsed to one constant, cpu would continue from mem's 20.
+    g.add(5, { resource: 'cpu' });
+    expect(inner.record).toHaveBeenLastCalledWith(15, { resource: 'cpu' });
   });
 
-  it('set() without attributes uses empty string key', () => {
-    const inner = { add: vi.fn() };
+  it('add() without attributes accumulates under one stable key', () => {
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
-    g.set(10);
-    g.set(25);
-    // delta = 25 - 10 = 15
-    expect(inner.add).toHaveBeenLastCalledWith(15, undefined);
+    g.add(10);
+    g.add(15);
+    expect(inner.record).toHaveBeenLastCalledWith(25, undefined);
   });
 });
 

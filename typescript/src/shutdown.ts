@@ -31,6 +31,8 @@ import { _asyncBlockingRiskField, _incrementHealth } from './health.js';
 import { _resetRootLogger } from './logger.js';
 import { _resetOtelLogProviderForTests } from './otel-logs.js';
 import { dynImportOtel } from './otel-dynimport.js';
+import { SHUT_DOWN, setPullStatus } from './prom-pull.js';
+import { stopPrometheusListener } from './prom-setup.js';
 
 async function disableInstalledOtelGlobals(): Promise<void> {
   trace.disable();
@@ -346,6 +348,9 @@ export async function flushSignals(
  * so the drain cannot overrun it; teardown itself is local work and always completes.
  */
 export async function shutdownTelemetry(timeoutMs?: number): Promise<void> {
+  // Nothing is left to serve once shutdown starts.
+  await stopPrometheusListener();
+  setPullStatus(SHUT_DOWN);
   const providers = _getRegisteredProviders();
   const deadlineMs = timeoutMs ?? getConfig().exporterLogsShutdownTimeoutMs;
   await Promise.allSettled(providers.map((p) => flushAndShutdownProvider(p, deadlineMs)));
