@@ -1210,8 +1210,7 @@ prometheus_metrics:
       - "Histogram series append _bucket, _sum and _count to the translated name."
       - "An attribute whose key the reference cannot translate, or translates to a label name starting with __ (a prefix Prometheus reserves), is dropped from that sample in the Prometheus output; the metric itself is kept. A Prometheus client that refuses such a label would otherwise drop the whole metric. Go drops these keys with a provider-level attribute filter, so while its Prometheus reader is attached they are also missing from its OTLP export."
       - "The two NoUTF8/NoTranslation strategies emit UTF-8 names only to a scraper that negotiates them; any other scrape gets UnderscoreEscaping output with the same suffix choice."
-    known_divergences:
-      - "gauge: TypeScript currently backs gauge() with an OTel UpDownCounter, while the other SDKs use an OTel Gauge. The contract is gauge semantics (unit 1 becomes _ratio under the WithSuffixes strategies). TypeScript must align before it ships the prometheus capability."
+    known_divergences: []
 
   handler:
     - "GET (and HEAD) only; other methods return 405."

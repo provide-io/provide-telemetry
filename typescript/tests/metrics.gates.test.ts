@@ -47,14 +47,14 @@ describe('metrics instruments — metricsEmitted health counter', () => {
   });
 
   it('GaugeInstrument.add() increments metricsEmitted by 1', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.add(5);
     expect(getHealthSnapshot().metricsEmitted).toBe(1);
   });
 
   it('GaugeInstrument.set() increments metricsEmitted by 1', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge', inner as never);
     g.set(10);
     expect(getHealthSnapshot().metricsEmitted).toBe(1);
@@ -101,22 +101,22 @@ describe('metrics instruments — consent gate', () => {
 
   it('GaugeInstrument.add() drops under ConsentNone', () => {
     setConsentLevel('NONE');
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.consent.gauge', inner as never);
     const before = getHealthSnapshot().metricsEmitted;
     g.add(1);
     expect(getHealthSnapshot().metricsEmitted).toBe(before);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('GaugeInstrument.set() drops under ConsentNone', () => {
     setConsentLevel('NONE');
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.consent.gauge.set', inner as never);
     const before = getHealthSnapshot().metricsEmitted;
     g.set(3.14);
     expect(getHealthSnapshot().metricsEmitted).toBe(before);
-    expect(inner.add).not.toHaveBeenCalled();
+    expect(inner.record).not.toHaveBeenCalled();
   });
 
   it('HistogramInstrument.record() drops under ConsentNone', () => {
@@ -132,36 +132,33 @@ describe('metrics instruments — consent gate', () => {
 
 // ─── Bug fix: GaugeInstrument.set attribute key order-insensitivity ──────
 
-describe('GaugeInstrument — set() attribute key is order-independent (canonical key fix)', () => {
-  it('{a:1, b:2} then {b:2, a:1} treated as same series — second call emits delta not full value', () => {
-    const inner = { add: vi.fn() };
+describe('GaugeInstrument — attribute key is order-independent (canonical key fix)', () => {
+  it('{a:1, b:2} then {b:2, a:1} share one running total', () => {
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge.canon', inner as never);
     g.set(5, { a: 1, b: 2 });
-    expect(inner.add).toHaveBeenLastCalledWith(5, { a: 1, b: 2 });
-    // Same attributes in different insertion order — must be treated as same series.
-    // Delta = 7 - 5 = 2, NOT 7 (which would happen if key is order-sensitive).
-    g.set(7, { b: 2, a: 1 });
-    expect(inner.add).toHaveBeenLastCalledWith(2, { b: 2, a: 1 });
+    expect(inner.record).toHaveBeenLastCalledWith(5, { a: 1, b: 2 });
+    // Same attributes in a different insertion order continue the same series:
+    // 5 + 2 = 7, not a fresh 2.
+    g.add(2, { b: 2, a: 1 });
+    expect(inner.record).toHaveBeenLastCalledWith(7, { b: 2, a: 1 });
   });
 
   it('{a:1, b:2} and {a:1, b:3} are still different series (different values)', () => {
-    const inner = { add: vi.fn() };
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge.canon2', inner as never);
     g.set(10, { a: 1, b: 2 });
-    g.set(20, { a: 1, b: 3 });
-    // Different values → different series; second call is a fresh set of 20 (delta = 20 - 0 = 20)
-    expect(inner.add).toHaveBeenLastCalledWith(20, { a: 1, b: 3 });
-    // First series still tracks its own value independently
-    g.set(15, { a: 1, b: 2 });
-    expect(inner.add).toHaveBeenLastCalledWith(5, { a: 1, b: 2 });
+    g.add(20, { a: 1, b: 3 });
+    expect(inner.record).toHaveBeenLastCalledWith(20, { a: 1, b: 3 });
+    g.add(5, { a: 1, b: 2 });
+    expect(inner.record).toHaveBeenLastCalledWith(15, { a: 1, b: 2 });
   });
 
-  it('set() with no attributes still uses stable empty-string key', () => {
-    const inner = { add: vi.fn() };
+  it('no attributes still uses one stable key', () => {
+    const inner = { record: vi.fn() };
     const g = new GaugeInstrument('test.gauge.noattr', inner as never);
     g.set(100);
-    g.set(150);
-    // delta = 150 - 100 = 50
-    expect(inner.add).toHaveBeenLastCalledWith(50, undefined);
+    g.add(50);
+    expect(inner.record).toHaveBeenLastCalledWith(150, undefined);
   });
 });
