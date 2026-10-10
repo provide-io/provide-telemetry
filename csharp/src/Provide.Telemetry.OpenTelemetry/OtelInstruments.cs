@@ -90,7 +90,7 @@ internal sealed class OtelSpan : ISpan
     }
 }
 
-internal sealed class OtelMeter : IMeter
+internal sealed class OtelMeter : IMeter, IObservableMeter
 {
     private readonly Meter _meter;
     public OtelMeter(Meter meter) => _meter = meter;
@@ -105,6 +105,34 @@ internal sealed class OtelMeter : IMeter
 
     public IHistogram CreateHistogram(string name, string? description = null, string? unit = null) =>
         new OtelHistogram(_meter.CreateHistogram<double>(name, unit, description), name);
+
+    // Each observable's OTel callback defers to ObservableInstrument.Collect,
+    // which owns the gates, the failure isolation and the unregister flag:
+    // System.Diagnostics.Metrics cannot remove one instrument from a Meter.
+    public ObservableInstrument CreateObservableCounter(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        Register(new ObservableInstrument(name, callback),
+            h => _meter.CreateObservableCounter(name, () => Measurements(h), unit, description));
+
+    public ObservableInstrument CreateObservableGauge(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        Register(new ObservableInstrument(name, callback),
+            h => _meter.CreateObservableGauge(name, () => Measurements(h), unit, description));
+
+    public ObservableInstrument CreateObservableUpDownCounter(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        Register(new ObservableInstrument(name, callback),
+            h => _meter.CreateObservableUpDownCounter(name, () => Measurements(h), unit, description));
+
+    private static ObservableInstrument Register(ObservableInstrument handle, Action<ObservableInstrument> create)
+    {
+        create(handle);
+        handle.Attach();
+        return handle;
+    }
+
+    internal static IEnumerable<Measurement<double>> Measurements(ObservableInstrument handle) =>
+        handle.Collect().Select(o => new Measurement<double>(o.Value, OtelTagHelper.ToTagList(o.Attributes))).ToList();
 }
 
 internal sealed class OtelCounter : ICounter

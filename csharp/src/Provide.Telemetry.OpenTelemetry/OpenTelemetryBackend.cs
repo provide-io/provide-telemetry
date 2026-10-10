@@ -15,6 +15,7 @@ using OpenTelemetry.Trace;
 using OtelResourceBuilder = OpenTelemetry.Resources.ResourceBuilder;
 
 using Provide.Telemetry;
+using Provide.Telemetry.OpenTelemetry.Prometheus;
 
 namespace Provide.Telemetry.OpenTelemetry;
 
@@ -62,42 +63,81 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         if (!config.Tracing.Enabled || endpoint is null) return false;
         try
         {
+            var t = config.Tracing;
+            var tls = OtlpTls.Load(t.OtlpCertificate, t.OtlpClientCertificate, t.OtlpClientKey);
             _tracerProvider = Sdk.CreateTracerProviderBuilder()
                 .SetResourceBuilder(resource)
                 .AddSource(InstrumentationName)
                 .SetSampler(new ParentBasedSampler(
                     new TraceIdRatioBasedSampler(config.EffectiveTracesSampleRate())))
-                .AddOtlpExporter(o => Endpoints.Apply(o, endpoint, "traces", config.Tracing.OtlpHeaders))
+                .AddOtlpExporter(o => Endpoints.Apply(o, endpoint, "traces", t.OtlpHeaders, tls))
                 .Build();
             _activitySource = new ActivitySource(InstrumentationName);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            RecordInstallError("traces", ex);
             if (!config.Exporter.TracesFailOpen) throw;
             return false;
         }
     }
 
+    /// <summary>
+    /// Install the meter provider with the OTLP reader, the Prometheus pull
+    /// reader, or both, recording the pull endpoint's status either way.
+    /// </summary>
+    /// <remarks>
+    /// A host that marked its own metrics provider owns what Prometheus should
+    /// serve, so no pull reader is attached and the endpoint says so rather than
+    /// serving an empty registry.
+    /// </remarks>
     private bool InstallMetrics(TelemetryConfig config, OtelResourceBuilder resource)
     {
-        var endpoint = Endpoints.Normalize(config.Metrics.OtlpEndpoint);
-        if (!config.Metrics.Enabled || endpoint is null) return false;
+        var metrics = config.Metrics;
+        if (!metrics.Enabled)
+        {
+            PrometheusEndpoint.SetStatus(PrometheusEndpoint.MetricsDisabled);
+            return false;
+        }
+        var endpoint = metrics.OtlpReaderEnabled() ? Endpoints.Normalize(metrics.OtlpEndpoint) : null;
+        var (pull, status) = PullReaderFor(metrics);
+        if (endpoint is null && pull is null)
+        {
+            PrometheusEndpoint.SetStatus(status);
+            return false;
+        }
         try
         {
-            _meterProvider = Sdk.CreateMeterProviderBuilder()
+            var builder = Sdk.CreateMeterProviderBuilder()
                 .SetResourceBuilder(resource)
-                .AddMeter(InstrumentationName)
-                .AddOtlpExporter(o => Endpoints.Apply(o, endpoint, "metrics", config.Metrics.OtlpHeaders))
-                .Build();
+                .AddMeter(InstrumentationName);
+            if (endpoint is not null)
+            {
+                var tls = OtlpTls.Load(metrics.OtlpCertificate, metrics.OtlpClientCertificate, metrics.OtlpClientKey);
+                builder.AddOtlpExporter(o => Endpoints.Apply(o, endpoint, "metrics", metrics.OtlpHeaders, tls));
+            }
+            if (pull is not null) builder.AddReader(pull);
+            _meterProvider = builder.Build();
             _meter = new Meter(InstrumentationName);
+            if (pull is not null) PrometheusEndpoint.MarkReady(pull, PrometheusEndpoint.OptionsFor(config));
+            else PrometheusEndpoint.SetStatus(status);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            PrometheusEndpoint.SetStatus(PrometheusEndpoint.SetupFailed);
+            RecordInstallError("metrics", ex);
             if (!config.Exporter.MetricsFailOpen) throw;
             return false;
         }
+    }
+
+    private static (PrometheusPullReader? Reader, string Status) PullReaderFor(MetricsConfig metrics)
+    {
+        if (!metrics.PrometheusReaderEnabled()) return (null, PrometheusEndpoint.NotSelected);
+        if (TelemetryBackendRegistry.HostProviders.Metrics) return (null, PrometheusEndpoint.HostProvider);
+        return (new PrometheusPullReader(), PrometheusEndpoint.Ready);
     }
 
     private bool InstallLogs(TelemetryConfig config, OtelResourceBuilder resource)
@@ -107,6 +147,8 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
         try
         {
             var headers = config.Logging.OtlpHeaders;
+            var l = config.Logging;
+            var tls = OtlpTls.Load(l.OtlpCertificate, l.OtlpClientCertificate, l.OtlpClientKey);
             var services = new ServiceCollection();
             services.AddLogging(lb =>
             {
@@ -118,7 +160,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
                     o.IncludeScopes = true;
                     o.ParseStateValues = true;
                     o.SetResourceBuilder(resource);
-                    o.AddOtlpExporter(e => Endpoints.Apply(e, endpoint, "logs", headers));
+                    o.AddOtlpExporter(e => Endpoints.Apply(e, endpoint, "logs", headers, tls));
                 });
             });
             _logServices = services.BuildServiceProvider();
@@ -126,8 +168,9 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
             _otelLogger = _logServices.GetRequiredService<ILoggerFactory>().CreateLogger(InstrumentationName);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            RecordInstallError("logs", ex);
             if (!config.Exporter.LogsFailOpen) throw;
             // Nothing has been emitted through a pipeline that failed to
             // install, so there is nothing to drain: an already-expired
@@ -138,6 +181,32 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     }
 
     internal const string InstrumentationName = "Provide.Telemetry";
+
+    private readonly List<string> _installErrors = [];
+
+    /// <summary>
+    /// Remember why a signal's exporter did not install, for <c>setup_error</c>.
+    /// </summary>
+    /// <remarks>
+    /// Kept rather than written to health directly: setup clears the setup
+    /// error after the backend is built, and <see cref="Configure"/> is where
+    /// the backend reports.
+    /// </remarks>
+    private void RecordInstallError(string signal, Exception ex) =>
+        _installErrors.Add($"{signal} exporter: {ex.Message}");
+
+    /// <summary>
+    /// Start or stop the Prometheus listener to match <paramref name="config"/>
+    /// and report every failure since install.
+    /// </summary>
+    public string Configure(TelemetryConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        var errors = new List<string>(_installErrors);
+        var listener = PrometheusListener.Sync(config);
+        if (listener.Length > 0) errors.Add(listener);
+        return string.Join("; ", errors);
+    }
 
     public ITracer? GetTracer(string name)
     {
@@ -219,6 +288,9 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
 
     public void Shutdown(DateTimeOffset deadline)
     {
+        // Nothing is left to serve once shutdown starts.
+        PrometheusListener.Stop();
+        PrometheusEndpoint.SetStatus(PrometheusEndpoint.ShutDown);
         Drain(deadline, detach: true);
         DisposeDetached(deadline);
     }

@@ -48,6 +48,18 @@ public static class ProvideTelemetry
     public static IHistogram Histogram(string name, string? description = null, string? unit = null) =>
         Metrics.Histogram(name, description, unit);
 
+    public static ObservableInstrument ObservableCounter(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        Metrics.ObservableCounter(name, callback, description, unit);
+
+    public static ObservableInstrument ObservableGauge(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        Metrics.ObservableGauge(name, callback, description, unit);
+
+    public static ObservableInstrument ObservableUpDownCounter(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        Metrics.ObservableUpDownCounter(name, callback, description, unit);
+
     // Propagation
     public static PropagationContext ExtractW3CContext(IReadOnlyDictionary<string, string> headers) =>
         Propagation.ExtractW3CContext(headers);
