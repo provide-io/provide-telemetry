@@ -364,7 +364,8 @@ Each stage is its own PR and leaves `main` releasable.
    successfully; Go's names match the contract exactly. The run surfaced two
    more divergences, now in `push_ingestion.known_divergences`: Rust drops
    instrument units and descriptions before they reach OTel, and the C#
-   facade has no unit parameter.
+   facade has no unit parameter. The C# one is since closed: the facade takes
+   optional description and unit, and its entry is gone.
    A follow-up within Stage 2 added the basic-auth and TLS push modes and
    measured the gaps in the table under "Securing the listener and push".
 3. **Go: observable instruments, Tiers 2 and 3 with listener TLS and basic

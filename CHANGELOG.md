@@ -10,6 +10,21 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Changed
+
+- **C#: `Counter`, `Gauge` and `Histogram` take an optional description and
+  unit.** `ProvideTelemetry.Counter(name, description: null, unit: null)` and
+  its siblings, on both the facade and `IMeter`, match the other four SDKs.
+  The OpenTelemetry backend passes both to the BCL instrument, so C# metrics
+  now reach OTLP backends with their unit, and Prometheus stores a histogram
+  with unit `ms` as `<name>_milliseconds_sum` rather than `<name>_sum`. The
+  in-process fallback accepts and ignores them.
+
+  Binary-breaking: an assembly built against 0.10.x raises
+  `MissingMethodException` on these calls and must be rebuilt. Source-breaking
+  only for a third-party `IMeter` implementation, which must add the two
+  parameters.
+
 ## [0.10.1] — 2026-09-09
 
 ### Added

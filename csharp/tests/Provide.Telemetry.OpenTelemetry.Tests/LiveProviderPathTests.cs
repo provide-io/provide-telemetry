@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
+using System.Diagnostics.Metrics;
+
 using Provide.Telemetry;
 using Xunit;
 
@@ -78,6 +80,35 @@ public class LiveProviderPathTests : IDisposable
 
         Assert.Equal(3, counter.Value);
         Assert.Equal(1, Health.GetHealthSnapshot().MetricsEmitted);
+    }
+
+    [Fact]
+    public void TheFacadeFactoriesHandUnitAndDescriptionToTheBackendInstrument()
+    {
+        ProvideTelemetry.SetupTelemetry(LiveConfig());
+        var published = new Dictionary<string, Instrument>(StringComparer.Ordinal);
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, _) =>
+            {
+                if (instrument.Name.StartsWith("facade.meta.", StringComparison.Ordinal))
+                {
+                    lock (published) published[instrument.Name] = instrument;
+                }
+            },
+        };
+        listener.Start();
+
+        ProvideTelemetry.Counter("facade.meta.requests", "Requests served", "{request}");
+        ProvideTelemetry.Gauge("facade.meta.cpu", "CPU in use", "1");
+        ProvideTelemetry.Histogram("facade.meta.duration", "Request latency", "ms");
+        Metrics.Histogram("facade.meta.bare");
+
+        Assert.Equal(("{request}", "Requests served"), (published["facade.meta.requests"].Unit, published["facade.meta.requests"].Description));
+        Assert.Equal(("1", "CPU in use"), (published["facade.meta.cpu"].Unit, published["facade.meta.cpu"].Description));
+        Assert.Equal(("ms", "Request latency"), (published["facade.meta.duration"].Unit, published["facade.meta.duration"].Description));
+        Assert.Null(published["facade.meta.bare"].Unit);
+        Assert.Null(published["facade.meta.bare"].Description);
     }
 
     [Fact]

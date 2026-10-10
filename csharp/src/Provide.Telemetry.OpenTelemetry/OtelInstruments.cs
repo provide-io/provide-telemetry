@@ -94,9 +94,17 @@ internal sealed class OtelMeter : IMeter
 {
     private readonly Meter _meter;
     public OtelMeter(Meter meter) => _meter = meter;
-    public ICounter CreateCounter(string name) => new OtelCounter(_meter.CreateCounter<long>(name), name);
-    public IGauge CreateGauge(string name) => new OtelGauge(_meter.CreateGauge<double>(name), name);
-    public IHistogram CreateHistogram(string name) => new OtelHistogram(_meter.CreateHistogram<double>(name), name);
+
+    // Unit and description ride on the instrument itself, so every exporter
+    // (OTLP, and Prometheus' unit-suffixed names behind it) sees them.
+    public ICounter CreateCounter(string name, string? description = null, string? unit = null) =>
+        new OtelCounter(_meter.CreateCounter<long>(name, unit, description), name);
+
+    public IGauge CreateGauge(string name, string? description = null, string? unit = null) =>
+        new OtelGauge(_meter.CreateGauge<double>(name, unit, description), name);
+
+    public IHistogram CreateHistogram(string name, string? description = null, string? unit = null) =>
+        new OtelHistogram(_meter.CreateHistogram<double>(name, unit, description), name);
 }
 
 internal sealed class OtelCounter : ICounter

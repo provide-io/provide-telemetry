@@ -66,6 +66,28 @@ public class PublicApiAliasTests : IDisposable
     }
 
     [Fact]
+    public void FallbackFactories_AcceptUnitAndDescriptionAndStillRecord()
+    {
+        // With no backend installed the metadata has nowhere to go; the
+        // in-process instruments must take it and behave exactly as before.
+        var counter = ProvideTelemetry.Counter("alias.requests", "Requests served", "{request}");
+        var gauge = ProvideTelemetry.Gauge("alias.cpu", "CPU in use", "1");
+        var histogram = ProvideTelemetry.Histogram("alias.duration", "Request latency", "ms");
+
+        counter.Add(3);
+        gauge.Set(0.5);
+        histogram.Record(12);
+
+        Assert.IsType<FallbackCounter>(counter);
+        Assert.IsType<FallbackGauge>(gauge);
+        Assert.IsType<FallbackHistogram>(histogram);
+        Assert.Equal(3, counter.Value);
+        Assert.Equal(0.5, gauge.Value);
+        Assert.Equal((1L, 12.0), (histogram.Count, histogram.Sum));
+        Assert.Equal(3, Health.GetHealthSnapshot().MetricsEmitted);
+    }
+
+    [Fact]
     public void InjectTraceparent_UsesTheContextSetThroughTheFacade()
     {
         ProvideTelemetry.SetTraceContext("0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331");

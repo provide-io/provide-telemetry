@@ -30,6 +30,7 @@ public sealed class OtelInstrumentsTests : IDisposable
     private readonly Meter _meter = new("Provide.Telemetry.Tests.Instruments");
     private readonly MeterListener _meterListener = new();
     private readonly List<(string Name, double Value, Dictionary<string, object?> Tags)> _measurements = new();
+    private readonly Dictionary<string, Instrument> _instruments = new(StringComparer.Ordinal);
 
     public OtelInstrumentsTests()
     {
@@ -45,7 +46,9 @@ public sealed class OtelInstrumentsTests : IDisposable
 
         _meterListener.InstrumentPublished = (instrument, listener) =>
         {
-            if (ReferenceEquals(instrument.Meter, _meter)) listener.EnableMeasurementEvents(instrument);
+            if (!ReferenceEquals(instrument.Meter, _meter)) return;
+            _instruments[instrument.Name] = instrument;
+            listener.EnableMeasurementEvents(instrument);
         };
         _meterListener.SetMeasurementEventCallback<long>(
             (instrument, value, tags, _) => Capture(instrument, value, tags));
@@ -331,6 +334,46 @@ public sealed class OtelInstrumentsTests : IDisposable
         Assert.Equal("/a", _measurements[0].Tags["route"]);
         Assert.Equal(4.5, _measurements[1].Value);
         Assert.Equal(2, Health.GetHealthSnapshot().MetricsEmitted);
+    }
+
+    [Fact]
+    public void Instruments_CarryTheirUnitAndDescriptionToTheExportedInstrument()
+    {
+        // Unit and description are the instrument's metadata, not a
+        // measurement's: an exporter reads them off the Instrument, and
+        // Prometheus turns the unit into a name suffix (ms -> _milliseconds,
+        // 1 -> _ratio). Distinct values per slot catch a swapped argument.
+        var meter = new OtelMeter(_meter);
+        meter.CreateCounter("orders.placed", description: "Orders placed", unit: "{order}").Add(1);
+        meter.CreateGauge("cpu.utilization", description: "CPU in use", unit: "1").Set(0.5);
+        meter.CreateHistogram("request.duration", description: "Request latency", unit: "ms").Record(12);
+
+        Assert.Equal(3, _instruments.Count);
+        Assert.IsAssignableFrom<Counter<long>>(_instruments["orders.placed"]);
+        Assert.Equal("{order}", _instruments["orders.placed"].Unit);
+        Assert.Equal("Orders placed", _instruments["orders.placed"].Description);
+        Assert.IsAssignableFrom<Gauge<double>>(_instruments["cpu.utilization"]);
+        Assert.Equal("1", _instruments["cpu.utilization"].Unit);
+        Assert.Equal("CPU in use", _instruments["cpu.utilization"].Description);
+        Assert.IsAssignableFrom<Histogram<double>>(_instruments["request.duration"]);
+        Assert.Equal("ms", _instruments["request.duration"].Unit);
+        Assert.Equal("Request latency", _instruments["request.duration"].Description);
+    }
+
+    [Fact]
+    public void Instruments_WithoutMetadataPublishNoUnitOrDescription()
+    {
+        var meter = new OtelMeter(_meter);
+        meter.CreateCounter("bare.counter");
+        meter.CreateGauge("bare.gauge");
+        meter.CreateHistogram("bare.histogram");
+
+        Assert.Equal(3, _instruments.Count);
+        Assert.All(_instruments.Values, instrument =>
+        {
+            Assert.Null(instrument.Unit);
+            Assert.Null(instrument.Description);
+        });
     }
 
     [Fact]

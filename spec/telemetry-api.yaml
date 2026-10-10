@@ -1199,7 +1199,6 @@ prometheus_metrics:
     known_divergences:
       - "gauge: Python and TypeScript currently back gauge() with an OTel UpDownCounter, while Go, Rust and C# use an OTel Gauge. The contract is gauge semantics (unit 1 becomes _ratio under the WithSuffixes strategies). Python and TypeScript must align before they ship the prometheus capability."
       - "units (Rust): counter(), gauge() and histogram() accept a unit and description but never pass them to the OTel instrument (rust/src/otel/metrics.rs builds each with a bare .build()), so every Rust metric reaches every backend without a unit and Prometheus names lack unit suffixes."
-      - "units (C#): ProvideTelemetry.Counter/Gauge/Histogram take only a name, so C# metrics cannot carry a unit or description at all. The facade needs optional unit and description parameters, matching the other SDKs."
 
   handler:
     - "GET (and HEAD) only; other methods return 405."

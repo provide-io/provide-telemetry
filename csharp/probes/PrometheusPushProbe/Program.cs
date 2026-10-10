@@ -37,8 +37,8 @@ OpenTelemetryBackendRegistration.Register();
 ProvideTelemetry.SetupTelemetry();
 
 ProvideTelemetry.Counter($"{prefix}.requests").Add(3, new Dictionary<string, object?> { ["route"] = "/a" });
-ProvideTelemetry.Histogram($"{prefix}.request.duration").Record(12, new Dictionary<string, object?> { ["route"] = "/a" });
-ProvideTelemetry.Gauge($"{prefix}.cpu.utilization").Set(1, new Dictionary<string, object?> { ["core"] = "0" });
+ProvideTelemetry.Histogram($"{prefix}.request.duration", unit: "ms").Record(12, new Dictionary<string, object?> { ["route"] = "/a" });
+ProvideTelemetry.Gauge($"{prefix}.cpu.utilization", unit: "1").Set(1, new Dictionary<string, object?> { ["core"] = "0" });
 
 // Shutdown drains the periodic reader, which is what puts the data on the wire.
 ProvideTelemetry.ShutdownTelemetry();
