@@ -418,8 +418,11 @@ Each stage is its own PR and leaves `main` releasable.
    `ITelemetryBackend.Configure` hook; observable instruments through an
    optional `IObservableMeter`. The push gaps are closed: per-signal headers
    replace the shared ones, and `OTEL_EXPORTER_OTLP[_SIGNAL]_CERTIFICATE`,
-   `_CLIENT_CERTIFICATE` and `_CLIENT_KEY` feed a custom `HttpClientFactory`.
-   C# is in both capability sets and in the scrape E2E.
+   `_CLIENT_CERTIFICATE` and `_CLIENT_KEY` feed a custom `HttpClientFactory`;
+   a file that cannot be read or loaded leaves that signal's OTLP exporter
+   unbuilt with `setup_error` set, as in Python and Go.
+   `PROVIDE_METRICS_HEALTH_OTLP` registers the health families as observable
+   instruments too. C# is in both capability sets and in the scrape E2E.
 
 ## Decisions
 
