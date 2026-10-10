@@ -306,7 +306,12 @@ pub(crate) fn format_value(value: f64) -> String {
         return "NaN".to_string();
     }
     if value.is_infinite() {
-        return if value > 0.0 { "+Inf" } else { "-Inf" }.to_string();
+        return if value.is_sign_negative() {
+            "-Inf"
+        } else {
+            "+Inf"
+        }
+        .to_string();
     }
     let magnitude = value.abs();
     if magnitude != 0.0 && !(1e-7..1e21).contains(&magnitude) {

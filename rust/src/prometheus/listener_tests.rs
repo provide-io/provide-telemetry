@@ -59,6 +59,10 @@ fn client(certs: Option<&TestCerts>, client_cert: bool) -> reqwest::blocking::Cl
 #[mutants::skip] // test helper
 fn raw(address: SocketAddr, request: &[u8]) -> String {
     let mut stream = TcpStream::connect(address).unwrap();
+    // Bounded, so a listener that never answers fails the test instead of hanging it.
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     stream.write_all(request).unwrap();
     let mut out = String::new();
     let _ = stream.read_to_string(&mut out);
@@ -484,6 +488,12 @@ fn oversized_or_truncated_heads_are_dropped() {
     assert_eq!(read_head(&mut huge), None);
     let mut truncated = std::io::Cursor::new(b"GET / HTTP/1.1\r\n".to_vec());
     assert_eq!(read_head(&mut truncated), None);
+    // A head that reaches the limit exactly is still read to its end.
+    // 64 KiB, spelled out so the test pins the limit rather than echoing it.
+    let mut at_limit = vec![b'a'; 65536];
+    at_limit.extend_from_slice(b"\r\n\r\n");
+    let mut at_limit_reader = std::io::Cursor::new(at_limit.clone());
+    assert_eq!(read_head(&mut at_limit_reader), Some(at_limit));
     let mut complete = std::io::Cursor::new(b"GET / HTTP/1.1\r\n\r\n".to_vec());
     assert_eq!(
         read_head(&mut complete),

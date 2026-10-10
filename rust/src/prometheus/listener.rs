@@ -150,7 +150,10 @@ fn start(key: Key) -> Result<Running, String> {
 }
 
 fn accept_loop(listener: &TcpListener, stop: &AtomicBool, context: &Arc<Context>) {
-    while !stop.load(Ordering::Acquire) {
+    loop {
+        if stop.load(Ordering::Acquire) {
+            return;
+        }
         match listener.accept() {
             Ok((stream, _)) => {
                 let context = Arc::clone(context);
