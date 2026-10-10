@@ -44,6 +44,7 @@ def _make(value: float, labels: dict[str, str]) -> tuple[float, dict[str, str]]:
 
 @pytest.fixture(autouse=True)
 def _clean() -> Any:
+    _set_meter_for_test(None)
     reset_health_for_tests()
     set_consent_level(ConsentLevel.FULL)
     yield

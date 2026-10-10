@@ -13,6 +13,7 @@ from typing import Any
 
 from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
+from provide.telemetry._otlp_tls import tls_ready
 from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.metrics import _health_otlp
@@ -129,7 +130,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
 
     provider_cls, resource_cls, reader_cls, exporter_cls = components
     readers: list[Any] = []
-    if config.metrics.otlp_endpoint and config.metrics.otlp_reader_enabled:
+    if config.metrics.otlp_endpoint and config.metrics.otlp_reader_enabled and tls_ready("metrics"):
         raw_exporter = run_with_resilience(
             "metrics",
             lambda: exporter_cls(
