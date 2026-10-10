@@ -14,9 +14,12 @@
 #   capability: when present, specifies which capability module must be present for this
 #               symbol to be required.  validate_conformance.py checks capability-gated
 #               symbols when the language advertises that capability.
-#               Supported values: "governance"
+#               Supported values: "governance", "observable_metrics", "prometheus"
 #               Capability rules by language:
 #                 python, typescript, go, rust, csharp — governance always present
+#                 observable_metrics, prometheus — none yet; a language is added to
+#                   the matching set in validate_conformance.py in the PR that ships
+#                   it (see docs/plans/2026-10-10-prometheus-metrics-design.md)
 #   note:       human-readable description or rationale
 
 spec_version: "2"
@@ -104,6 +107,33 @@ api:
     - name: histogram
       kind: function
       required: true
+    - name: observable_counter
+      kind: function
+      required: false
+      capability: observable_metrics
+      note: "Callback-reported monotonic counter; callbacks run at collection (each scrape or export interval). See prometheus.observable_instruments."
+    - name: observable_gauge
+      kind: function
+      required: false
+      capability: observable_metrics
+      note: "Callback-reported gauge. Series a callback stops reporting disappear from the next collection."
+    - name: observable_up_down_counter
+      kind: function
+      required: false
+      capability: observable_metrics
+      note: "Callback-reported non-monotonic sum."
+
+  prometheus:
+    - name: metrics_handler
+      kind: function
+      required: false
+      capability: prometheus
+      note: "Tier 2 pull handler the host mounts on its own HTTP server; idiomatic shape per language (ASGI app, http.Handler, node:http listener, ASP.NET endpoint mapping). Not exported by browser TypeScript."
+    - name: render_prometheus
+      kind: function
+      required: false
+      capability: prometheus
+      note: "Returns (body, content_type) for one collection, for hosts whose server the handler does not fit."
 
   propagation:
     - name: extract_w3c_context
@@ -1064,6 +1094,132 @@ health_snapshot:
     receipt_failures:
       type: uint64
       description: "Governance receipts a configured ReceiptSink refused or threw on. Without this, a sink that silently drops every receipt is indistinguishable from one that delivers them."
+
+prometheus_metrics:
+  description: >
+    Contract for Prometheus support, delivered in stages (see
+    docs/plans/2026-10-10-prometheus-metrics-design.md). Tier 1 is OTLP push to
+    a Prometheus 3 OTLP receiver and needs no new SDK surface. Tier 2 is the
+    metrics_handler / render_prometheus pull surface. Tier 3 is an opt-in
+    standalone listener serving the Tier 2 handler. All tiers read one
+    MeterProvider: the Prometheus reader sits beside the OTLP reader and never
+    becomes a second instrument system. Cases live in
+    spec/prometheus_fixtures.yaml.
+
+  # Keys move from here into config_defaults (with an applicability list) in the
+  # PR that makes the first SDK parse them; config_defaults rejects an empty
+  # applicability, so planned keys cannot live there yet.
+  planned_config:
+    - env: OTEL_METRICS_EXPORTER
+      type: str
+      default: "otlp"
+      description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader."
+    - env: OTEL_EXPORTER_PROMETHEUS_HOST
+      type: str
+      default: "127.0.0.1"
+      description: "Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup."
+    - env: OTEL_EXPORTER_PROMETHEUS_PORT
+      type: int
+      default: "9464"
+      description: "Tier 3 bind port."
+    - env: PROVIDE_METRICS_PROMETHEUS_LISTEN
+      type: str
+      default: "false"
+      description: "Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER)."
+    - env: PROVIDE_METRICS_PROMETHEUS_PATH
+      type: str
+      default: "/metrics"
+      description: "Tier 3 path. Ignored by Tier 2, where the host picks the mount path."
+    - env: PROVIDE_METRICS_PROMETHEUS_TRANSLATION
+      type: str
+      default: "UnderscoreEscapingWithSuffixes"
+      description: "Metric and label name translation strategy; one of translation.strategies."
+    - env: PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS
+      type: bool
+      default: "false"
+      description: "Add otel_scope_name / otel_scope_version labels to every series."
+    - env: PROVIDE_METRICS_PROMETHEUS_TARGET_INFO
+      type: bool
+      default: "true"
+      description: "Emit the target_info series carrying resource attributes."
+    - env: PROVIDE_METRICS_HEALTH_OTLP
+      type: bool
+      default: "false"
+      description: "Also export the health metrics over OTLP as observable instruments."
+
+  config_rules:
+    - "OTEL_METRICS_EXPORTER is split on commas, entries trimmed and lowercased, empty entries dropped. An empty value means the default."
+    - "none combined with any other exporter is invalid."
+    - "An unknown exporter, LISTEN value, or translation strategy is a ConfigurationError in strict mode; otherwise the default is used and one warning is logged."
+    - "PROVIDE_METRICS_PROMETHEUS_PATH must start with '/' and contain no '?' or '#'. An invalid path follows the same strict/default rule as other enum keys."
+    - "PROVIDE_METRICS_ENABLED=false disables every metrics reader, including the Prometheus reader and the listener."
+    - "LISTEN=true without prometheus in OTEL_METRICS_EXPORTER still attaches the Prometheus reader; asking for a listener implies the reader."
+
+  observable_instruments:
+    - "A callback reports zero or more (value, attributes) observations per collection."
+    - "A callback that raises or panics contributes no observations for that collection, is counted, and never fails the collection or the scrape."
+    - "Registration returns a handle that unregisters the callback."
+    - "Without a live provider, callbacks register against the fallback and run when a collection is requested, so they stay testable."
+
+  translation:
+    reference: "github.com/prometheus/otlptranslator v1.0.0 (MetricNamer and LabelNamer)"
+    default: UnderscoreEscapingWithSuffixes
+    strategies:
+      - UnderscoreEscapingWithSuffixes
+      - UnderscoreEscapingWithoutSuffixes
+      - NoUTF8EscapingWithSuffixes
+      - NoTranslation
+    instrument_types:
+      counter: monotonic_counter
+      observable_counter: monotonic_counter
+      observable_up_down_counter: non_monotonic_counter
+      gauge: gauge
+      observable_gauge: gauge
+      histogram: histogram
+    rules:
+      - "Names are translated by the reference implementation's rules, pinned by the cases in spec/prometheus_fixtures.yaml. An SDK whose exporter cannot be configured to match translates names itself before handing them over."
+      - "Histogram series append _bucket, _sum and _count to the translated name."
+      - "The two NoUTF8/NoTranslation strategies emit UTF-8 names only to a scraper that negotiates them; any other scrape gets UnderscoreEscaping output with the same suffix choice."
+    known_divergences:
+      - "gauge: Python and TypeScript currently back gauge() with an OTel UpDownCounter, while Go, Rust and C# use an OTel Gauge. The contract is gauge semantics (unit 1 becomes _ratio under the WithSuffixes strategies). Python and TypeScript must align before they ship the prometheus capability."
+
+  handler:
+    - "GET (and HEAD) only; other methods return 405."
+    - "Content-Type is text/plain; version=0.0.4; charset=utf-8 unless the scraper negotiates another supported format."
+    - "Before setup, after shutdown, with metrics disabled, or when the host owns the MeterProvider: 503 with a one-line text body naming the reason. Never an empty 200."
+    - "Each request runs one collection: observable callbacks, then the health collector."
+
+  listener:
+    - "Started by setup() and stopped by shutdown(). Reconfiguration restarts it only when host, port or path changed."
+    - "Serves the handler at PROVIDE_METRICS_PROMETHEUS_PATH; every other path returns 404."
+    - "Read-header, read, write and idle timeouts are set so a slow client cannot hold the listener."
+    - "A bind failure logs one warning, records setup_error, and never fails setup."
+
+  temporality:
+    - "The Prometheus reader is always cumulative."
+    - "Tier 1 requires cumulative OTLP metrics (the Prometheus OTLP receiver rejects delta by default); cumulative is already the SDK default."
+
+  health_metrics:
+    description: >
+      The health_snapshot fields served as Prometheus series by a collector on
+      the pull path. These names are already valid under every translation
+      strategy and are emitted unchanged. They bypass the MeterProvider unless
+      PROVIDE_METRICS_HEALTH_OTLP is true; when both are on, the pull output
+      carries only the collector's copy.
+    circuit_state_values: {closed: 0, half-open: 1, open: 2}
+    per_signal:
+      - {field: emitted, metric: provide_telemetry_emitted_total, type: counter}
+      - {field: dropped, metric: provide_telemetry_dropped_total, type: counter}
+      - {field: export_failures, metric: provide_telemetry_export_failures_total, type: counter}
+      - {field: retries, metric: provide_telemetry_export_retries_total, type: counter}
+      - {field: export_latency_ms, metric: provide_telemetry_export_latency_milliseconds, type: gauge}
+      - {field: async_blocking_risk, metric: provide_telemetry_async_blocking_risk_total, type: counter}
+      - {field: circuit_state, metric: provide_telemetry_circuit_state, type: gauge}
+      - {field: circuit_open_count, metric: provide_telemetry_circuit_open_total, type: counter}
+    per_signal_label: signal
+    global:
+      - {field: setup_error, metric: provide_telemetry_setup_error, type: gauge, value: "1 when setup_error is non-empty, else 0"}
+      - {field: receipt_failures, metric: provide_telemetry_receipt_failures_total, type: counter}
 
 required_behaviors:
   - id: graceful_degradation

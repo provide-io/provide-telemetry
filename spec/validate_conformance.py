@@ -262,11 +262,22 @@ def _build_kind_overrides(
 _GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust", "csharp"})
 
 
+# Languages that ship the staged Prometheus work (see the prometheus_metrics
+# section of the spec). Each set starts empty and gains a language in the PR that
+# ships it, so from then on a missing export is a conformance error.
+_OBSERVABLE_METRICS_LANGUAGES: frozenset[str] = frozenset()
+_PROMETHEUS_LANGUAGES: frozenset[str] = frozenset()
+
+_CAPABILITY_LANGUAGES: dict[str, frozenset[str]] = {
+    "governance": _GOVERNANCE_LANGUAGES,
+    "observable_metrics": _OBSERVABLE_METRICS_LANGUAGES,
+    "prometheus": _PROMETHEUS_LANGUAGES,
+}
+
+
 def _language_has_capability(lang: str, capability: str) -> bool:
     """Return True if *lang* is expected to export symbols gated on *capability*."""
-    if capability == "governance":
-        return lang in _GOVERNANCE_LANGUAGES
-    return False
+    return lang in _CAPABILITY_LANGUAGES.get(capability, frozenset())
 
 
 def _check_language(
@@ -323,9 +334,10 @@ def _check_language(
             if required:
                 errors.append(f"  MISSING: {lang} does not export '{expected}' (spec: {spec_name})")
             else:
-                # capability-gated only: missing governance export is an error
+                # capability-gated only: a missing export the language has
+                # committed to through its capability set is an error
                 errors.append(
-                    f"  MISSING [governance]: {lang} does not export '{expected}'"
+                    f"  MISSING [{capability}]: {lang} does not export '{expected}'"
                     f" (spec: {spec_name}, capability: {capability})"
                 )
             continue

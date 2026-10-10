@@ -282,11 +282,13 @@ language's stage.
   status codes (before setup, after shutdown, host-owned provider); callback
   failure isolation; listener start, stop, rebind and bind failure; health
   mapping for every field.
-- **Exposition fixture:** one shared fixture in `spec/` listing instruments to
-  create and the exact expected exposition lines for each translation value
-  and each scope-label / `target_info` switch. Every SDK must produce
-  byte-identical output after sorting lines, which enforces the naming
-  contract.
+- **Shared fixtures:** `spec/prometheus_fixtures.yaml` holds the cases every
+  SDK runs: metric and label names for each translation value (generated
+  with `github.com/prometheus/otlptranslator` v1.0.0, the reference), config
+  parsing, listener paths, handler status codes and the health mapping.
+  Output is compared by sample (name, labels, value), not by exposition bytes,
+  because float formatting and line order legitimately differ between
+  exporters.
 - **Scrape test:** each SDK starts a Tier 3 listener on an ephemeral port and
   scrapes it over real HTTP.
 - **E2E:** a Prometheus 3 container with `--web.enable-otlp-receiver` added to
@@ -301,10 +303,17 @@ language's stage.
 
 Each stage is its own PR and leaves `main` releasable.
 
-1. **Spec and docs.** New config keys, `observable_*` entries,
-   `metrics_handler` (`required: false`), the health metric mapping, the name
-   rule-set and the exposition fixture. `spec/validate_conformance.py` learns
-   the new optional entries.
+1. **Spec and fixtures** (done). The `prometheus_metrics` section of
+   `spec/telemetry-api.yaml`, the `observable_*`, `metrics_handler` and
+   `render_prometheus` symbols behind the `observable_metrics` and
+   `prometheus` capabilities, and `spec/prometheus_fixtures.yaml`. Each
+   capability's language set in `spec/validate_conformance.py` starts empty
+   and gains a language in the PR that ships it, after which a missing export
+   fails conformance. New config keys sit in `prometheus_metrics.planned_config`
+   until an SDK parses them, then move to `config_defaults`, whose
+   applicability list cannot be empty.
+   `tests/tooling/test_prometheus_contract.py` keeps the spec section, the
+   fixtures and the capability gates consistent with each other.
 2. **Tier 1 everywhere.** Prometheus 3 in `docker-compose.yml`, the OTLP→Prom
    E2E test, and a "Sending metrics to Prometheus" section in
    `docs/guide/configuration.md`. Expected to need little or no SDK code.
@@ -316,6 +325,13 @@ Each stage is its own PR and leaves `main` releasable.
    all five ship.
 
 ## Decisions
+
+0. **Gauge semantics are canonical.** Stage 1 found that Python and TypeScript
+   back `gauge()` with an OTel UpDownCounter while Go, Rust and C# use a real
+   Gauge. Under the suffix strategies that changes names (unit `1` becomes
+   `_ratio` only for a gauge). The spec records it under
+   `translation.known_divergences`; Python and TypeScript align before they
+   join the `prometheus` capability.
 
 1. **Everything that changes behavior is configurable.** Listener start,
    name translation, scope labels, `target_info` and health over OTLP each

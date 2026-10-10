@@ -1,0 +1,250 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-Comment: Part of provide-telemetry.
+#
+# Cases for the prometheus_metrics contract in spec/telemetry-api.yaml.
+#
+# metric_names and label_names were generated with the contract's translation
+# reference, github.com/prometheus/otlptranslator v1.0.0, by building each case
+# with NewMetricNamer("", strategy) and LabelNamer{UTF8Allowed: false|true}.
+# They are not hand-written: a disagreement with an SDK means the SDK is wrong
+# unless the reference changed, in which case regenerate and bump the version
+# named above.
+#
+# Comparison is by sample (name, labels, value), never by exposition bytes:
+# float formatting and line order legitimately differ between exporters.
+
+metric_names:
+  - id: slo_requests_counter
+    name: "http.requests.total"
+    unit: ""
+    instrument: counter
+    expected:
+      UnderscoreEscapingWithSuffixes: "http_requests_total"
+      UnderscoreEscapingWithoutSuffixes: "http_requests_total"
+      NoUTF8EscapingWithSuffixes: "http.requests_total"
+      NoTranslation: "http.requests.total"
+  - id: slo_duration_histogram_ms
+    name: "http.request.duration_ms"
+    unit: "ms"
+    instrument: histogram
+    expected:
+      UnderscoreEscapingWithSuffixes: "http_request_duration_ms_milliseconds"
+      UnderscoreEscapingWithoutSuffixes: "http_request_duration_ms"
+      NoUTF8EscapingWithSuffixes: "http.request.duration_ms_milliseconds"
+      NoTranslation: "http.request.duration_ms"
+  - id: semconv_duration_seconds
+    name: "http.server.request.duration"
+    unit: "s"
+    instrument: histogram
+    expected:
+      UnderscoreEscapingWithSuffixes: "http_server_request_duration_seconds"
+      UnderscoreEscapingWithoutSuffixes: "http_server_request_duration"
+      NoUTF8EscapingWithSuffixes: "http.server.request.duration_seconds"
+      NoTranslation: "http.server.request.duration"
+  - id: counter_dimensionless_unit
+    name: "requests.count"
+    unit: "1"
+    instrument: counter
+    expected:
+      UnderscoreEscapingWithSuffixes: "requests_count_total"
+      UnderscoreEscapingWithoutSuffixes: "requests_count"
+      NoUTF8EscapingWithSuffixes: "requests.count_total"
+      NoTranslation: "requests.count"
+  - id: gauge_bytes
+    name: "memory.usage"
+    unit: "By"
+    instrument: gauge
+    expected:
+      UnderscoreEscapingWithSuffixes: "memory_usage_bytes"
+      UnderscoreEscapingWithoutSuffixes: "memory_usage"
+      NoUTF8EscapingWithSuffixes: "memory.usage_bytes"
+      NoTranslation: "memory.usage"
+  - id: gauge_ratio
+    name: "process.cpu.utilization"
+    unit: "1"
+    instrument: gauge
+    expected:
+      UnderscoreEscapingWithSuffixes: "process_cpu_utilization_ratio"
+      UnderscoreEscapingWithoutSuffixes: "process_cpu_utilization"
+      NoUTF8EscapingWithSuffixes: "process.cpu.utilization_ratio"
+      NoTranslation: "process.cpu.utilization"
+  - id: up_down_annotation_unit
+    name: "queue.depth"
+    unit: "{item}"
+    instrument: observable_up_down_counter
+    expected:
+      UnderscoreEscapingWithSuffixes: "queue_depth"
+      UnderscoreEscapingWithoutSuffixes: "queue_depth"
+      NoUTF8EscapingWithSuffixes: "queue.depth"
+      NoTranslation: "queue.depth"
+  - id: up_down_dimensionless_unit
+    name: "pool.connections"
+    unit: "1"
+    instrument: observable_up_down_counter
+    expected:
+      UnderscoreEscapingWithSuffixes: "pool_connections"
+      UnderscoreEscapingWithoutSuffixes: "pool_connections"
+      NoUTF8EscapingWithSuffixes: "pool.connections"
+      NoTranslation: "pool.connections"
+  - id: gauge_rate_unit
+    name: "network.io"
+    unit: "By/s"
+    instrument: gauge
+    expected:
+      UnderscoreEscapingWithSuffixes: "network_io_bytes_per_second"
+      UnderscoreEscapingWithoutSuffixes: "network_io"
+      NoUTF8EscapingWithSuffixes: "network.io_bytes_per_second"
+      NoTranslation: "network.io"
+  - id: handwritten_prometheus_gauge
+    name: "litevirt_lb_keepalived_up"
+    unit: ""
+    instrument: gauge
+    expected:
+      UnderscoreEscapingWithSuffixes: "litevirt_lb_keepalived_up"
+      UnderscoreEscapingWithoutSuffixes: "litevirt_lb_keepalived_up"
+      NoUTF8EscapingWithSuffixes: "litevirt_lb_keepalived_up"
+      NoTranslation: "litevirt_lb_keepalived_up"
+  - id: handwritten_prometheus_counter
+    name: "litevirt_rpc_requests_total"
+    unit: ""
+    instrument: counter
+    expected:
+      UnderscoreEscapingWithSuffixes: "litevirt_rpc_requests_total"
+      UnderscoreEscapingWithoutSuffixes: "litevirt_rpc_requests_total"
+      NoUTF8EscapingWithSuffixes: "litevirt_rpc_requests_total"
+      NoTranslation: "litevirt_rpc_requests_total"
+  - id: leading_digit
+    name: "2xx.responses"
+    unit: ""
+    instrument: counter
+    expected:
+      UnderscoreEscapingWithSuffixes: "_2xx_responses_total"
+      UnderscoreEscapingWithoutSuffixes: "_2xx_responses"
+      NoUTF8EscapingWithSuffixes: "2xx.responses_total"
+      NoTranslation: "2xx.responses"
+  - id: observable_gauge_celsius
+    name: "device.temperature"
+    unit: "Cel"
+    instrument: observable_gauge
+    expected:
+      UnderscoreEscapingWithSuffixes: "device_temperature_celsius"
+      UnderscoreEscapingWithoutSuffixes: "device_temperature"
+      NoUTF8EscapingWithSuffixes: "device.temperature_celsius"
+      NoTranslation: "device.temperature"
+  - id: observable_counter_seconds
+    name: "process.cpu.time"
+    unit: "s"
+    instrument: observable_counter
+    expected:
+      UnderscoreEscapingWithSuffixes: "process_cpu_time_seconds_total"
+      UnderscoreEscapingWithoutSuffixes: "process_cpu_time"
+      NoUTF8EscapingWithSuffixes: "process.cpu.time_seconds_total"
+      NoTranslation: "process.cpu.time"
+
+label_names:
+  - {attribute: "http.status_code", escaped: "http_status_code", utf8: "http.status_code"}
+  - {attribute: "service.name", escaped: "service_name", utf8: "service.name"}
+  - {attribute: "123abc", escaped: "key_123abc", utf8: "123abc"}
+  - {attribute: "_private", escaped: "_private", utf8: "_private"}
+  - {attribute: "a..b", escaped: "a_b", utf8: "a..b"}
+  - {attribute: "signal", escaped: "signal", utf8: "signal"}
+
+exporter_selection:
+  - {id: default_is_otlp, env: {}, exporters: [otlp], listener: false}
+  - {id: empty_value_is_default, env: {OTEL_METRICS_EXPORTER: ""}, exporters: [otlp], listener: false}
+  - {id: prometheus_only, env: {OTEL_METRICS_EXPORTER: prometheus}, exporters: [prometheus], listener: false}
+  - {id: both_trimmed_and_lowercased, env: {OTEL_METRICS_EXPORTER: " OTLP , Prometheus "}, exporters: [otlp, prometheus], listener: false}
+  - {id: empty_entries_dropped, env: {OTEL_METRICS_EXPORTER: "otlp,,prometheus,"}, exporters: [otlp, prometheus], listener: false}
+  - {id: none_alone, env: {OTEL_METRICS_EXPORTER: none}, exporters: [], listener: false}
+  - {id: none_with_other_is_invalid, env: {OTEL_METRICS_EXPORTER: "none,prometheus"}, error: true, fallback_exporters: [otlp]}
+  - {id: unknown_exporter_is_invalid, env: {OTEL_METRICS_EXPORTER: "otlp,statsd"}, error: true, fallback_exporters: [otlp]}
+  - {id: listen_true_implies_reader, env: {PROVIDE_METRICS_PROMETHEUS_LISTEN: "true"}, exporters: [otlp, prometheus], listener: true}
+  - {id: listen_auto_follows_exporter, env: {OTEL_METRICS_EXPORTER: prometheus, PROVIDE_METRICS_PROMETHEUS_LISTEN: auto}, exporters: [prometheus], listener: true}
+  - {id: listen_auto_without_prometheus, env: {PROVIDE_METRICS_PROMETHEUS_LISTEN: auto}, exporters: [otlp], listener: false}
+  - {id: listen_false_never_listens, env: {OTEL_METRICS_EXPORTER: prometheus, PROVIDE_METRICS_PROMETHEUS_LISTEN: "false"}, exporters: [prometheus], listener: false}
+  - {id: listen_unknown_is_invalid, env: {PROVIDE_METRICS_PROMETHEUS_LISTEN: sometimes}, error: true, fallback_exporters: [otlp], fallback_listener: false}
+  - {id: metrics_disabled_wins, env: {PROVIDE_METRICS_ENABLED: "false", OTEL_METRICS_EXPORTER: prometheus, PROVIDE_METRICS_PROMETHEUS_LISTEN: "true"}, exporters: [], listener: false}
+
+listener_path:
+  - {id: default, value: null, path: /metrics}
+  - {id: custom, value: /internal/metrics, path: /internal/metrics}
+  - {id: root_allowed, value: /, path: /}
+  - {id: missing_leading_slash, value: metrics, error: true, path: /metrics}
+  - {id: query_rejected, value: "/metrics?x=1", error: true, path: /metrics}
+  - {id: fragment_rejected, value: "/metrics#a", error: true, path: /metrics}
+  - {id: empty_is_default, value: "", path: /metrics}
+
+translation_strategy:
+  - {id: default, value: null, strategy: UnderscoreEscapingWithSuffixes}
+  - {id: each_named_value, value: UnderscoreEscapingWithoutSuffixes, strategy: UnderscoreEscapingWithoutSuffixes}
+  - {id: unknown_is_invalid, value: Legacy, error: true, strategy: UnderscoreEscapingWithSuffixes}
+
+handler_status:
+  - {id: before_setup, state: not_set_up, status: 503}
+  - {id: after_shutdown, state: shut_down, status: 503}
+  - {id: metrics_disabled, state: metrics_disabled, status: 503}
+  - {id: host_owned_provider, state: host_provider, status: 503}
+  - {id: serving, state: ready, status: 200, content_type: "text/plain; version=0.0.4; charset=utf-8"}
+  - {id: wrong_method, state: ready, method: POST, status: 405}
+
+health_metrics:
+  - id: full_snapshot
+    snapshot:
+      emitted_logs: 100
+      dropped_logs: 7
+      export_failures_logs: 3
+      retries_logs: 5
+      export_latency_ms_logs: 12.5
+      async_blocking_risk_logs: 0
+      circuit_state_logs: "closed"
+      circuit_open_count_logs: 1
+      emitted_traces: 200
+      dropped_traces: 14
+      export_failures_traces: 6
+      retries_traces: 10
+      export_latency_ms_traces: 13.5
+      async_blocking_risk_traces: 0
+      circuit_state_traces: "open"
+      circuit_open_count_traces: 2
+      emitted_metrics: 300
+      dropped_metrics: 21
+      export_failures_metrics: 9
+      retries_metrics: 15
+      export_latency_ms_metrics: 14.5
+      async_blocking_risk_metrics: 0
+      circuit_state_metrics: "half-open"
+      circuit_open_count_metrics: 3
+      setup_error: "bind 127.0.0.1:9464: address already in use"
+      receipt_failures: 2
+    expected_samples:
+      - {metric: provide_telemetry_emitted_total, labels: {signal: logs}, value: 100}
+      - {metric: provide_telemetry_dropped_total, labels: {signal: logs}, value: 7}
+      - {metric: provide_telemetry_export_failures_total, labels: {signal: logs}, value: 3}
+      - {metric: provide_telemetry_export_retries_total, labels: {signal: logs}, value: 5}
+      - {metric: provide_telemetry_export_latency_milliseconds, labels: {signal: logs}, value: 12.5}
+      - {metric: provide_telemetry_async_blocking_risk_total, labels: {signal: logs}, value: 0}
+      - {metric: provide_telemetry_circuit_state, labels: {signal: logs}, value: 0}
+      - {metric: provide_telemetry_circuit_open_total, labels: {signal: logs}, value: 1}
+      - {metric: provide_telemetry_emitted_total, labels: {signal: traces}, value: 200}
+      - {metric: provide_telemetry_dropped_total, labels: {signal: traces}, value: 14}
+      - {metric: provide_telemetry_export_failures_total, labels: {signal: traces}, value: 6}
+      - {metric: provide_telemetry_export_retries_total, labels: {signal: traces}, value: 10}
+      - {metric: provide_telemetry_export_latency_milliseconds, labels: {signal: traces}, value: 13.5}
+      - {metric: provide_telemetry_async_blocking_risk_total, labels: {signal: traces}, value: 0}
+      - {metric: provide_telemetry_circuit_state, labels: {signal: traces}, value: 2}
+      - {metric: provide_telemetry_circuit_open_total, labels: {signal: traces}, value: 2}
+      - {metric: provide_telemetry_emitted_total, labels: {signal: metrics}, value: 300}
+      - {metric: provide_telemetry_dropped_total, labels: {signal: metrics}, value: 21}
+      - {metric: provide_telemetry_export_failures_total, labels: {signal: metrics}, value: 9}
+      - {metric: provide_telemetry_export_retries_total, labels: {signal: metrics}, value: 15}
+      - {metric: provide_telemetry_export_latency_milliseconds, labels: {signal: metrics}, value: 14.5}
+      - {metric: provide_telemetry_async_blocking_risk_total, labels: {signal: metrics}, value: 0}
+      - {metric: provide_telemetry_circuit_state, labels: {signal: metrics}, value: 1}
+      - {metric: provide_telemetry_circuit_open_total, labels: {signal: metrics}, value: 3}
+      - {metric: provide_telemetry_setup_error, labels: {}, value: 1}
+      - {metric: provide_telemetry_receipt_failures_total, labels: {}, value: 2}
+  - id: setup_error_empty_reads_zero
+    snapshot_overrides: {setup_error: ""}
+    expected_samples:
+      - {metric: provide_telemetry_setup_error, labels: {}, value: 0}
