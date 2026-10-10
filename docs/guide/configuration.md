@@ -246,9 +246,9 @@ OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Basic%20<base64 of user:passwo
 OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=/etc/ssl/private-ca.crt   # only for a private CA
 ```
 
-Python, TypeScript, Go and C# honour all three (C# also reads
-`OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` / `_CLIENT_KEY` and their per-signal
-forms for mutual TLS, and a file it cannot read leaves that signal's exporter
+Python, TypeScript, Go and C# honour all three (C# also reads the
+`_CLIENT_CERTIFICATE` / `_CLIENT_KEY` variables and their per-signal forms for
+mutual TLS, and a file it cannot read leaves that signal's exporter
 uninstalled with the health snapshot's setup error set). Rust ignores the
 certificate variables, so it can reach only a server whose certificate the
 system already trusts; export then fails without an error: check
