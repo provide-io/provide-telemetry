@@ -49,7 +49,7 @@ area_paths() {
         ".github/workflows/ci-contracts.yml" "csharp/src/**" "infra/prometheus/**" \
         "e2e/test_prometheus_push_e2e.py" "e2e/test_prometheus_scrape_e2e.py" "scripts/prometheus_push_probe.py" \
         "typescript/scripts/prometheus-push-probe.ts" "rust/examples/prometheus_push_probe.rs" \
-        "csharp/probes/PrometheusPushProbe/**"
+        "csharp/probes/PrometheusPushProbe/**" "csharp/probes/PrometheusScrapeProbe/**"
       ;;
     *)
       echo "changed-areas: unknown area '$1'" >&2

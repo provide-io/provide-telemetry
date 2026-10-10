@@ -398,6 +398,23 @@ Each stage is its own PR and leaves `main` releasable.
 5. **Rust and C#**, including the push-security gaps (private CA in both,
    per-signal headers in C#). `metrics_handler` becomes `required: true` in the
    spec once all five ship.
+   C# (done): config keys parsed in the core (`PrometheusSettings`); `gauge()`
+   was already an OTel Gauge; a port of the otlptranslator namers and of
+   Python's text renderer in `Provide.Telemetry.OpenTelemetry/Prometheus/`,
+   checked against every translation, label and translator-only case; a
+   cumulative pull reader (`BaseExportingMetricReader` over a capturing
+   exporter, not the prerelease `OpenTelemetry.Exporter.Prometheus.*`
+   packages, whose names differ from the fixtures) with one 503 reason per
+   not-ready status; `PrometheusMetrics.RenderPrometheus(accept)` and a
+   framework-neutral `PrometheusMetrics.MetricsHandler(method, accept)`; the
+   listener on `TcpListener` + `SslStream` (`HttpListener` cannot serve TLS on
+   Linux) with the web config subset (YamlDotNet, BCrypt.Net-Next),
+   certificate reload and fail-closed startup, reported through a new
+   `ITelemetryBackend.Configure` hook; observable instruments through an
+   optional `IObservableMeter`. The push gaps are closed: per-signal headers
+   replace the shared ones, and `OTEL_EXPORTER_OTLP[_SIGNAL]_CERTIFICATE`,
+   `_CLIENT_CERTIFICATE` and `_CLIENT_KEY` feed a custom `HttpClientFactory`.
+   C# is in both capability sets and in the scrape E2E.
 
 ## Decisions
 

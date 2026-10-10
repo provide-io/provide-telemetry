@@ -24,6 +24,7 @@ on:
       - "typescript/scripts/prometheus-push-probe.ts"
       - "rust/examples/prometheus_push_probe.rs"
       - "csharp/probes/PrometheusPushProbe/**"
+      - "csharp/probes/PrometheusScrapeProbe/**"
   # No paths filter: this workflow owns required status contexts, so it must
   # always run. The per-area gating lives on the jobs -- see the changes job.
   pull_request:
