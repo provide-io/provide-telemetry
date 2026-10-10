@@ -70,7 +70,7 @@ internal static class PrometheusEndpoint
     public static RenderOptions OptionsFor(TelemetryConfig config)
     {
         var p = config.Metrics.Prometheus;
-        return new RenderOptions(p.Translation, p.ScopeLabels, p.TargetInfo);
+        return new RenderOptions(p.Translation, p.ScopeLabels, p.TargetInfo) { Skip = PrometheusHealth.MetricNames };
     }
 
     internal static void ResetForTests() => SetStatus(NotSetUp);

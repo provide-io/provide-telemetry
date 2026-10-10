@@ -182,6 +182,19 @@ public sealed class PrometheusConfigTests
     }
 
     [Fact]
+    public void Validate_AcceptsEveryStrategy()
+    {
+        foreach (var strategy in new[]
+                 {
+                     "UnderscoreEscapingWithSuffixes", "UnderscoreEscapingWithoutSuffixes",
+                     "NoUTF8EscapingWithSuffixes", "NoTranslation",
+                 })
+        {
+            PrometheusSettings.Validate(new MetricsConfig { Prometheus = new PrometheusConfig { Translation = strategy } });
+        }
+    }
+
+    [Fact]
     public void Validate_AcceptsBothExporters() =>
         PrometheusSettings.Validate(new MetricsConfig { Exporters = ["otlp", "prometheus"] });
 

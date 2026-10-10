@@ -31,14 +31,11 @@ internal static class PrometheusListener
 
     internal const int MaxHeaderBytes = 16 * 1024;
 
-    /// <summary>Where listener warnings go; tests swap it to capture them.</summary>
-    internal static Action<string, IReadOnlyDictionary<string, object?>> Warn { get; set; } = DefaultWarn;
-
     private static readonly object Gate = new();
     private static Running? _running;
 
-    internal static void DefaultWarn(string message, IReadOnlyDictionary<string, object?> fields) =>
-        Logging.GetLogger("provide.telemetry.prometheus").Warning(message, fields);
+    private static void Warn(string message, IReadOnlyDictionary<string, object?> fields) =>
+        SdkWarnings.Warn(message, fields);
 
     /// <summary>The settings that, when changed, restart the listener.</summary>
     internal readonly record struct ListenerKey(string Host, int Port, string Path, string WebConfig);
@@ -68,7 +65,7 @@ internal static class PrometheusListener
             catch (Exception ex)
             {
                 var error = $"prometheus listener: {ex.Message}";
-                Warn("metrics.prometheus_listener.failed", Fields("error", ex.Message));
+                Warn("metrics.prometheus_listener.failed", Field("error", ex.Message));
                 return error;
             }
         }
@@ -119,29 +116,23 @@ internal static class PrometheusListener
 
     internal static void WarnExposure(string host, WebSecurity security)
     {
-        if (!IsLoopback(host)) Warn("metrics.prometheus_listener.exposed", Fields("host", host));
+        if (!IsLoopback(host)) Warn("metrics.prometheus_listener.exposed", Field("host", host));
         if (security.Users.Count > 0 && security.Tls is null)
         {
-            Warn("metrics.prometheus_listener.cleartext_auth", Fields());
+            Warn("metrics.prometheus_listener.cleartext_auth", new Dictionary<string, object?>());
         }
     }
 
     internal static bool IsLoopback(string host) =>
         host == "localhost" || (IPAddress.TryParse(host, out var address) && IPAddress.IsLoopback(address));
 
-    private static Dictionary<string, object?> Fields(params string[] pairs)
-    {
-        var fields = new Dictionary<string, object?>(StringComparer.Ordinal);
-        for (var i = 0; i + 1 < pairs.Length; i += 2) fields[pairs[i]] = pairs[i + 1];
-        return fields;
-    }
+    private static Dictionary<string, object?> Field(string key, string value) =>
+        new(StringComparer.Ordinal) { [key] = value };
 
     /// <summary>One bound listener and its accept loop.</summary>
     private sealed class Running : IDisposable
     {
         private readonly TcpListener _listener;
-        private readonly CancellationTokenSource _stop = new();
-        private readonly Task _accept;
         private readonly WebSecurity _security;
 
         public Running(ListenerKey key, IPAddress address, WebSecurity security)
@@ -151,50 +142,53 @@ internal static class PrometheusListener
             _listener = new TcpListener(address, key.Port);
             _listener.Start();
             Endpoint = (IPEndPoint)_listener.LocalEndpoint;
-            _accept = Task.Run(AcceptLoop);
+            _ = Task.Run(AcceptLoop);
         }
 
         public ListenerKey Key { get; }
 
         public IPEndPoint Endpoint { get; }
 
+        /// <summary>Accept until <see cref="Dispose"/> stops the socket, which fails the pending accept.</summary>
+        /// <remarks>
+        /// No loop condition: a mutant that negated it would leave every
+        /// client waiting on a socket nobody accepts, which a test can only
+        /// see as a timeout.
+        /// </remarks>
         private async Task AcceptLoop()
         {
-            while (!_stop.IsCancellationRequested)
+            try
             {
-                try
+                for (; ; )
                 {
-                    var client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                    var client = await _listener.AcceptTcpClientAsync();
                     _ = Task.Run(() => Serve(client));
                 }
-                catch (Exception)
-                {
-                    // Stopping cancels the pending accept; anything else is one
-                    // failed accept (a client that reset first), and the loop
-                    // condition decides whether to carry on.
-                }
+            }
+            catch (Exception)
+            {
+                // The socket was stopped.
             }
         }
 
         private async Task Serve(TcpClient client)
         {
             using var _ = client;
-            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
-            deadline.CancelAfter(ReadTimeout);
+            using var deadline = new CancellationTokenSource(ReadTimeout);
             try
             {
                 Stream stream = client.GetStream();
                 if (_security.Tls is { } tls)
                 {
-                    var ssl = new SslStream(stream, leaveInnerStreamOpen: false);
-                    await ssl.AuthenticateAsServerAsync(tls.Options(), deadline.Token).ConfigureAwait(false);
+                    var ssl = new SslStream(stream);
+                    await ssl.AuthenticateAsServerAsync(tls.Options(), deadline.Token);
                     stream = ssl;
                 }
-                await using (stream.ConfigureAwait(false))
+                await using (stream)
                 {
-                    var request = await HttpRequestReader.ReadAsync(stream, deadline.Token).ConfigureAwait(false);
+                    var request = await HttpRequestReader.ReadAsync(stream, deadline.Token);
                     var response = Dispatch(request);
-                    await stream.WriteAsync(HttpRequestReader.Format(response), deadline.Token).ConfigureAwait(false);
+                    await stream.WriteAsync(HttpRequestReader.Format(response), deadline.Token);
                 }
             }
             catch (Exception)
@@ -221,13 +215,8 @@ internal static class PrometheusListener
         private static PrometheusResponse Plain(int status, string body) =>
             new(status, [new("Content-Type", "text/plain; charset=utf-8")], Encoding.UTF8.GetBytes(body));
 
-        public void Dispose()
-        {
-            _stop.Cancel();
-            _listener.Stop();
-            _accept.Wait(); // the loop swallows its own exceptions, so this only waits
-            _stop.Dispose();
-        }
+        /// <summary>Stop accepting; connections already being served finish on their own deadline.</summary>
+        public void Dispose() => _listener.Stop();
     }
 }
 
@@ -250,7 +239,7 @@ internal static class HttpRequestReader
         while (buffer.AsSpan(0, length).IndexOf(EndOfHeaders) < 0)
         {
             if (length == buffer.Length) return null;
-            var read = await stream.ReadAsync(buffer.AsMemory(length), token).ConfigureAwait(false);
+            var read = await stream.ReadAsync(buffer.AsMemory(length), token);
             if (read == 0) return null;
             length += read;
         }
@@ -273,9 +262,7 @@ internal static class HttpRequestReader
             if (colon <= 0) return null;
             headers.TryAdd(line[..colon].Trim(), line[(colon + 1)..].Trim());
         }
-        var target = parts[1];
-        var end = target.IndexOfAny(['?', '#']);
-        return new HttpRequest(parts[0], end < 0 ? target : target[..end], headers);
+        return new HttpRequest(parts[0], parts[1].Split(['?', '#'], 2)[0], headers);
     }
 
     private static string Reason(int status) => status switch

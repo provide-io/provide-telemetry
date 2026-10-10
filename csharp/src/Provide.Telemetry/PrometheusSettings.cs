@@ -41,7 +41,7 @@ public static class PrometheusSettings
     /// empty entries dropped. Empty input means <c>otlp</c>; <c>none</c> alone means
     /// no exporters and may not be combined with another.
     /// </summary>
-    public static List<string> ParseExporters(string? raw)
+    internal static List<string> ParseExporters(string? raw)
     {
         var names = (raw ?? "")
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
@@ -66,8 +66,11 @@ public static class PrometheusSettings
         return names.Count > 0 ? exporters : [ExporterOtlp];
     }
 
-    /// <summary>Parse <c>OTEL_EXPORTER_PROMETHEUS_PORT</c>: an integer in 0-65535, 0 meaning any free port.</summary>
-    public static int ParsePort(string? raw)
+    /// <summary>
+    /// Parse <c>OTEL_EXPORTER_PROMETHEUS_PORT</c> as an integer; <see cref="Validate"/>,
+    /// which every parsed config goes through, checks the 0-65535 range.
+    /// </summary>
+    internal static int ParsePort(string? raw)
     {
         var value = (raw ?? "").Trim();
         if (value.Length == 0) return DefaultPort;
@@ -77,7 +80,6 @@ public static class PrometheusSettings
             throw new ConfigurationError(
                 $"OTEL_EXPORTER_PROMETHEUS_PORT: want an integer in 0-65535, got '{value}'");
         }
-        ValidatePort(port);
         return port;
     }
 
@@ -98,7 +100,10 @@ public static class PrometheusSettings
             throw new ConfigurationError(
                 $"PROVIDE_METRICS_PROMETHEUS_LISTEN: want false, true or auto, got '{p.Listen}'");
         }
-        ValidatePort(p.Port);
+        if (p.Port < 0 || p.Port > MaxPort)
+        {
+            throw new ConfigurationError($"OTEL_EXPORTER_PROMETHEUS_PORT: want an integer in 0-65535, got {p.Port}");
+        }
         if (!p.Path.StartsWith('/') || p.Path.Contains('?') || p.Path.Contains('#'))
         {
             throw new ConfigurationError(
@@ -107,14 +112,6 @@ public static class PrometheusSettings
         if (!TranslationStrategies.Contains(p.Translation))
         {
             throw new ConfigurationError($"PROVIDE_METRICS_PROMETHEUS_TRANSLATION: unknown strategy '{p.Translation}'");
-        }
-    }
-
-    private static void ValidatePort(int port)
-    {
-        if (port < 0 || port > MaxPort)
-        {
-            throw new ConfigurationError($"OTEL_EXPORTER_PROMETHEUS_PORT: want an integer in 0-65535, got {port}");
         }
     }
 }

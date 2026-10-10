@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
+using System.Diagnostics.Metrics;
+
 using Provide.Telemetry;
 
 namespace Provide.Telemetry.OpenTelemetry.Prometheus;
@@ -17,6 +19,14 @@ namespace Provide.Telemetry.OpenTelemetry.Prometheus;
 internal static class PrometheusHealth
 {
     private static readonly string[] SignalNames = [Signals.Logs, Signals.Traces, Signals.Metrics];
+
+    /// <summary>
+    /// The health family names. A reader metric with one of these names (from
+    /// <c>PROVIDE_METRICS_HEALTH_OTLP</c>) is left out of a scrape, which
+    /// serves this collector's copy, so each family appears exactly once.
+    /// </summary>
+    public static IReadOnlySet<string> MetricNames { get; } =
+        Families(new HealthSnapshot()).Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>The circuit state as a number: closed 0, half-open 1, open 2, anything else -1.</summary>
     public static double CircuitValue(string state) => state switch
@@ -65,4 +75,37 @@ internal static class PrometheusHealth
         families.Add(receipts);
         return families;
     }
+}
+
+/// <summary>
+/// <c>PROVIDE_METRICS_HEALTH_OTLP</c>: the health families as observable
+/// instruments on the meter provider setup installs, so they reach OTLP too.
+/// </summary>
+/// <remarks>
+/// Named verbatim, without unit or description; counters as observable
+/// counters, gauges as observable gauges. Each collection reads a fresh
+/// snapshot. The observations describe the SDK rather than user data, so they
+/// skip the consent gate and do not count toward emitted_metrics — unlike
+/// <see cref="ObservableInstrument"/>, which does both. They stop when the
+/// meter is disposed at shutdown.
+/// </remarks>
+internal static class HealthInstruments
+{
+    public static void Register(Meter meter)
+    {
+        foreach (var family in PrometheusHealth.Families(Health.GetHealthSnapshot()))
+        {
+            var name = family.Name;
+            if (family.Kind == "counter") meter.CreateObservableCounter(name, () => Measurements(name));
+            else meter.CreateObservableGauge(name, () => Measurements(name));
+        }
+    }
+
+    internal static IEnumerable<Measurement<double>> Measurements(string name) =>
+        PrometheusHealth.Families(Health.GetHealthSnapshot())
+            .Single(f => f.Name == name)
+            .Samples
+            .Select(s => new Measurement<double>(
+                s.Value, s.Labels.Select(kv => new KeyValuePair<string, object?>(kv.Key, kv.Value))))
+            .ToList();
 }

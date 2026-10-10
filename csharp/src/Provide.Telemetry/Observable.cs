@@ -38,6 +38,9 @@ public interface IObservableMeter
 /// </remarks>
 public sealed class ObservableInstrument
 {
+    // Consent reads a level only for logs; metrics have none.
+    private const string NoLogLevel = "";
+
     private readonly Func<IEnumerable<Observation>> _callback;
     private int _registered;
     private int _failures;
@@ -71,7 +74,7 @@ public sealed class ObservableInstrument
     /// </remarks>
     public IReadOnlyList<Observation> Collect()
     {
-        if (!Registered || !Setup.IsMetricsEnabled() || !Consent.ShouldAllow(Signals.Metrics, "INFO"))
+        if (!Registered || !Setup.IsMetricsEnabled() || !Consent.ShouldAllow(Signals.Metrics, NoLogLevel))
         {
             return [];
         }

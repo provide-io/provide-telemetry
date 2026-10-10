@@ -158,7 +158,8 @@ internal static class PrometheusNames
             name = TrimSuffix(name, per);
             perSuffix = "_" + per;
         }
-        if (main.Length > 0 && !name.EndsWith(main, StringComparison.Ordinal)) name = name + "_" + main;
+        // An empty main unit is a suffix of every name, so nothing is appended.
+        if (!name.EndsWith(main, StringComparison.Ordinal)) name = name + "_" + main;
         return name + perSuffix + outer;
     }
 

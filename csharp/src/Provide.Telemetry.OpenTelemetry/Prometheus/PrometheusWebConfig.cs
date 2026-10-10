@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-Comment: Part of provide-telemetry.
 
+using System.Globalization;
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography;
@@ -50,8 +51,8 @@ internal sealed class TlsReloader
 
     private (DateTime, DateTime) Stamps()
     {
-        if (!File.Exists(CertFile)) throw new FileNotFoundException($"{CertFile}: no such file");
-        if (!File.Exists(KeyFile)) throw new FileNotFoundException($"{KeyFile}: no such file");
+        // A missing file reads as 1601-01-01, which differs from any real stamp,
+        // so the reload that follows reports it.
         return (File.GetLastWriteTimeUtc(CertFile), File.GetLastWriteTimeUtc(KeyFile));
     }
 
@@ -116,7 +117,8 @@ internal sealed class WebSecurity
     // Compared against when the user is unknown, so a wrong user name costs the
     // same as a wrong password. Any well-formed cost-10 hash will do.
     private const string DummyHash = "$2a$10$WuJ86tQzfCxkRPXM1G759Oi0am1AacPdbzSZS/UqQ3ePrV6MohbZq";
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly Encoding StrictUtf8 =
+        Encoding.GetEncoding("utf-8", EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
     private readonly HashSet<string> _verified = new(StringComparer.Ordinal);
     private readonly object _gate = new();
@@ -135,7 +137,7 @@ internal sealed class WebSecurity
     public bool Authorized(string? header)
     {
         if (Users.Count == 0) return true;
-        var parts = (header ?? "").Split(' ', 2);
+        var parts = header?.Split(' ', 2) ?? [];
         if (parts.Length != 2 || !parts[0].Equals("basic", StringComparison.OrdinalIgnoreCase)) return false;
         string decoded;
         try
@@ -146,8 +148,8 @@ internal sealed class WebSecurity
         {
             return false;
         }
-        var colon = decoded.IndexOf(':');
-        return colon >= 0 && Authenticate(decoded[..colon], decoded[(colon + 1)..]);
+        var pair = decoded.Split(':', 2);
+        return pair.Length == 2 && Authenticate(pair[0], pair[1]);
     }
 
     /// <summary>
@@ -160,12 +162,11 @@ internal sealed class WebSecurity
         {
             if (_verified.Contains(digest)) return true;
         }
-        if (!Users.TryGetValue(user, out var hashed))
-        {
-            BCrypt.Net.BCrypt.Verify(password, DummyHash);
-            return false;
-        }
-        if (!BCrypt.Net.BCrypt.Verify(password, hashed)) return false;
+        // An unknown user is checked against a dummy hash, so a wrong user name
+        // costs the same as a wrong password.
+        var known = Users.TryGetValue(user, out var hashed);
+        var matches = BCrypt.Net.BCrypt.Verify(password, known ? hashed : DummyHash);
+        if (!(known && matches)) return false;
         lock (_gate)
         {
             _verified.Add(digest);
@@ -184,6 +185,9 @@ internal static class WebConfigLoader
     public const string NoClientCert = "NoClientCert";
     public const string RequireAndVerifyClientCert = "RequireAndVerifyClientCert";
     public const string VerifyClientCertIfGiven = "VerifyClientCertIfGiven";
+
+    // Any password will do: bcrypt rejects a malformed hash whatever it is given.
+    private const string HashProbe = "";
 
     private static readonly HashSet<string> TopKeys = new(StringComparer.Ordinal) { "tls_server_config", "basic_auth_users" };
 
@@ -207,7 +211,7 @@ internal static class WebConfigLoader
         var data = ReadYaml(path);
         if (data is null) return new WebSecurity();
         var top = data as Dictionary<object, object?> ?? throw Unsupported(path);
-        if (top.Keys.Any(k => !TopKeys.Contains(Key(k)))) throw Unsupported(path);
+        if (!top.Keys.All(k => k is string key && TopKeys.Contains(key))) throw Unsupported(path);
         var baseDir = Path.GetDirectoryName(Path.GetFullPath(path))!;
         return new WebSecurity(
             Users(top.GetValueOrDefault("basic_auth_users"), path),
@@ -232,7 +236,6 @@ internal static class WebConfigLoader
         return failure is null ? data : throw new WebConfigException($"web config {path}: {failure.Message}");
     }
 
-    private static string Key(object key) => key as string ?? "";
 
     private static Dictionary<string, string> Users(object? raw, string path)
     {
@@ -242,23 +245,23 @@ internal static class WebConfigLoader
         var users = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (user, hashed) in map)
         {
-            var hash = hashed as string ?? "";
+            var hash = hashed as string;
             if (!IsBcryptHash(hash))
             {
                 throw new WebConfigException($"web config {path}: basic_auth_users[{user}] is not a bcrypt hash");
             }
-            users[Key(user)] = hash;
+            users[Convert.ToString(user, CultureInfo.InvariantCulture)!] = hash!;
         }
         return users;
     }
 
     /// <summary>Whether bcrypt can parse <paramref name="hash"/>; it throws for a malformed one whatever the password.</summary>
-    private static bool IsBcryptHash(string hash)
+    private static bool IsBcryptHash(string? hash)
     {
         var valid = true;
         try
         {
-            BCrypt.Net.BCrypt.Verify("", hash);
+            BCrypt.Net.BCrypt.Verify(HashProbe, hash);
         }
         catch (Exception ex) when (ex is BCrypt.Net.SaltParseException or ArgumentException)
         {
@@ -270,7 +273,7 @@ internal static class WebConfigLoader
     private static TlsReloader Tls(object? raw, string baseDir)
     {
         var map = raw as Dictionary<object, object?> ?? throw UnsupportedTls();
-        if (map.Keys.Any(k => !TlsKeys.Contains(Key(k)))) throw UnsupportedTls();
+        if (!map.Keys.All(k => k is string key && TlsKeys.Contains(key))) throw UnsupportedTls();
         string Get(string key) => map.GetValueOrDefault(key) as string ?? "";
         var cert = Get("cert_file");
         var key = Get("key_file");

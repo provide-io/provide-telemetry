@@ -93,7 +93,9 @@ public sealed class ObservableInstrumentTests : PromTestBase
     [Fact]
     public void AFailingCallback_ContributesNothingAndWarnsOncePerInstrument()
     {
-        ProvideTelemetry.SetupTelemetry(PromConfig());
+        var config = PromConfig();
+        config.Logging.Format = "json";
+        ProvideTelemetry.SetupTelemetry(config);
         ProvideTelemetry.ObservableGauge("bad", () => throw new InvalidOperationException("boom"));
         ProvideTelemetry.ObservableGauge("lazy.bad", () => Fail());
         ProvideTelemetry.ObservableGauge("good", () => One(1));
@@ -101,10 +103,13 @@ public sealed class ObservableInstrumentTests : PromTestBase
         {
             Assert.Contains("\ngood 1\n", Scrape());
             Assert.Contains("\ngood 1\n", Scrape());
+            Assert.Contains("\ngood 1\n", Scrape());
         })!;
         Assert.Equal(2, stderr.Split("metrics.observable_callback_failed").Length - 1);
-        Assert.Contains("boom", stderr);
-        Assert.Contains("lazy", stderr);
+        Assert.Contains("\"logger_name\":\"provide.telemetry.metrics\"", stderr);
+        Assert.Contains("\"instrument\":\"bad\"", stderr);
+        Assert.Contains("\"error\":\"boom\"", stderr);
+        Assert.Contains("\"instrument\":\"lazy.bad\"", stderr);
         Assert.DoesNotContain("\nbad ", Scrape());
 
         static IEnumerable<Observation> Fail()

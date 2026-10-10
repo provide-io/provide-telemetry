@@ -4,11 +4,14 @@
 
 using System.Net.Http;
 using System.Net.Security;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-using Provide.Telemetry;
 
 namespace Provide.Telemetry.OpenTelemetry;
+
+/// <summary>The outcome of resolving one signal's TLS files: the material, or why there is none.</summary>
+internal sealed record OtlpTlsResult(OtlpTls? Tls, string? Problem);
 
 /// <summary>
 /// The TLS material for one signal's OTLP exporter: a private CA bundle and/or
@@ -16,9 +19,11 @@ namespace Provide.Telemetry.OpenTelemetry;
 /// </summary>
 /// <remarks>
 /// <c>prometheus_metrics.push_security</c>: a configured file that cannot be
-/// read fails the exporter's installation rather than being ignored in favour
-/// of the system trust store. The CA bundle replaces the system roots for that
-/// signal, as the OTel exporters in the other SDKs do; host-name checks still
+/// read or loaded — a CA file with no PEM certificate, or a client certificate
+/// and key that do not pair — leaves that signal's OTLP exporter unbuilt and
+/// is reported as <c>setup_error</c> naming the variable and path. It is never
+/// ignored in favour of the system trust store, and it never fails setup. The
+/// CA bundle replaces the system roots for that signal; host-name checks still
 /// apply.
 /// </remarks>
 internal sealed class OtlpTls
@@ -34,51 +39,91 @@ internal sealed class OtlpTls
     public X509Certificate2? ClientCertificate { get; }
 
     /// <summary>
-    /// Load the files for one signal, or return null when none is configured.
+    /// The variable a file came from: the per-signal one when it is set in the
+    /// environment, else the shared one.
     /// </summary>
-    /// <exception cref="ConfigurationError">A file cannot be read, or a certificate and key do not pair.</exception>
-    public static OtlpTls? Load(string caFile, string certFile, string keyFile)
+    internal static string VariableName(string signal, string kind)
     {
-        if (caFile.Length == 0 && certFile.Length == 0 && keyFile.Length == 0) return null;
-        if ((certFile.Length == 0) != (keyFile.Length == 0))
-        {
-            throw new ConfigurationError("OTLP client certificate and client key must be set together");
-        }
-        // The failure is captured and thrown after the catch: a throw inside it
-        // lets a mutant leave the method without a return, which does not compile.
-        Exception? failure = null;
-        OtlpTls? tls = null;
-        try
-        {
-            tls = new OtlpTls(
-                caFile.Length > 0 ? LoadRoots(caFile) : null,
-                certFile.Length > 0 ? LoadClientCertificate(certFile, keyFile) : null);
-        }
-        catch (Exception ex) when (ex is not ConfigurationError)
-        {
-            failure = ex;
-        }
-        return tls ?? throw new ConfigurationError($"OTLP TLS files: {failure!.Message}", failure);
+        var own = $"OTEL_EXPORTER_OTLP_{signal.ToUpperInvariant()}_{kind}";
+        return string.IsNullOrEmpty(Environment.GetEnvironmentVariable(own)) ? $"OTEL_EXPORTER_OTLP_{kind}" : own;
     }
 
-    private static X509Certificate2Collection LoadRoots(string path)
+    /// <summary>
+    /// Load one signal's files. No files gives neither material nor a problem;
+    /// a problem reads <c>VAR=path: reason</c>, or <c>CERT_VAR=cert, KEY_VAR=key: reason</c> for a pair.
+    /// </summary>
+    public static OtlpTlsResult Resolve(string signal, string caFile, string certFile, string keyFile)
+    {
+        if (caFile.Length == 0 && certFile.Length == 0 && keyFile.Length == 0) return new(null, null);
+        var caVar = VariableName(signal, "CERTIFICATE");
+        var certVar = VariableName(signal, "CLIENT_CERTIFICATE");
+        var keyVar = VariableName(signal, "CLIENT_KEY");
+        foreach (var (name, path) in new[] { (caVar, caFile), (certVar, certFile), (keyVar, keyFile) })
+        {
+            if (path.Length > 0 && Unreadable(path) is { } reason) return new(null, $"{name}={path}: {reason}");
+        }
+        X509Certificate2Collection? roots = null;
+        if (caFile.Length > 0)
+        {
+            roots = LoadRoots(caFile);
+            if (roots is null) return new(null, $"{caVar}={caFile}: no PEM certificates");
+        }
+        if (certFile.Length == 0 && keyFile.Length > 0) return new(null, $"{keyVar}={keyFile}: {certVar} is not set");
+        if (certFile.Length > 0 && keyFile.Length == 0) return new(null, $"{certVar}={certFile}: {keyVar} is not set");
+        X509Certificate2? client = null;
+        if (certFile.Length > 0)
+        {
+            (client, var reason) = LoadClientCertificate(certFile, keyFile);
+            if (client is null) return new(null, $"{certVar}={certFile}, {keyVar}={keyFile}: {reason}");
+        }
+        return new(new OtlpTls(roots, client), null);
+    }
+
+    private static string? Unreadable(string path)
+    {
+        try
+        {
+            File.ReadAllBytes(path);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>The certificates in a PEM bundle, or null when it holds none.</summary>
+    private static X509Certificate2Collection? LoadRoots(string path)
     {
         var roots = new X509Certificate2Collection();
-        roots.ImportFromPemFile(path);
-        if (roots.Count == 0) throw new ConfigurationError($"OTLP CA file {path} holds no certificate");
-        return roots;
+        try
+        {
+            roots.ImportFromPemFile(path);
+        }
+        catch (CryptographicException)
+        {
+            return null;
+        }
+        return roots.Count > 0 ? roots : null;
     }
 
     /// <summary>
     /// The PEM pair as a certificate with a persisted key: an ephemeral PEM key
     /// cannot sign a TLS handshake on Windows, so it is round-tripped through PKCS#12.
     /// </summary>
-    private static X509Certificate2 LoadClientCertificate(string certFile, string keyFile)
+    private static (X509Certificate2? Certificate, string Reason) LoadClientCertificate(string certFile, string keyFile)
     {
-        using var pem = X509Certificate2.CreateFromPemFile(certFile, keyFile);
-        return X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pkcs12), null);
+        try
+        {
+            using var pem = X509Certificate2.CreateFromPemFile(certFile, keyFile);
+            return (X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pkcs12), null), "");
+        }
+        catch (Exception ex) when (ex is CryptographicException or ArgumentException)
+        {
+            // A key for another certificate is an ArgumentException; a malformed one a CryptographicException.
+            return (null, ex.Message);
+        }
     }
-
     /// <summary>An HttpClient for the exporter, trusting <see cref="Roots"/> and presenting the client certificate.</summary>
     public HttpClient CreateClient(TimeSpan timeout)
     {

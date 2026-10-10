@@ -31,6 +31,7 @@ public sealed class PrometheusWebConfigTests : ListenerTestBase
         [new Dictionary<object, object?> { ["basic_auth_users"] = new Dictionary<object, object?> { ["u"] = null } }, "basic_auth_users[u] is not a bcrypt hash"],
         [new Dictionary<object, object?> { ["tls_server_config"] = "x" }, "tls_server_config: only [cert_file"],
         [Tls(("cipher_suites", new List<object?>())), "tls_server_config: only [cert_file"],
+        [new Dictionary<object, object?> { ["basic_auth_users"] = null, ["http_server_config"] = null }, "only [basic_auth_users, tls_server_config] are supported"],
         [new Dictionary<object, object?> { ["tls_server_config"] = new Dictionary<object, object?> { ["cert_file"] = "{cert}" } }, "needs cert_file and key_file"],
         [new Dictionary<object, object?> { ["tls_server_config"] = new Dictionary<object, object?> { ["key_file"] = "{key}" } }, "needs cert_file and key_file"],
         [Tls(("min_version", "TLS10")), "tls_server_config.min_version 'TLS10': want TLS12 or TLS13"],
@@ -111,6 +112,40 @@ public sealed class PrometheusWebConfigTests : ListenerTestBase
     }
 
     [Fact]
+    public void Authorized_InvalidUtf8IsRejectedNotReplaced()
+    {
+        var security = new WebSecurity(new Dictionary<string, string>
+        {
+            ["u"] = BCrypt.Net.BCrypt.HashPassword("\uFFFD", 4),
+        });
+        Assert.True(security.Authorized("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("u:\uFFFD"))));
+        Assert.False(security.Authorized("Basic " + Convert.ToBase64String([(byte)'u', (byte)':', 0xff])));
+    }
+
+    [Fact]
+    public void Authorized_AnEmptyUserNameAndAColonInThePassword()
+    {
+        var security = new WebSecurity(new Dictionary<string, string>
+        {
+            [""] = BCrypt.Net.BCrypt.HashPassword("a:b", 4),
+        });
+        Assert.True(security.Authorized("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes(":a:b"))));
+        Assert.False(security.Authorized(null));
+    }
+
+    [Fact]
+    public void Authenticate_ChecksTheUsersOwnHashAndCachesSuccesses()
+    {
+        var users = new Dictionary<string, string> { ["u"] = BCrypt.Net.BCrypt.HashPassword("secret", 4) };
+        var security = new WebSecurity(users);
+        Assert.False(security.Authenticate("u", Password)); // the dummy hash's password is not u's
+        Assert.True(security.Authenticate("u", "secret"));
+        users.Clear();
+        Assert.True(security.Authenticate("u", "secret")); // served from the cache
+        Assert.False(security.Authenticate("u", "other"));
+    }
+
+    [Fact]
     public void Authenticate_CachesOnlySuccesses()
     {
         var security = new WebSecurity(new Dictionary<string, string>
@@ -176,7 +211,9 @@ public sealed class PrometheusWebConfigTests : ListenerTestBase
     public async Task Listener_AnswersMalformedOversizedAndTruncatedRequests()
     {
         Start();
-        Assert.StartsWith("HTTP/1.1 400 Bad Request\r\n", await Raw("BREW /metrics\r\n\r\n"u8.ToArray()));
+        var bad = await Raw("BREW /metrics\r\n\r\n"u8.ToArray());
+        Assert.StartsWith("HTTP/1.1 400 Bad Request\r\n", bad);
+        Assert.EndsWith("\r\n\r\nbad request\n", bad);
         var huge = Encoding.ASCII.GetBytes("GET /metrics HTTP/1.1\r\nX: " + new string('a', PrometheusListener.MaxHeaderBytes) + "\r\n\r\n");
         Assert.StartsWith("HTTP/1.1 400 Bad Request\r\n", await Raw(huge));
         Assert.StartsWith("HTTP/1.1 400 Bad Request\r\n", await Raw("GET /metrics HTTP/1.1\r\n"u8.ToArray(), close: true));
@@ -200,6 +237,13 @@ public sealed class PrometheusWebConfigTests : ListenerTestBase
             var read = await client.GetStream().ReadAsync(new byte[16]).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(0, read);
             Assert.True(DateTime.UtcNow - started < TimeSpan.FromSeconds(5));
+
+            // A blank line first is an empty request line: answered at once, not waited on.
+            using var blank = new TcpClient();
+            await blank.ConnectAsync(IPAddress.Loopback, PrometheusListener.Address!.Port);
+            await blank.GetStream().WriteAsync("\r\n\r\n"u8.ToArray());
+            using var reader = new StreamReader(blank.GetStream(), Encoding.Latin1);
+            Assert.StartsWith("HTTP/1.1 400 Bad Request\r\n", await reader.ReadToEndAsync());
             Assert.Equal(200, await Status(Url()));
         }
         finally

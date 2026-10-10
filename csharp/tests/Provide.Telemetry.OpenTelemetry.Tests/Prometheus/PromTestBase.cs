@@ -30,7 +30,7 @@ public abstract class PromTestBase : IDisposable
         Testing.ResetForTests();
         PrometheusListener.Stop();
         PrometheusEndpoint.ResetForTests();
-        PrometheusListener.Warn = (message, fields) => Warnings.Add((message, fields));
+        SdkWarnings.Warn = (message, fields) => Warnings.Add((message, fields));
     }
 
     /// <summary>Extra teardown for a derived fixture, run after the reset.</summary>
@@ -42,7 +42,7 @@ public abstract class PromTestBase : IDisposable
     {
         Reset();
         Cleanup();
-        PrometheusListener.Warn = PrometheusListener.DefaultWarn;
+        SdkWarnings.Warn = SdkWarnings.DefaultWarn;
         _env.Dispose();
         GC.SuppressFinalize(this);
     }

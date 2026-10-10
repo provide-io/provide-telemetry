@@ -61,10 +61,10 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     {
         var endpoint = Endpoints.Normalize(config.Tracing.OtlpEndpoint);
         if (!config.Tracing.Enabled || endpoint is null) return false;
+        var t = config.Tracing;
+        if (!TlsFor("traces", t.OtlpCertificate, t.OtlpClientCertificate, t.OtlpClientKey, out var tls)) return false;
         try
         {
-            var t = config.Tracing;
-            var tls = OtlpTls.Load(t.OtlpCertificate, t.OtlpClientCertificate, t.OtlpClientKey);
             _tracerProvider = Sdk.CreateTracerProviderBuilder()
                 .SetResourceBuilder(resource)
                 .AddSource(InstrumentationName)
@@ -75,9 +75,8 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
             _activitySource = new ActivitySource(InstrumentationName);
             return true;
         }
-        catch (Exception ex)
+        catch
         {
-            RecordInstallError("traces", ex);
             if (!config.Exporter.TracesFailOpen) throw;
             return false;
         }
@@ -101,6 +100,13 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
             return false;
         }
         var endpoint = metrics.OtlpReaderEnabled() ? Endpoints.Normalize(metrics.OtlpEndpoint) : null;
+        OtlpTls? tls = null;
+        // An unreadable TLS file drops only the OTLP reader; the pull reader stays.
+        if (endpoint is not null
+            && !TlsFor("metrics", metrics.OtlpCertificate, metrics.OtlpClientCertificate, metrics.OtlpClientKey, out tls))
+        {
+            endpoint = null;
+        }
         var (pull, status) = PullReaderFor(metrics);
         if (endpoint is null && pull is null)
         {
@@ -114,20 +120,19 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
                 .AddMeter(InstrumentationName);
             if (endpoint is not null)
             {
-                var tls = OtlpTls.Load(metrics.OtlpCertificate, metrics.OtlpClientCertificate, metrics.OtlpClientKey);
                 builder.AddOtlpExporter(o => Endpoints.Apply(o, endpoint, "metrics", metrics.OtlpHeaders, tls));
             }
             if (pull is not null) builder.AddReader(pull);
             _meterProvider = builder.Build();
             _meter = new Meter(InstrumentationName);
+            if (metrics.HealthOtlp) HealthInstruments.Register(_meter);
             if (pull is not null) PrometheusEndpoint.MarkReady(pull, PrometheusEndpoint.OptionsFor(config));
             else PrometheusEndpoint.SetStatus(status);
             return true;
         }
-        catch (Exception ex)
+        catch
         {
             PrometheusEndpoint.SetStatus(PrometheusEndpoint.SetupFailed);
-            RecordInstallError("metrics", ex);
             if (!config.Exporter.MetricsFailOpen) throw;
             return false;
         }
@@ -144,11 +149,11 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     {
         var endpoint = Endpoints.Normalize(config.Logging.OtlpEndpoint);
         if (!config.Logging.OtlpEnabled || endpoint is null) return false;
+        var l = config.Logging;
+        if (!TlsFor("logs", l.OtlpCertificate, l.OtlpClientCertificate, l.OtlpClientKey, out var tls)) return false;
         try
         {
-            var headers = config.Logging.OtlpHeaders;
-            var l = config.Logging;
-            var tls = OtlpTls.Load(l.OtlpCertificate, l.OtlpClientCertificate, l.OtlpClientKey);
+            var headers = l.OtlpHeaders;
             var services = new ServiceCollection();
             services.AddLogging(lb =>
             {
@@ -168,9 +173,8 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
             _otelLogger = _logServices.GetRequiredService<ILoggerFactory>().CreateLogger(InstrumentationName);
             return true;
         }
-        catch (Exception ex)
+        catch
         {
-            RecordInstallError("logs", ex);
             if (!config.Exporter.LogsFailOpen) throw;
             // Nothing has been emitted through a pipeline that failed to
             // install, so there is nothing to drain: an already-expired
@@ -182,18 +186,30 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
 
     internal const string InstrumentationName = "Provide.Telemetry";
 
-    private readonly List<string> _installErrors = [];
+    private readonly List<string> _tlsProblems = [];
 
     /// <summary>
-    /// Remember why a signal's exporter did not install, for <c>setup_error</c>.
+    /// Resolve one signal's OTLP TLS files; false, with the problem logged and
+    /// kept for <c>setup_error</c>, when that signal's exporter must not be built.
     /// </summary>
     /// <remarks>
     /// Kept rather than written to health directly: setup clears the setup
     /// error after the backend is built, and <see cref="Configure"/> is where
     /// the backend reports.
     /// </remarks>
-    private void RecordInstallError(string signal, Exception ex) =>
-        _installErrors.Add($"{signal} exporter: {ex.Message}");
+    private bool TlsFor(string signal, string ca, string cert, string key, out OtlpTls? tls)
+    {
+        var result = OtlpTls.Resolve(signal, ca, cert, key);
+        tls = result.Tls;
+        if (result.Problem is null) return true;
+        _tlsProblems.Add(result.Problem);
+        SdkWarnings.Warn("otlp.tls_file_unreadable", new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["signal"] = signal,
+            ["error"] = result.Problem,
+        });
+        return false;
+    }
 
     /// <summary>
     /// Start or stop the Prometheus listener to match <paramref name="config"/>
@@ -202,7 +218,7 @@ internal sealed class OpenTelemetryBackend : ITelemetryBackend
     public string Configure(TelemetryConfig config)
     {
         ArgumentNullException.ThrowIfNull(config);
-        var errors = new List<string>(_installErrors);
+        var errors = new List<string>(_tlsProblems);
         var listener = PrometheusListener.Sync(config);
         if (listener.Length > 0) errors.Add(listener);
         return string.Join("; ", errors);

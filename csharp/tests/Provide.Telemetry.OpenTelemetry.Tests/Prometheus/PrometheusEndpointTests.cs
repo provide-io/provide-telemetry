@@ -99,6 +99,7 @@ public sealed class PrometheusEndpointTests : PromTestBase
         Assert.Contains("service_name=\"prom-test\"", body);
         Assert.Contains("provide_telemetry_emitted_total{signal=\"metrics\"} 3\n", body);
         Assert.Contains("provide_telemetry_setup_error 0\n", body);
+        Assert.Contains("\nprovide_telemetry_receipt_failures_total 0\n", body);
 
         var head = PrometheusMetrics.MetricsHandler("HEAD");
         Assert.Equal((200, 0), (head.Status, head.Body.Length));

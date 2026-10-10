@@ -11,7 +11,11 @@ namespace Provide.Telemetry.OpenTelemetry.Prometheus;
 /// <summary>Per-scrape rendering choices.</summary>
 /// <param name="Utf8">The scraper negotiated <c>escaping=allow-utf-8</c>.</param>
 internal sealed record RenderOptions(
-    string Strategy, bool ScopeLabels = false, bool TargetInfo = true, bool Utf8 = false);
+    string Strategy, bool ScopeLabels = false, bool TargetInfo = true, bool Utf8 = false)
+{
+    /// <summary>OTel instrument names left out of the output.</summary>
+    public IReadOnlySet<string> Skip { get; init; } = new HashSet<string>();
+}
 
 /// <summary>One sample: a name suffix (_bucket, _sum, _count or none), labels and a value.</summary>
 internal sealed record Sample(string Suffix, Dictionary<string, string> Labels, double Value);
@@ -48,7 +52,7 @@ internal static class PrometheusRender
     /// <summary>Whether an Accept header asks for the text format with UTF-8 names.</summary>
     public static bool WantsUtf8(string? accept)
     {
-        foreach (var range in (accept ?? "").Split(','))
+        foreach (var range in accept?.Split(',') ?? [])
         {
             var parameters = range.Split(';').Select(p => p.Trim().ToLowerInvariant()).ToList();
             if (parameters[0] == "text/plain" && parameters.Skip(1).Contains("escaping=allow-utf-8")) return true;
@@ -107,7 +111,7 @@ internal static class PrometheusRender
             info.Samples.Add(new Sample("", resourceLabels, 1));
             families[TargetInfo] = info;
         }
-        foreach (var metric in batch.Metrics)
+        foreach (var metric in batch.Metrics.Where(m => !options.Skip.Contains(m.Name)))
         {
             var scope = options.ScopeLabels ? ScopeLabels(metric) : [];
             AddMetric(families, metric, scope, strategy);
@@ -177,8 +181,10 @@ internal static class PrometheusRender
     public static string FormatValue(double value)
     {
         if (double.IsNaN(value)) return "NaN";
-        if (double.IsInfinity(value)) return value > 0 ? "+Inf" : "-Inf";
-        return value.ToString("R", CultureInfo.InvariantCulture);
+        if (double.IsPositiveInfinity(value)) return "+Inf";
+        if (double.IsNegativeInfinity(value)) return "-Inf";
+        // .NET's default double format is already the shortest round-trip form.
+        return value.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string EscapeHelp(string text) => text.Replace("\\", "\\\\").Replace("\n", "\\n");

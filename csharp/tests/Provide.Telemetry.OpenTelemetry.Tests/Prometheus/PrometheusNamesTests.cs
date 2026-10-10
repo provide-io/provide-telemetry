@@ -131,6 +131,8 @@ public sealed class PrometheusNamesTests
     [InlineData("1/s", "x_per_second")]
     [InlineData("m/mo", "x_meters_per_month")]
     [InlineData("By/w", "x_bytes_per_week")]
+    [InlineData("By/m", "x_bytes_per_minute")]
+    [InlineData("foo_", "x_foo_")]
     [InlineData("min/y", "x_minutes_per_year")]
     [InlineData("h/h", "x_hours_per_hour")]
     [InlineData("d/d", "x_days_per_day")]

@@ -95,6 +95,7 @@ public sealed class PrometheusListenerTests : ListenerTestBase
             using var response = await Send(Url(), authorization: header);
             Assert.True(401 == (int)response.StatusCode, header);
             Assert.Equal("Basic", response.Headers.WwwAuthenticate.ToString());
+            Assert.Equal("text/plain; charset=utf-8", response.Content.Headers.ContentType!.ToString());
             Assert.Equal("unauthorized\n", await response.Content.ReadAsStringAsync());
         }
         using var lower = await Send(Url(), authorization: "basic " + B64($"e2e:{Password}"));
@@ -192,16 +193,34 @@ public sealed class PrometheusListenerTests : ListenerTestBase
     [Fact]
     public void Lifecycle_KeepsRestartsAndStops()
     {
-        Start();
+        Assert.Equal("", Start());
         var first = PrometheusListener.Current;
-        Start();
+        var firstPort = PrometheusListener.Address!.Port;
+        Assert.Equal("", Start());
         Assert.Same(first, PrometheusListener.Current);
-        Start(p => p.Path = "/other");
+        Assert.Equal("", Start(p => p.Path = "/other"));
         Assert.NotSame(first, PrometheusListener.Current);
-        Assert.NotNull(PrometheusListener.Current);
+        Assert.False(Accepts(firstPort), "the replaced listener still accepts");
+        var secondPort = PrometheusListener.Address!.Port;
+        Assert.True(Accepts(secondPort));
         Assert.Equal("", PrometheusListener.Sync(PromConfig()));
         Assert.Null(PrometheusListener.Address);
+        Assert.False(Accepts(secondPort), "a stopped listener still accepts");
         PrometheusListener.Stop(); // stopping twice is a no-op
+    }
+
+    private static bool Accepts(int port)
+    {
+        using var client = new TcpClient();
+        try
+        {
+            client.Connect(IPAddress.Loopback, port);
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
     }
 
     [Fact]
@@ -260,9 +279,14 @@ public sealed class PrometheusListenerTests : ListenerTestBase
     [Fact]
     public void DefaultWarn_GoesThroughTheSdkLogger()
     {
-        var stderr = StderrOf(() => PrometheusListener.DefaultWarn(
+        var config = PromConfig();
+        config.Logging.Format = "json";
+        ProvideTelemetry.SetupTelemetry(config);
+        var stderr = StderrOf(() => SdkWarnings.DefaultWarn(
             "metrics.prometheus_listener.exposed", new Dictionary<string, object?> { ["host"] = "0.0.0.0" }));
         Assert.Contains("metrics.prometheus_listener.exposed", stderr);
+        Assert.Contains("\"logger_name\":\"provide.telemetry.otel\"", stderr);
+        Assert.Contains("\"host\":\"0.0.0.0\"", stderr);
     }
 
     [Fact]

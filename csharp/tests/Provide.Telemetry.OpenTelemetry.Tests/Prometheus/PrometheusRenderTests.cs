@@ -128,6 +128,7 @@ public sealed class PrometheusRenderTests
         Assert.Equal(L("a_b", "v", "otel_scope_name", "scope", "otel_scope_version", "1.2"), families[2].Samples[0].Labels);
         Assert.Equal("help", families[2].Help);
         Assert.Equal("Target metadata", families[1].Help);
+        Assert.Equal("gauge", families[1].Kind);
         Assert.Equal(L("service_name", "svc"), families[1].Samples[0].Labels);
 
         var plain = PrometheusRender.FamiliesFrom(batch, new RenderOptions(Escaped, TargetInfo: false));
