@@ -225,8 +225,24 @@ What to expect on the Prometheus side:
   sums, so a gauge with unit `1` does not gain `_ratio` there. These are
   tracked as `known_divergences` in `spec/telemetry-api.yaml`.
 
+For a Prometheus that requires TLS or basic auth (its `--web.config.file`),
+use the standard OTLP variables:
+
+```bash
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=https://prom.example:9090/api/v1/otlp/v1/metrics
+OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Basic%20<base64 of user:password>"
+OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=/etc/ssl/private-ca.crt   # only for a private CA
+```
+
+Python, TypeScript and Go honour all three. Rust ignores the certificate
+variables, so it can reach only a server whose certificate the system already
+trusts. C# ignores the certificate variables and the per-signal headers
+variable; use the shared `OTEL_EXPORTER_OTLP_HEADERS` there. In the cases they
+ignore, export fails without an error: check `get_health_snapshot()`.
+
 The `prometheus-push` job in `.github/workflows/ci-contracts.yml` pushes from
-all five SDKs to a real Prometheus and checks every series it reads back.
+all five SDKs to real Prometheus instances (plain, basic auth, and TLS with a
+private CA plus basic auth) and checks every series it reads back.
 
 ## Resource Attributes
 

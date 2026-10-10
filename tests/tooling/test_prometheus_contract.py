@@ -176,3 +176,26 @@ def test_staged_capabilities_are_optional_symbols(spec: dict[str, Any]) -> None:
         "render_prometheus",
     }
     assert all(entry["required"] is False for entry in staged)
+
+
+def test_unsupported_push_modes_name_known_modes_and_languages(fixtures: dict[str, Any]) -> None:
+    unsupported = fixtures["push_ingestion"]["unsupported_modes"]
+    assert set(unsupported) <= {"basic_auth", "tls_basic_auth"}
+    for mode, languages in unsupported.items():
+        assert set(languages) <= {"python", "typescript", "go", "rust", "csharp"}, mode
+        assert all(isinstance(reason, str) and reason for reason in languages.values()), mode
+
+
+def test_web_config_cases_use_only_supported_keys_unless_they_expect_failure(
+    contract: dict[str, Any], fixtures: dict[str, Any]
+) -> None:
+    supported = contract["listener_security"]["supported_keys"]
+    tls_keys = set(supported["tls_server_config"])
+    for case in fixtures["listener_web_config"]:
+        config = case.get("web_config") or {}
+        unknown = set(config) - set(supported)
+        bad_tls = set(config.get("tls_server_config") or {}) - tls_keys
+        if unknown or bad_tls:
+            assert case["error"] is True and case["listener"] is False, case["id"]
+        if case.get("error"):
+            assert case["listener"] is False, f"{case['id']}: a config error must never leave the listener running"

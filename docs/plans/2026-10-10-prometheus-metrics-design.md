@@ -60,8 +60,6 @@ start an unowned metrics pipeline, keeps roughly 100 metrics on
 - Pull support in the browser. Browser TypeScript is Tier 1 only.
 - Prometheus exposition from the in-process fallback (no OTel installed). The
   fallback would need per-label-set storage; revisit after Stage 4.
-- Auth or TLS on the Tier 3 listener. Hosts that need either mount the Tier 2
-  handler behind their own server.
 - A `Reset()` on instruments. Series that must disappear use observable
   instruments, whose callbacks report only what currently exists.
 
@@ -148,6 +146,49 @@ Behavior shared by all languages:
 - If the bind fails (port in use), setup logs one warning and continues. Pull
   is never allowed to break the host. The failure appears in health as
   `setup_error`.
+
+### Securing the listener and push
+
+The Tier 3 listener reads the same web config file Prometheus itself takes as
+`--web.config.file`, named by `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`:
+
+```yaml
+tls_server_config:
+  cert_file: server.crt
+  key_file: server.key
+  client_ca_file: clients-ca.crt   # optional: mutual TLS
+  min_version: TLS12
+basic_auth_users:
+  scraper: $2a$10$...               # bcrypt hash
+```
+
+Reusing that format means an operator who already secures Prometheus or an
+exporter has nothing new to learn, and one file can serve both. Every SDK reads
+a fixed subset of keys (`prometheus_metrics.listener_security` in the spec) so
+the same file behaves the same way in all five. The listener fails closed: any
+problem with the file, or with a certificate or key it names, keeps the
+listener from starting rather than serving plain HTTP or skipping auth.
+Certificates are re-read when they change, so rotation needs no restart. Port
+and path stay on their own settings.
+
+Push uses the standard OTel variables in every SDK: per-signal and shared
+`OTEL_EXPORTER_OTLP_*_HEADERS` for basic auth or bearer tokens, and
+`OTEL_EXPORTER_OTLP_*_CERTIFICATE`, `_CLIENT_CERTIFICATE` and `_CLIENT_KEY`
+for a private CA and mutual TLS. A certificate that cannot be read leaves that
+signal's exporter uninstalled with `setup_error` set, rather than being
+ignored.
+
+Stage 2 measured where each SDK stands today by pushing to a Prometheus that
+requires basic auth, and to one that also requires TLS from a private CA:
+
+| SDK | Basic auth via `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | Private CA via `OTEL_EXPORTER_OTLP_CERTIFICATE` |
+|---|---|---|
+| Python, TypeScript, Go | works | works |
+| Rust | works | ignored: export fails silently |
+| C# | ignored (shared `OTEL_EXPORTER_OTLP_HEADERS` only) | ignored: export fails silently |
+
+The gaps are recorded in `push_ingestion.unsupported_modes` and asserted by the
+E2E test, so closing one fails the test until its entry is removed.
 
 ### Observable instruments
 
@@ -291,10 +332,11 @@ language's stage.
   exporters.
 - **Scrape test:** each SDK starts a Tier 3 listener on an ephemeral port and
   scrapes it over real HTTP.
-- **E2E:** a Prometheus 3 container with `--web.enable-otlp-receiver` added to
-  `docker-compose.yml`. One test pushes over OTLP (Tier 1) and one has
-  Prometheus scrape the listener (Tier 3); both query the result back through
-  the Prometheus HTTP API.
+- **E2E:** Prometheus 3 with `--web.enable-otlp-receiver`, in three
+  instances: plain, basic auth, and TLS from a generated private CA plus basic
+  auth (`ci/prometheus-tls-setup.sh`). The push test (Tier 1, done) runs every
+  SDK against all three. Stage 3 adds the reverse: Prometheus scraping each
+  SDK's Tier 3 listener plain and with the listener secured by a web config.
 - **Gates:** 100% branch coverage and 100% mutation kill apply as usual. New
   files stay under 777 lines; the handler, listener, health collector and name
   translation are separate files in each language.
@@ -323,12 +365,16 @@ Each stage is its own PR and leaves `main` releasable.
    more divergences, now in `push_ingestion.known_divergences`: Rust drops
    instrument units and descriptions before they reach OTel, and the C#
    facade has no unit parameter.
-3. **Go: observable instruments, Tiers 2 and 3, health collector.** litevirt
+   A follow-up within Stage 2 added the basic-auth and TLS push modes and
+   measured the gaps in the table under "Securing the listener and push".
+3. **Go: observable instruments, Tiers 2 and 3 with listener TLS and basic
+   auth, health collector.** litevirt
    trials it by moving `:7444` onto `MetricsHandler()` and deleting its
    `telemetryCollector`.
 4. **Python**, then **TypeScript (Node)**, same scope as Stage 3.
-5. **Rust and C#.** `metrics_handler` becomes `required: true` in the spec once
-   all five ship.
+5. **Rust and C#**, including the push-security gaps (private CA in both,
+   per-signal headers in C#). `metrics_handler` becomes `required: true` in the
+   spec once all five ship.
 
 ## Decisions
 

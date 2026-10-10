@@ -17,6 +17,7 @@ on:
       - ".github/workflows/ci-contracts.yml"
       - "csharp/src/**"
       - "infra/prometheus/**"
+      - "ci/prometheus-tls-setup.sh"
       - "e2e/test_prometheus_push_e2e.py"
       - "scripts/prometheus_push_probe.py"
       - "typescript/scripts/prometheus-push-probe.ts"
@@ -175,28 +176,47 @@ jobs:
       # Python (with the otel extra) and TypeScript dependencies
       - name: Install dependencies
         run: python ci/install_parity_deps.py
-      # Same image version and flags as the prometheus service in docker-compose.yml
+      # Three instances of the image docker-compose.yml runs: plain, basic auth,
+      # and TLS (private CA) + basic auth. The secured ones share one generated
+      # web config dir; see ci/prometheus-tls-setup.sh.
       - name: Start Prometheus 3 with the OTLP receiver
         run: |
-          docker run -d --name prometheus \
-            -p 127.0.0.1:9090:9090 \
-            -v "$PWD/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
-            prom/prometheus:v3.13.4 \
-            --config.file=/etc/prometheus/prometheus.yml \
-            --web.enable-otlp-receiver
+          tls_dir="$(ci/prometheus-tls-setup.sh "$RUNNER_TEMP/prometheus-tls")"
+          echo "PROMETHEUS_TLS_CA=$tls_dir/ca.crt" >> "$GITHUB_ENV"
+          start() {
+            name="$1"; port="$2"; shift 2
+            docker run -d --name "$name" \
+              -p "127.0.0.1:$port:9090" \
+              -v "$PWD/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+              -v "$tls_dir:/etc/prometheus/web:ro" \
+              prom/prometheus:v3.13.4 \
+              --config.file=/etc/prometheus/prometheus.yml \
+              --web.enable-otlp-receiver "$@"
+          }
+          start prometheus 9090
+          start prometheus-auth 9444 --web.config.file=/etc/prometheus/web/auth-only.yml
+          start prometheus-tls 9443 --web.config.file=/etc/prometheus/web/web-config.yml
           for _ in $(seq 1 30); do
-            curl -sf http://127.0.0.1:9090/-/ready && exit 0
+            if curl -sf http://127.0.0.1:9090/-/ready \
+              && curl -sf -u e2e:e2e-test-only-password http://127.0.0.1:9444/-/ready \
+              && curl -sf --cacert "$tls_dir/ca.crt" -u e2e:e2e-test-only-password https://localhost:9443/-/ready; then
+              exit 0
+            fi
             sleep 1
           done
-          docker logs prometheus
+          for c in prometheus prometheus-auth prometheus-tls; do docker logs "$c"; done
           exit 1
       # PROVIDE_E2E_REQUIRE_ALL_RUNTIMES turns a missing toolchain into a failure
       # rather than a skip, so a language that never ran cannot pass.
       - name: Push from every SDK and verify in Prometheus
         env:
           PROMETHEUS_URL: "http://127.0.0.1:9090"
+          PROMETHEUS_AUTH_URL: "http://127.0.0.1:9444"
+          PROMETHEUS_TLS_URL: "https://localhost:9443"
+          PROMETHEUS_BASIC_AUTH_USER: "e2e"
+          PROMETHEUS_BASIC_AUTH_PASSWORD: "e2e-test-only-password"
           PROVIDE_E2E_REQUIRE_ALL_RUNTIMES: "1"
         run: uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q e2e/test_prometheus_push_e2e.py
       - name: Prometheus logs
         if: always()
-        run: docker logs prometheus || true
+        run: for c in prometheus prometheus-auth prometheus-tls; do docker logs "$c" || true; done

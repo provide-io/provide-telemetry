@@ -1146,6 +1146,22 @@ prometheus_metrics:
       type: bool
       default: "false"
       description: "Also export the health metrics over OTLP as observable instruments."
+    - env: PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG
+      type: str
+      default: ""
+      description: "Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth."
+    - env: OTEL_EXPORTER_OTLP_CERTIFICATE
+      type: str
+      default: ""
+      description: "PEM file of CA certificates trusted for OTLP over TLS, for every signal. Per-signal OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_CERTIFICATE override it."
+    - env: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
+      type: str
+      default: ""
+      description: "PEM client certificate for mutual TLS to the OTLP endpoint. Per-signal _{LOGS,TRACES,METRICS}_CLIENT_CERTIFICATE override it."
+    - env: OTEL_EXPORTER_OTLP_CLIENT_KEY
+      type: str
+      default: ""
+      description: "PEM private key for OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE. Per-signal _{LOGS,TRACES,METRICS}_CLIENT_KEY override it."
 
   config_rules:
     - "OTEL_METRICS_EXPORTER is split on commas, entries trimmed and lowercased, empty entries dropped. An empty value means the default."
@@ -1196,6 +1212,28 @@ prometheus_metrics:
     - "Serves the handler at PROVIDE_METRICS_PROMETHEUS_PATH; every other path returns 404."
     - "Read-header, read, write and idle timeouts are set so a slow client cannot hold the listener."
     - "A bind failure logs one warning, records setup_error, and never fails setup."
+
+  listener_security:
+    format: "Prometheus exporter-toolkit web config (the file Prometheus takes as --web.config.file), restricted to the keys below so every SDK reads the same file the same way."
+    supported_keys:
+      tls_server_config: [cert_file, key_file, client_ca_file, client_auth_type, min_version]
+      basic_auth_users: "map of user name to bcrypt hash"
+    client_auth_type_values: [NoClientCert, RequireAndVerifyClientCert, VerifyClientCertIfGiven]
+    min_version_values: [TLS12, TLS13]
+    rules:
+      - "Fail closed: if the file is unreadable, malformed, names an unsupported key, or a referenced certificate or key cannot be loaded, the listener does not start, setup_error is recorded, and strict mode raises. It never falls back to plain HTTP or to no auth."
+      - "Relative paths in the file resolve against the file's directory."
+      - "min_version defaults to TLS12. client_auth_type defaults to NoClientCert, or RequireAndVerifyClientCert when client_ca_file is set."
+      - "Certificate and key files are re-read when their modification time changes, checked on each new connection, so rotation needs no restart."
+      - "Basic auth compares with bcrypt; a failed check returns 401 with WWW-Authenticate: Basic and no detail. An implementation may cache successful (user, password) verifications in memory."
+      - "basic_auth_users without tls_server_config is allowed (credentials then travel in clear text) and logs one warning at setup."
+      - "Bind host, port and path keep their own settings; the web config controls only TLS and auth."
+
+  push_security:
+    - "Headers: OTEL_EXPORTER_OTLP_HEADERS and the per-signal OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_HEADERS, per-signal winning, in every SDK."
+    - "TLS: OTEL_EXPORTER_OTLP_CERTIFICATE, _CLIENT_CERTIFICATE and _CLIENT_KEY and their per-signal forms, per-signal winning, in every SDK."
+    - "A configured certificate or key that cannot be read leaves that signal's exporter uninstalled, records setup_error, and raises in strict mode. It is never silently ignored in favour of the system trust store."
+    - "Current gaps are recorded in spec/prometheus_fixtures.yaml push_ingestion.unsupported_modes and asserted by e2e/test_prometheus_push_e2e.py."
 
   temporality:
     - "The Prometheus reader is always cumulative."
