@@ -214,6 +214,13 @@ describe('prom-render', () => {
     expect(render([family('x', 'gauge')])).toBe('# TYPE x gauge\n');
   });
 
+  it('skips metrics whose instrument name is in skip', () => {
+    const d = data([metric('drop.me', GAUGE, [point(1)]), metric('keep.me', GAUGE, [point(2)])]);
+    expect(text(d, { targetInfo: false, skip: new Set(['drop.me']) })).toBe(
+      '# TYPE keep_me gauge\nkeep_me 2\n',
+    );
+  });
+
   it('a metric named target_info keeps its family', () => {
     expect(text(data([metric('target_info', GAUGE, [point(5)])]))).toBe(
       '# TYPE target_info gauge\ntarget_info 5\n',

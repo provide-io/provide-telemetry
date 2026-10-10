@@ -46,6 +46,8 @@ export interface RenderOptions {
   targetInfo: boolean;
   /** The scraper negotiated escaping=allow-utf-8. */
   utf8: boolean;
+  /** OTel instrument names left out of the output. */
+  skip?: ReadonlySet<string>;
 }
 
 export type Labels = Record<string, string>;
@@ -159,7 +161,9 @@ export function familiesFrom(
     }
     for (const scopeMetrics of collected.scopeMetrics) {
       const scope = opts.scopeLabels ? scopeLabelsOf(scopeMetrics.scope) : {};
-      for (const metric of scopeMetrics.metrics) addMetric(families, metric, scope, strategy);
+      for (const metric of scopeMetrics.metrics) {
+        if (!opts.skip?.has(metric.descriptor.name)) addMetric(families, metric, scope, strategy);
+      }
     }
     if (info.samples.length > 0 && !families.has(TARGET_INFO)) families.set(TARGET_INFO, info);
   }

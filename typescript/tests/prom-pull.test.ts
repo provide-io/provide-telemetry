@@ -19,6 +19,7 @@ import {
   createPullReader,
   getPullStatus,
   healthFamilies,
+  HEALTH_METRIC_NAMES,
   HOST_PROVIDER,
   markPullReady,
   METRICS_DISABLED,
@@ -237,7 +238,18 @@ describe('serving', () => {
         prometheusScopeLabels: true,
         prometheusTargetInfo: false,
       }),
-    ).toEqual({ strategy: 'NoTranslation', scopeLabels: true, targetInfo: false });
+    ).toEqual({
+      strategy: 'NoTranslation',
+      scopeLabels: true,
+      targetInfo: false,
+      skip: HEALTH_METRIC_NAMES,
+    });
+  });
+
+  it('HEALTH_METRIC_NAMES lists every health family', () => {
+    const names = healthFamilies(getHealthSnapshot()).map((f) => f.name);
+    expect([...HEALTH_METRIC_NAMES].sort()).toEqual([...names].sort());
+    expect(HEALTH_METRIC_NAMES.size).toBe(10);
   });
 });
 

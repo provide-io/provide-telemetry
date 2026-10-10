@@ -114,6 +114,7 @@ export function optionsFor(cfg: {
     strategy: cfg.prometheusTranslation,
     scopeLabels: cfg.prometheusScopeLabels,
     targetInfo: cfg.prometheusTargetInfo,
+    skip: HEALTH_METRIC_NAMES,
   };
 }
 
@@ -177,6 +178,20 @@ const PER_SIGNAL: readonly [(s: Signal) => keyof HealthSnapshot, string, Family[
   ],
 ];
 
+const SETUP_ERROR = 'provide_telemetry_setup_error';
+const RECEIPT_FAILURES = 'provide_telemetry_receipt_failures_total';
+
+/**
+ * The collector's family names. Instruments of these names on the provider
+ * (from PROVIDE_METRICS_HEALTH_OTLP) are left out of a scrape, which serves the
+ * collector's copy instead, so each family appears once.
+ */
+export const HEALTH_METRIC_NAMES: ReadonlySet<string> = new Set([
+  ...PER_SIGNAL.map(([, metric]) => metric),
+  SETUP_ERROR,
+  RECEIPT_FAILURES,
+]);
+
 const CIRCUIT_STATES: ReadonlyMap<string, number> = new Map([
   ['closed', 0],
   ['half-open', 1],
@@ -197,9 +212,9 @@ export function healthFamilies(snapshot: HealthSnapshot): Family[] {
     }
     return fam;
   });
-  const setupError = family('provide_telemetry_setup_error', 'gauge');
+  const setupError = family(SETUP_ERROR, 'gauge');
   setupError.samples.push(['', {}, snapshot.setupError ? 1 : 0]);
-  const receipts = family('provide_telemetry_receipt_failures_total', 'counter');
+  const receipts = family(RECEIPT_FAILURES, 'counter');
   receipts.samples.push(['', {}, snapshot.receiptFailures]);
   return [...families, setupError, receipts];
 }
