@@ -108,6 +108,27 @@ fn runtime_test_provider_config_changed_detects_each_provider_field() {
     changed.metrics.otlp_protocol = "http/json".to_string();
     assert!(provider_config_changed(&current, &changed));
 
+    let tls = crate::config::OtlpTlsConfig {
+        certificate: Some("/ca.crt".to_string()),
+        ..Default::default()
+    };
+    let mut changed = current.clone();
+    changed.logging.otlp_tls = tls.clone();
+    assert!(provider_config_changed(&current, &changed));
+    let mut changed = current.clone();
+    changed.tracing.otlp_tls = tls.clone();
+    assert!(provider_config_changed(&current, &changed));
+    let mut changed = current.clone();
+    changed.metrics.otlp_tls = tls;
+    assert!(provider_config_changed(&current, &changed));
+
+    let mut changed = current.clone();
+    changed.metrics.exporters = vec!["prometheus".to_string()];
+    assert!(provider_config_changed(&current, &changed));
+    let mut changed = current.clone();
+    changed.metrics.prometheus.port = 9100;
+    assert!(provider_config_changed(&current, &changed));
+
     let mut changed = current.clone();
     changed.exporter.logs_timeout_seconds = 5.0;
     assert!(provider_config_changed(&current, &changed));
