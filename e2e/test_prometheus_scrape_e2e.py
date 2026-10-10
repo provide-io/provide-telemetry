@@ -14,8 +14,8 @@ the scrape succeeded (up == 1), a counter and an observable gauge arrived with
 their translated names and values, and the health series are there.
 
 Requires PROMETHEUS_SCRAPE_URL and, for the secured case, PROMETHEUS_TLS_CA
-(the web config sits beside it). Only Go implements the listener so far; each
-SDK joins the parametrization as it ships Tier 3.
+(the web config sits beside it). Python and Go implement the listener so far;
+each SDK joins the parametrization as it ships Tier 3.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -40,6 +41,7 @@ _READY_TIMEOUT_S = 300.0  # includes compiling the probe
 _SCRAPE_TIMEOUT_S = 30.0
 _AMBIENT_CA_VARS = ("SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")
 _PROBES = {
+    "python": ([sys.executable, "scripts/prometheus_scrape_probe.py"], _REPO_ROOT, sys.executable),
     "go": (["go", "run", "./cmd/prometheus_scrape_probe"], _REPO_ROOT / "go" / "otel", "go"),
 }
 _MODES = {"plain": ("9464", "provide-plain"), "secured": ("9465", "provide-secured")}

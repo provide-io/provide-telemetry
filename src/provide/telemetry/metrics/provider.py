@@ -243,7 +243,9 @@ def shutdown_metrics(timeout_seconds: float | None = None) -> None:
     bound is not optional.
     """
     from provide.telemetry._provider_drain import dispose_detached_provider
+    from provide.telemetry.metrics import _prom_listener
 
+    _prom_listener.stop()  # nothing is left to serve once shutdown starts
     global _meter_provider, _setup_generation
     with _meter_lock:
         _setup_generation += 1

@@ -110,6 +110,10 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
             configure_logging(cfg, force=True)
         else:
             set_setup_error(None)  # clear any stale error from a prior failed attempt
+            # After the clear, so a listener that cannot start stays visible in health.
+            from provide.telemetry.metrics._prom_listener import sync as sync_prometheus_listener
+
+            sync_prometheus_listener(cfg, set_setup_error)
             # Published last, once every provider is installed: the generation
             # that says setup_done is the generation whose providers exist.
             coordinator.publish_setup_state(setup_done=True)

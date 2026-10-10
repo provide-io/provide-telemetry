@@ -383,7 +383,18 @@ Each stage is its own PR and leaves `main` releasable.
    `e2e/test_prometheus_scrape_e2e.py` has a real Prometheus scrape the Go
    listener plain and over TLS with basic auth. litevirt can now move `:7444`
    onto `MetricsHandler()` and delete its `telemetryCollector`.
-4. **Python**, then **TypeScript (Node)**, same scope as Stage 3.
+4. **Python** (done), then **TypeScript (Node)**, same scope as Stage 3.
+   Python: config keys in `_config_prometheus.py`; `gauge()` moved to an OTel
+   Gauge, closing its half of decision 0; a port of otlptranslator's namers
+   (`metrics/_prom_names.py`) checked against every translation, label and
+   translator-only case; a text-format renderer with scrape-time UTF-8
+   negotiation; a pull `MetricReader` with the not-ready statuses (plus
+   `process_locked`, for OpenTelemetry's once-per-process global provider);
+   `metrics_handler()` as an ASGI app and `render_prometheus()`; the listener on
+   `http.server` with the web config subset, certificate reload and fail-closed
+   startup (`bcrypt` and `PyYAML` in the `prometheus` extra); observable
+   instruments. Python is in both capability sets and in the scrape E2E.
+   `PROVIDE_METRICS_HEALTH_OTLP` is parsed but, as in Go, not yet acted on.
 5. **Rust and C#**, including the push-security gaps (private CA in both,
    per-signal headers in C#). `metrics_handler` becomes `required: true` in the
    spec once all five ship.

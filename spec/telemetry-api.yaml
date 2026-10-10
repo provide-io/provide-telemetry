@@ -17,7 +17,7 @@
 #               Supported values: "governance", "observable_metrics", "prometheus"
 #               Capability rules by language:
 #                 python, typescript, go, rust, csharp — governance always present
-#                 observable_metrics, prometheus — go so far; a language is added to
+#                 observable_metrics, prometheus — go and python so far; a language is added to
 #                   the matching set in validate_conformance.py in the PR that ships
 #                   it (see docs/plans/2026-10-10-prometheus-metrics-design.md)
 #   note:       human-readable description or rationale

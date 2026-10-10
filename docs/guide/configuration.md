@@ -256,10 +256,10 @@ The `prometheus-push` job in `.github/workflows/ci-contracts.yml` pushes from
 all five SDKs to real Prometheus instances (plain, basic auth, and TLS with a
 private CA plus basic auth) and checks every series it reads back.
 
-## Serving Metrics for Prometheus to Scrape (Go)
+## Serving Metrics for Prometheus to Scrape (Go, Python)
 
-The Go SDK can also serve metrics for Prometheus to pull. Other SDKs follow;
-see `docs/plans/2026-10-10-prometheus-metrics-design.md`.
+The Go and Python SDKs can also serve metrics for Prometheus to pull. The
+other SDKs follow; see `docs/plans/2026-10-10-prometheus-metrics-design.md`.
 
 Add `prometheus` to `OTEL_METRICS_EXPORTER` (`prometheus` alone, or
 `otlp,prometheus` to push as well), then either mount the handler on a server
@@ -271,12 +271,19 @@ import provideotel "github.com/provide-io/provide-telemetry/go/otel"
 mux.Handle("/metrics", provideotel.MetricsHandler())
 ```
 
+```python
+from provide.telemetry import metrics_handler
+
+app.mount("/metrics", metrics_handler())  # any ASGI framework; render_prometheus() for others
+```
+
 or let the SDK run its own listener with `PROVIDE_METRICS_PROMETHEUS_LISTEN=true`.
 It binds `127.0.0.1:9464` and serves `/metrics` unless
 `OTEL_EXPORTER_PROMETHEUS_HOST`, `OTEL_EXPORTER_PROMETHEUS_PORT` and
 `PROVIDE_METRICS_PROMETHEUS_PATH` say otherwise. To require TLS or basic auth,
 point `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` at a file in the format
-Prometheus itself takes as `--web.config.file`:
+Prometheus itself takes as `--web.config.file` (Python needs the
+`provide-telemetry[prometheus]` extra to read it):
 
 ```yaml
 tls_server_config:
@@ -290,15 +297,19 @@ basic_auth_users:
 
 Only those keys are accepted. If the file or a certificate it names has a
 problem, the listener does not start (it never falls back to plain HTTP); the
-reason is logged as `otel.prometheus_listener_failed` and appears in
-`GetHealthSnapshot().SetupError`. Certificates are re-read when they change.
+reason is logged (`otel.prometheus_listener_failed` in Go,
+`metrics.prometheus_listener.failed` in Python) and appears as the health
+snapshot's setup error. Certificates are re-read when they change.
 
 The scrape also carries the SDK's own health as `provide_telemetry_*` series
 (`provide_telemetry_export_failures_total{signal}`,
 `provide_telemetry_circuit_state{signal}` and so on), which stay visible when
-OTLP export is failing. Callback-reported values use
-`NewObservableGauge`, `NewObservableCounter` and `NewObservableUpDownCounter`;
-their callbacks run on each scrape.
+OTLP export is failing. Callback-reported values use observable instruments,
+whose callbacks run on each scrape: `NewObservableGauge`,
+`NewObservableCounter` and `NewObservableUpDownCounter` in Go;
+`observable_gauge`, `observable_counter` and `observable_up_down_counter` in
+Python, each taking a zero-argument callback that returns `Observation`s and
+returning a handle with `unregister()`.
 
 ## Resource Attributes
 
