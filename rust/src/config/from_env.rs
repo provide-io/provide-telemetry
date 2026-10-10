@@ -13,11 +13,27 @@ use super::parse::{
     env_value, nonempty_env_value, parse_bool, parse_module_levels, parse_non_negative_float,
     parse_otlp_headers, parse_rate, parse_retries, parse_usize,
 };
+use super::prometheus::{parse_exporters, RawPrometheus};
 use super::{
     BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig, MetricsConfig,
-    SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig, TracingConfig,
+    OtlpTlsConfig, SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig, TracingConfig,
 };
 use crate::errors::ConfigurationError;
+
+/// One signal's OTLP TLS files: `OTEL_EXPORTER_OTLP_{SIGNAL}_*` winning over
+/// the shared `OTEL_EXPORTER_OTLP_*`, an empty value counting as unset.
+fn otlp_tls(env: &HashMap<String, String>, signal: &str) -> OtlpTlsConfig {
+    let pick = |suffix: &str| {
+        nonempty_env_value(env, &[&format!("OTEL_EXPORTER_OTLP_{signal}_{suffix}")])
+            .or_else(|| nonempty_env_value(env, &[&format!("OTEL_EXPORTER_OTLP_{suffix}")]))
+            .map(|value| value.trim().to_string())
+    };
+    OtlpTlsConfig {
+        certificate: pick("CERTIFICATE"),
+        client_certificate: pick("CLIENT_CERTIFICATE"),
+        client_key: pick("CLIENT_KEY"),
+    }
+}
 
 impl TelemetryConfig {
     pub fn from_env() -> Result<Self, ConfigurationError> {
@@ -88,6 +104,7 @@ impl TelemetryConfig {
                 module_levels: parse_module_levels(
                     env_value(env, &["PROVIDE_LOG_MODULE_LEVELS"]).unwrap_or(""),
                 ),
+                otlp_tls: otlp_tls(env, "LOGS"),
             },
             tracing: TracingConfig {
                 enabled: parse_bool(
@@ -111,6 +128,7 @@ impl TelemetryConfig {
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
+                otlp_tls: otlp_tls(env, "TRACES"),
             },
             metrics: MetricsConfig {
                 enabled: parse_bool(
@@ -134,6 +152,32 @@ impl TelemetryConfig {
                     60_000,
                     "OTEL_METRIC_EXPORT_INTERVAL",
                 )? as u64,
+                otlp_tls: otlp_tls(env, "METRICS"),
+                exporters: parse_exporters(env_value(env, &["OTEL_METRICS_EXPORTER"]))?,
+                health_otlp: parse_bool(
+                    env_value(env, &["PROVIDE_METRICS_HEALTH_OTLP"]),
+                    false,
+                    "PROVIDE_METRICS_HEALTH_OTLP",
+                )?,
+                prometheus: RawPrometheus {
+                    listen: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_LISTEN"]),
+                    host: env_value(env, &["OTEL_EXPORTER_PROMETHEUS_HOST"]),
+                    port: env_value(env, &["OTEL_EXPORTER_PROMETHEUS_PORT"]),
+                    path: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_PATH"]),
+                    translation: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_TRANSLATION"]),
+                    scope_labels: parse_bool(
+                        env_value(env, &["PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS"]),
+                        false,
+                        "PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS",
+                    )?,
+                    target_info: parse_bool(
+                        env_value(env, &["PROVIDE_METRICS_PROMETHEUS_TARGET_INFO"]),
+                        true,
+                        "PROVIDE_METRICS_PROMETHEUS_TARGET_INFO",
+                    )?,
+                    web_config: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG"]),
+                }
+                .parse()?,
             },
             event_schema: EventSchemaConfig {
                 strict_event_name: parse_bool(

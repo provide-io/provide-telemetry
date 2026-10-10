@@ -27,6 +27,12 @@ pub(crate) mod resilient;
 #[cfg(feature = "otel")]
 mod resource;
 #[cfg(feature = "otel")]
+pub(crate) mod observable;
+#[cfg(feature = "otel")]
+pub(crate) mod prometheus_reader;
+#[cfg(feature = "otel")]
+mod tls;
+#[cfg(feature = "otel")]
 pub(crate) mod traces;
 
 #[cfg(feature = "otel")]
@@ -48,8 +54,18 @@ fn map_exporter_build<T, E: std::fmt::Display>(
     result.map_err(|err| TelemetryError::new(format!("OTLP {signal} exporter build failed: {err}")))
 }
 
+/// Without the SDK nothing is installed; the pull endpoint records why it
+/// cannot serve.
 #[cfg(not(feature = "otel"))]
-pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError> {
+pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError> {
+    use crate::prometheus::{set_status, Status};
+    set_status(if !config.metrics.enabled {
+        Status::MetricsDisabled
+    } else if config.metrics.prometheus_reader_enabled() {
+        Status::OtelMissing
+    } else {
+        Status::NotSelected
+    });
     Ok(())
 }
 

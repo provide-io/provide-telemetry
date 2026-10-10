@@ -39,12 +39,17 @@ use opentelemetry_sdk::Resource;
 
 use crate::config::TelemetryConfig;
 use crate::errors::TelemetryError;
+use crate::prometheus::{self, Status};
 
 use super::async_runtime::ProvideTokioRuntime;
 use super::endpoint::{resolve_protocol, validate_optional_endpoint, OtlpProtocol};
 #[cfg(feature = "otel-grpc")]
 use super::grpc::metadata_from_headers;
 use super::map_exporter_build;
+use super::prometheus_reader::PullReader;
+#[cfg(feature = "otel-grpc")]
+use super::tls::tonic_tls;
+use super::tls::{http_client, load_client_tls};
 use super::resilient::ResilientMetricExporter;
 
 #[derive(Clone)]
@@ -58,7 +63,7 @@ static COUNTERS: OnceLock<Mutex<HashMap<String, Counter<f64>>>> = OnceLock::new(
 static GAUGES: OnceLock<Mutex<HashMap<String, Gauge<f64>>>> = OnceLock::new();
 static HISTOGRAMS: OnceLock<Mutex<HashMap<String, Histogram<f64>>>> = OnceLock::new();
 
-const METER_NAME: &str = "provide.telemetry";
+pub(super) const METER_NAME: &str = "provide.telemetry";
 
 #[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
 fn empty_meter_provider_mutex() -> Mutex<Option<InstalledMeterProvider>> {
@@ -110,6 +115,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
             if metric_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.metrics.otlp_headers.clone());
             }
+            if let Some(tls) = load_client_tls("metrics", &cfg.metrics.otlp_tls)? {
+                builder = builder.with_http_client(http_client("metrics", &tls, timeout)?);
+            }
             map_exporter_build(builder.build(), "metrics")
         }
         #[cfg(feature = "otel-grpc")]
@@ -121,6 +129,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
             }
             if metric_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.metrics.otlp_headers)?);
+            }
+            if let Some(tls) = load_client_tls("metrics", &cfg.metrics.otlp_tls)? {
+                builder = builder.with_tls_config(tonic_tls(&tls));
             }
             map_exporter_build(builder.build(), "metrics")
         }
@@ -139,52 +150,79 @@ fn metric_headers_configured(cfg: &TelemetryConfig) -> bool {
     !cfg.metrics.otlp_headers.is_empty()
 }
 
-/// Build and register the SDK `MeterProvider`. Honours
-/// `cfg.exporter.metrics_fail_open`.
+/// Build and register the SDK `MeterProvider` with the readers `cfg` selects:
+/// the OTLP `PeriodicReader` (when `otlp` is selected and an endpoint is set)
+/// and the Prometheus pull reader. Honours `cfg.exporter.metrics_fail_open`,
+/// and records in [`crate::prometheus`] whether the pull endpoint can serve.
 pub(super) fn install_meter_provider(
     cfg: &TelemetryConfig,
     resource: Resource,
 ) -> Result<bool, TelemetryError> {
-    if !cfg.metrics.enabled {
-        shutdown_meter_provider(None);
+    shutdown_meter_provider(None);
+    let pull_status = pull_status(cfg);
+    let want_otlp = cfg.metrics.otlp_reader_enabled() && cfg.metrics.otlp_endpoint.is_some();
+    if !want_otlp && pull_status.is_some() {
+        prometheus::set_status(pull_status.unwrap_or(Status::NotSelected));
         return Ok(false);
     }
-    if cfg.metrics.otlp_endpoint.is_none() {
-        shutdown_meter_provider(None);
-        return Ok(false);
-    }
-
-    let exporter_result = build_exporter(cfg);
-    let exporter = match exporter_result {
-        Ok(e) => e,
-        Err(err) => {
-            if cfg.exporter.metrics_fail_open {
-                eprintln!(
-                    "provide_telemetry: metrics exporter init failed (fail_open=true): {err}"
-                );
-                return Ok(false);
-            }
-            return Err(err);
-        }
-    };
 
     let runtime = ProvideTokioRuntime::metrics();
-    let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter), runtime)
-        .with_interval(Duration::from_millis(cfg.metrics.metric_export_interval_ms))
-        .build();
+    let mut builder = SdkMeterProvider::builder().with_resource(resource);
+    if want_otlp {
+        let exporter = match build_exporter(cfg) {
+            Ok(exporter) => exporter,
+            Err(err) => {
+                crate::health::set_setup_error(Some(err.message.clone()));
+                prometheus::set_status(Status::SetupFailed);
+                if cfg.exporter.metrics_fail_open {
+                    eprintln!(
+                        "provide_telemetry: metrics exporter init failed (fail_open=true): {err}"
+                    );
+                    return Ok(false);
+                }
+                return Err(err);
+            }
+        };
+        let reader = PeriodicReader::builder(ResilientMetricExporter::new(exporter), runtime)
+            .with_interval(Duration::from_millis(cfg.metrics.metric_export_interval_ms))
+            .build();
+        builder = builder.with_reader(reader);
+    }
+    let pull = pull_status.is_none().then(PullReader::new);
+    if let Some(reader) = &pull {
+        builder = builder.with_reader(reader.clone());
+    }
 
-    let provider = SdkMeterProvider::builder()
-        .with_resource(resource)
-        .with_reader(reader)
-        .build();
-
-    let arc = Arc::new(provider);
+    let arc = Arc::new(builder.build());
     global::set_meter_provider(arc.as_ref().clone());
     *crate::_lock::lock(meter_provider_slot()) = Some(InstalledMeterProvider {
         provider: arc,
         runtime,
     });
+    match pull {
+        Some(reader) => {
+            prometheus::mark_ready(Arc::new(move || reader.view()), prometheus::options_for(cfg))
+        }
+        None => prometheus::set_status(pull_status.unwrap_or(Status::NotSelected)),
+    }
     Ok(true)
+}
+
+/// Why the pull reader is not attached, or `None` when it is.
+///
+/// A host that adopted its own provider owns the global meter provider, so a
+/// reader on ours would never see its instruments.
+fn pull_status(cfg: &TelemetryConfig) -> Option<Status> {
+    if !cfg.metrics.enabled {
+        return Some(Status::MetricsDisabled);
+    }
+    if !cfg.metrics.prometheus_reader_enabled() {
+        return Some(Status::NotSelected);
+    }
+    if super::adopt::metrics_adopted() {
+        return Some(Status::HostProvider);
+    }
+    None
 }
 
 /// Force-flush and shut down the installed `MeterProvider`.

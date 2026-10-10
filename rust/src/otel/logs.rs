@@ -36,6 +36,9 @@ use super::endpoint::{resolve_protocol, validate_optional_endpoint, OtlpProtocol
 #[cfg(feature = "otel-grpc")]
 use super::grpc::metadata_from_headers;
 use super::map_exporter_build;
+#[cfg(feature = "otel-grpc")]
+use super::tls::tonic_tls;
+use super::tls::{http_client, load_client_tls};
 use super::resilient::ResilientLogExporter;
 
 #[derive(Clone)]
@@ -83,6 +86,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             if log_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.logging.otlp_headers.clone());
             }
+            if let Some(tls) = load_client_tls("logs", &cfg.logging.otlp_tls)? {
+                builder = builder.with_http_client(http_client("logs", &tls, timeout)?);
+            }
             map_exporter_build(builder.build(), "logs")
         }
         #[cfg(feature = "otel-grpc")]
@@ -94,6 +100,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             }
             if log_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.logging.otlp_headers)?);
+            }
+            if let Some(tls) = load_client_tls("logs", &cfg.logging.otlp_tls)? {
+                builder = builder.with_tls_config(tonic_tls(&tls));
             }
             map_exporter_build(builder.build(), "logs")
         }
@@ -132,6 +141,7 @@ pub(super) fn install_logger_provider(
     let exporter = match exporter_result {
         Ok(e) => e,
         Err(err) => {
+            crate::health::set_setup_error(Some(err.message.clone()));
             if cfg.exporter.logs_fail_open {
                 eprintln!("provide_telemetry: logs exporter init failed (fail_open=true): {err}");
                 return Ok(false);

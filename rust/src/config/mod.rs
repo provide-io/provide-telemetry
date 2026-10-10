@@ -10,10 +10,26 @@ use serde::{Deserialize, Serialize};
 mod from_env;
 mod parse;
 pub(crate) mod probe;
+pub(crate) mod prometheus;
 mod redact;
 mod validate;
 
+pub use prometheus::PrometheusConfig;
 pub use redact::redact_config;
+
+/// TLS material for one signal's OTLP exporter, from
+/// `OTEL_EXPORTER_OTLP_{,LOGS_,TRACES_,METRICS_}{CERTIFICATE,CLIENT_CERTIFICATE,CLIENT_KEY}`
+/// (per-signal winning). Each is a path to a PEM file; `None` means unset.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OtlpTlsConfig {
+    /// CA certificates trusted for the OTLP endpoint, instead of the system roots.
+    pub certificate: Option<String>,
+    /// Client certificate for mutual TLS.
+    pub client_certificate: Option<String>,
+    /// Private key for `client_certificate`.
+    pub client_key: Option<String>,
+}
 
 /// Ceiling on exporter retries per signal, shared with the resilience layer's
 /// `MAX_EXPORT_ATTEMPTS` (retries + the first attempt). Mirrors TypeScript's
@@ -66,6 +82,8 @@ pub struct LoggingConfig {
     /// (longest-prefix wins); values are level strings (TRACE/DEBUG/
     /// INFO/WARN/ERROR). Controlled by `PROVIDE_LOG_MODULE_LEVELS`.
     pub module_levels: HashMap<String, String>,
+    /// TLS material for the OTLP log exporter.
+    pub otlp_tls: OtlpTlsConfig,
 }
 
 impl Default for LoggingConfig {
@@ -79,6 +97,7 @@ impl Default for LoggingConfig {
             otlp_enabled: true,
             otlp_protocol: String::new(),
             module_levels: HashMap::new(),
+            otlp_tls: OtlpTlsConfig::default(),
         }
     }
 }
@@ -97,6 +116,8 @@ pub struct TracingConfig {
     pub otlp_endpoint: Option<String>,
     /// OTLP transport protocol for traces. See `LoggingConfig::otlp_protocol`.
     pub otlp_protocol: String,
+    /// TLS material for the OTLP span exporter.
+    pub otlp_tls: OtlpTlsConfig,
 }
 
 impl Default for TracingConfig {
@@ -107,6 +128,7 @@ impl Default for TracingConfig {
             otlp_headers: HashMap::new(),
             otlp_endpoint: None,
             otlp_protocol: String::new(),
+            otlp_tls: OtlpTlsConfig::default(),
         }
     }
 }
@@ -126,6 +148,46 @@ pub struct MetricsConfig {
     /// OTLP endpoint. Parsed from `OTEL_METRIC_EXPORT_INTERVAL` (OTel spec).
     /// Default: 60 000 ms (60 seconds).
     pub metric_export_interval_ms: u64,
+    /// TLS material for the OTLP metric exporter.
+    pub otlp_tls: OtlpTlsConfig,
+    /// Selected metric exporters, from `OTEL_METRICS_EXPORTER`: `otlp` and/or
+    /// `prometheus`. Empty means none (`OTEL_METRICS_EXPORTER=none`).
+    pub exporters: Vec<String>,
+    /// Also export the health metrics over OTLP (`PROVIDE_METRICS_HEALTH_OTLP`).
+    pub health_otlp: bool,
+    /// Prometheus pull reader, handler and listener settings.
+    pub prometheus: PrometheusConfig,
+}
+
+impl MetricsConfig {
+    /// Whether `name` is one of the selected exporters.
+    pub fn has_exporter(&self, name: &str) -> bool {
+        self.exporters.iter().any(|exporter| exporter == name)
+    }
+
+    /// Whether the standalone Prometheus listener should run.
+    pub fn prometheus_listener_enabled(&self) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        match self.prometheus.listen.as_str() {
+            "true" => true,
+            "auto" => self.has_exporter(prometheus::EXPORTER_PROMETHEUS),
+            _ => false,
+        }
+    }
+
+    /// Whether the Prometheus pull reader is attached; asking for the listener implies it.
+    pub fn prometheus_reader_enabled(&self) -> bool {
+        self.enabled
+            && (self.has_exporter(prometheus::EXPORTER_PROMETHEUS)
+                || self.prometheus_listener_enabled())
+    }
+
+    /// Whether OTLP metrics export is selected (it still needs an endpoint).
+    pub fn otlp_reader_enabled(&self) -> bool {
+        self.enabled && self.has_exporter(prometheus::EXPORTER_OTLP)
+    }
 }
 
 fn default_metric_export_interval_ms() -> u64 {
@@ -140,6 +202,10 @@ impl Default for MetricsConfig {
             otlp_endpoint: None,
             otlp_protocol: String::new(),
             metric_export_interval_ms: default_metric_export_interval_ms(),
+            otlp_tls: OtlpTlsConfig::default(),
+            exporters: prometheus::default_exporters(),
+            health_otlp: false,
+            prometheus: PrometheusConfig::default(),
         }
     }
 }

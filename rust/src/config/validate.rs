@@ -49,7 +49,7 @@ fn require_retries(field: &str, value: usize) -> Result<(), ConfigurationError> 
 }
 
 impl TelemetryConfig {
-    /// Check every numeric field `from_env` would have rejected.
+    /// Check every numeric and enum field `from_env` would have rejected.
     ///
     /// Field names in the messages are the environment variables a caller would
     /// recognise, so an explicit config and a mis-set environment report the
@@ -96,7 +96,8 @@ impl TelemetryConfig {
             "PROVIDE_EXPORTER_METRICS_RETRIES",
             self.exporter.metrics_retries,
         )?;
-        Ok(())
+        super::prometheus::validate_exporters(&self.metrics.exporters)?;
+        self.metrics.prometheus.validate()
     }
 }
 

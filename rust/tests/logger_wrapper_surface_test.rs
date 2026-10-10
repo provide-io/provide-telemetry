@@ -22,6 +22,7 @@ fn trace_json_config() -> LoggingConfig {
         otlp_enabled: true,
         otlp_protocol: String::new(),
         module_levels: HashMap::new(),
+        otlp_tls: Default::default(),
     }
 }
 

@@ -59,9 +59,14 @@ pub fn setup_telemetry(config: Option<TelemetryConfig>) -> Result<TelemetryConfi
     // first pass -- a repeated call returns above without re-reading it, so a
     // level set programmatically after setup is never clobbered.
     load_consent_from_env();
+    // A stale error from an earlier attempt must not outlive this one; setup
+    // records any new one below (an exporter or the Prometheus listener).
+    crate::health::set_setup_error(None);
     setup_otel(&config)?;
     apply_policies(&config);
     set_active_config(Some(config.clone()));
+    // After the providers: the listener serves the pull reader they attached.
+    crate::prometheus::sync_listener(&config);
     state.done = true;
     Ok(config)
 }
@@ -111,7 +116,10 @@ pub fn shutdown_telemetry(timeout_seconds: Option<f64>) -> Result<(), TelemetryE
         let mut state = crate::_lock::lock(setup_state());
         state.done = false;
     }
+    // Nothing is left to serve once shutdown starts.
+    crate::prometheus::stop_listener();
     shutdown_otel(timeout_seconds);
+    crate::prometheus::set_status(crate::prometheus::Status::ShutDown);
     set_active_config(None);
     // Flush before releasing it: the host handed us a writer and is entitled to
     // everything written to it, and dropping a buffered writer here would lose

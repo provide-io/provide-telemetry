@@ -19,9 +19,11 @@ pub mod health;
 mod jcs;
 pub mod logger;
 pub mod metrics;
+pub mod observable;
 pub mod otel;
 pub mod pii;
 mod policies;
+mod prometheus;
 pub mod propagation;
 pub mod receipts;
 pub mod resilience;
@@ -48,8 +50,8 @@ pub use classification::{
 };
 pub use config::{
     redact_config, BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig,
-    MetricsConfig, RuntimeOverrides, SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig,
-    TracingConfig,
+    MetricsConfig, OtlpTlsConfig, PrometheusConfig, RuntimeOverrides, SLOConfig, SamplingConfig,
+    SecurityConfig, TelemetryConfig, TracingConfig,
 };
 pub use consent::{
     get_consent_level, load_consent_from_env, reset_consent_for_tests, set_consent_level,
@@ -77,6 +79,10 @@ pub use logger::{
 pub use metrics::{
     counter, gauge, get_meter, histogram, reset_metrics_for_tests, Counter, Gauge, Histogram, Meter,
 };
+pub use observable::{
+    observable_counter, observable_gauge, observable_up_down_counter, ObservableInstrument,
+    Observation,
+};
 pub use otel::adopt::{adopt_global_providers, adopted_global_providers, AdoptedProviders};
 pub use otel::{_reset_otel_for_tests, otel_installed_for_tests};
 pub use pii::{
@@ -84,6 +90,7 @@ pub use pii::{
     replace_pii_rules, reset_secret_patterns_for_tests, sanitize_payload, PIIMode, PIIRule,
     SecretPattern, DEFAULT_TRUNCATE_TO,
 };
+pub use prometheus::{metrics_handler, render_prometheus, MetricsResponse};
 pub use propagation::{
     bind_propagation_context, extract_w3c_context, parse_baggage, PropagationContext,
 };
