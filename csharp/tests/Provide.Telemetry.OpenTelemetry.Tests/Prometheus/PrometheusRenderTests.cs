@@ -102,9 +102,15 @@ public sealed class PrometheusRenderTests
     public void TranslateLabels_FormatsValuesInvariantly()
     {
         var labels = PrometheusRender.TranslateLabels(
-            [new("b", true), new("f", false), new("d", 1.5), new("n", null), new("s", "x"), new("o", new Uri("http://h/"))],
+            [new("b", true), new("f", false), new("d", 1.5), new("n", null), new("s", "x"), new("o", new Uri("http://h/")),
+             new("z", new NullText())],
             Escaped);
-        Assert.Equal(L("b", "true", "f", "false", "d", "1.5", "n", "", "s", "x", "o", "http://h/"), labels);
+        Assert.Equal(L("b", "true", "f", "false", "d", "1.5", "n", "", "s", "x", "o", "http://h/", "z", ""), labels);
+    }
+
+    private sealed class NullText
+    {
+        public override string? ToString() => null;
     }
 
     [Fact]
@@ -177,6 +183,7 @@ public sealed class PrometheusRenderTests
             .AddMeter(meterName).AddReader(reader).Build();
         meter.CreateCounter<long>("c.long", "By").Add(2, new KeyValuePair<string, object?>("k", "v"));
         meter.CreateCounter<double>("c.double").Add(1.5);
+        meter.CreateCounter<int>("c.int").Add(1);
         meter.CreateUpDownCounter<long>("u.long").Add(-3);
         meter.CreateUpDownCounter<double>("u.double").Add(-1.5);
         meter.CreateGauge<long>("g.long").Record(7);
@@ -192,6 +199,8 @@ public sealed class PrometheusRenderTests
         Assert.Equal([new KeyValuePair<string, object?>("k", "v")], byName["c.long"].Points[0].Attributes);
         Assert.Equal(2, byName["c.long"].Points[0].Value);
         Assert.Equal(1.5, byName["c.double"].Points[0].Value);
+        Assert.Equal(("", ""), (byName["c.double"].Unit, byName["c.double"].Description));
+        Assert.Equal(1.0, byName["c.int"].Points[0].Value);
         Assert.Equal((PrometheusNames.NonMonotonicCounter, -3.0), (byName["u.long"].Kind, byName["u.long"].Points[0].Value));
         Assert.Equal(-1.5, byName["u.double"].Points[0].Value);
         Assert.Equal((PrometheusNames.Gauge, 7.0), (byName["g.long"].Kind, byName["g.long"].Points[0].Value));

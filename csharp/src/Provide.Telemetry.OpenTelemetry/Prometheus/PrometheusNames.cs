@@ -16,7 +16,7 @@ namespace Provide.Telemetry.OpenTelemetry.Prometheus;
 /// spec/prometheus_fixtures.yaml were generated from that library, so this must
 /// reproduce it exactly rather than approximate it.
 /// </remarks>
-internal static partial class PrometheusNames
+internal static class PrometheusNames
 {
     public const string MonotonicCounter = "monotonic_counter";
     public const string NonMonotonicCounter = "non_monotonic_counter";
@@ -73,20 +73,15 @@ internal static partial class PrometheusNames
     // Runs of characters outside the legacy sets, "_" included where it is
     // outside the set, so replacing each run with one "_" also collapses
     // repeated underscores as the reference does.
-    [GeneratedRegex("[^a-zA-Z0-9:]+")]
-    private static partial Regex MetricSeparators();
-
-    [GeneratedRegex("[^a-zA-Z0-9:_]+")]
-    private static partial Regex MetricSeparatorsKeepingUnderscore();
-
-    [GeneratedRegex("[^a-zA-Z0-9]+")]
-    private static partial Regex InvalidLabelRuns();
+    private static readonly Regex MetricSeparators = new("[^a-zA-Z0-9:]+", RegexOptions.Compiled);
+    private static readonly Regex MetricSeparatorsKeepingUnderscore = new("[^a-zA-Z0-9:_]+", RegexOptions.Compiled);
+    private static readonly Regex InvalidLabelRuns = new("[^a-zA-Z0-9]+", RegexOptions.Compiled);
 
     /// <summary>Split on separators, dropping empty fields (Go's strings.FieldsFunc).</summary>
     private static List<string> Tokens(Regex separators, string name) =>
         separators.Split(name).Where(t => t.Length > 0).ToList();
 
-    private static string CleanUpUnit(string unit) => RemovePrefix(MetricSeparators().Replace(unit, "_"), "_");
+    private static string CleanUpUnit(string unit) => RemovePrefix(MetricSeparators.Replace(unit, "_"), "_");
 
     /// <summary>A unit as written, or "" when blank or an {annotation}.</summary>
     private static string UnitSuffix(string unit)
@@ -123,7 +118,7 @@ internal static partial class PrometheusNames
     private static string Normalize(string name, string unit, string kind)
     {
         var (main, per) = UnitSuffixes(unit);
-        var tokens = AddUnitTokens(Tokens(MetricSeparators(), name), CleanUpUnit(main), CleanUpUnit(per));
+        var tokens = AddUnitTokens(Tokens(MetricSeparators, name), CleanUpUnit(main), CleanUpUnit(per));
         if (kind == MonotonicCounter) tokens = [.. tokens.Where(t => t != "total"), "total"];
         if (unit == "1" && kind == Gauge) tokens = [.. tokens.Where(t => t != "ratio"), "ratio"];
         return PrefixLeadingDigit(string.Join("_", tokens));
@@ -176,7 +171,7 @@ internal static partial class PrometheusNames
         if (!Escapes(strategy)) return AddsSuffixes(strategy) ? Utf8WithSuffixes(name, unit, kind) : name;
         var result = AddsSuffixes(strategy)
             ? Normalize(name, unit, kind)
-            : PrefixLeadingDigit(string.Join("_", Tokens(MetricSeparatorsKeepingUnderscore(), name)));
+            : PrefixLeadingDigit(string.Join("_", Tokens(MetricSeparatorsKeepingUnderscore, name)));
         if (result.Length == 0 || (result != name && result.Trim('_').Length == 0)) return null;
         return result;
     }
@@ -194,7 +189,7 @@ internal static partial class PrometheusNames
         var reserved = attribute.StartsWith("__", StringComparison.Ordinal)
                        && attribute.EndsWith("__", StringComparison.Ordinal);
         var body = reserved ? attribute[2..^2] : attribute;
-        var sanitized = InvalidLabelRuns().Replace(body, "_");
+        var sanitized = InvalidLabelRuns.Replace(body, "_");
         if (reserved) sanitized = "__" + sanitized + "__";
         if (char.IsAsciiDigit(sanitized[0])) sanitized = "key_" + sanitized;
         return sanitized.Trim('_').Length == 0 ? null : sanitized;

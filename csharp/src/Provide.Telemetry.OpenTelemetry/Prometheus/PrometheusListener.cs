@@ -112,8 +112,9 @@ internal static class PrometheusListener
     internal static IPAddress Resolve(string host)
     {
         if (IPAddress.TryParse(host, out var address)) return address;
-        var addresses = Dns.GetHostAddresses(host);
-        return addresses.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork) ?? addresses[0];
+        // A name binds its IPv4 address, as Python's listener does; an IPv6
+        // listener is asked for by address.
+        return Dns.GetHostAddresses(host, AddressFamily.InterNetwork)[0];
     }
 
     internal static void WarnExposure(string host, WebSecurity security)
@@ -161,20 +162,17 @@ internal static class PrometheusListener
         {
             while (!_stop.IsCancellationRequested)
             {
-                TcpClient client;
                 try
                 {
-                    client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                    var client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+                    _ = Task.Run(() => Serve(client));
                 }
-                catch (Exception) when (_stop.IsCancellationRequested)
+                catch (Exception)
                 {
-                    return;
+                    // Stopping cancels the pending accept; anything else is one
+                    // failed accept (a client that reset first), and the loop
+                    // condition decides whether to carry on.
                 }
-                catch (SocketException)
-                {
-                    continue; // a client that reset before accept completed
-                }
-                _ = Task.Run(() => Serve(client));
             }
         }
 
@@ -227,14 +225,7 @@ internal static class PrometheusListener
         {
             _stop.Cancel();
             _listener.Stop();
-            try
-            {
-                _accept.Wait();
-            }
-            catch (AggregateException)
-            {
-                // The loop ends on the cancellation it was waiting for.
-            }
+            _accept.Wait(); // the loop swallows its own exceptions, so this only waits
             _stop.Dispose();
         }
     }

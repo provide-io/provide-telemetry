@@ -84,7 +84,7 @@ internal sealed class CapturingExporter : BaseExporter<Metric>
             points.Add(CapturePoint(metric.MetricType, point));
         }
         return new CapturedMetric(
-            metric.Name, metric.Unit ?? "", metric.Description ?? "", kind, metric.MeterName, metric.MeterVersion,
+            metric.Name, metric.Unit, metric.Description, kind, metric.MeterName, metric.MeterVersion,
             points);
     }
 

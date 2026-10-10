@@ -33,9 +33,15 @@ public abstract class PromTestBase : IDisposable
         PrometheusListener.Warn = (message, fields) => Warnings.Add((message, fields));
     }
 
+    /// <summary>Extra teardown for a derived fixture, run after the reset.</summary>
+    protected virtual void Cleanup()
+    {
+    }
+
     public void Dispose()
     {
         Reset();
+        Cleanup();
         PrometheusListener.Warn = PrometheusListener.DefaultWarn;
         _env.Dispose();
         GC.SuppressFinalize(this);

@@ -35,18 +35,15 @@ internal sealed class Family(string name, string kind, string help = "")
 /// NoUTF8/NoTranslation strategies in the quoted text-format syntax; any other
 /// scraper gets the UnderscoreEscaping output with the same suffix choice.
 /// </remarks>
-internal static partial class PrometheusRender
+internal static class PrometheusRender
 {
     public const string ContentTypeText = "text/plain; version=0.0.4; charset=utf-8; escaping=underscores";
     public const string ContentTypeUtf8 = "text/plain; version=1.0.0; charset=utf-8; escaping=allow-utf-8";
     public const string TargetInfo = "target_info";
     public const string TargetInfoHelp = "Target metadata";
 
-    [GeneratedRegex("^[a-zA-Z_:][a-zA-Z0-9_:]*$")]
-    private static partial Regex LegacyName();
-
-    [GeneratedRegex("^[a-zA-Z_][a-zA-Z0-9_]*$")]
-    private static partial Regex LegacyLabel();
+    private static readonly Regex LegacyName = new("^[a-zA-Z_:][a-zA-Z0-9_:]*$", RegexOptions.Compiled);
+    private static readonly Regex LegacyLabel = new("^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled);
 
     /// <summary>Whether an Accept header asks for the text format with UTF-8 names.</summary>
     public static bool WantsUtf8(string? accept)
@@ -191,13 +188,13 @@ internal static partial class PrometheusRender
 
     private static IEnumerable<string> LabelPairs(Dictionary<string, string> labels) =>
         labels.Select(kv =>
-            $"{(LegacyLabel().IsMatch(kv.Key) ? kv.Key : $"\"{EscapeQuoted(kv.Key)}\"")}=\"{EscapeQuoted(kv.Value)}\"");
+            $"{(LegacyLabel.IsMatch(kv.Key) ? kv.Key : $"\"{EscapeQuoted(kv.Key)}\"")}=\"{EscapeQuoted(kv.Value)}\"");
 
     private static string SampleLine(string name, Dictionary<string, string> labels, double value)
     {
         var pairs = LabelPairs(labels).ToList();
         var formatted = FormatValue(value);
-        if (LegacyName().IsMatch(name))
+        if (LegacyName.IsMatch(name))
         {
             return pairs.Count > 0 ? $"{name}{{{string.Join(",", pairs)}}} {formatted}" : $"{name} {formatted}";
         }
@@ -210,7 +207,7 @@ internal static partial class PrometheusRender
         var text = new StringBuilder();
         foreach (var family in families)
         {
-            var header = LegacyName().IsMatch(family.Name) ? family.Name : $"\"{EscapeQuoted(family.Name)}\"";
+            var header = LegacyName.IsMatch(family.Name) ? family.Name : $"\"{EscapeQuoted(family.Name)}\"";
             if (family.Help.Length > 0) text.Append("# HELP ").Append(header).Append(' ').Append(EscapeHelp(family.Help)).Append('\n');
             text.Append("# TYPE ").Append(header).Append(' ').Append(family.Kind).Append('\n');
             foreach (var sample in family.Samples)
