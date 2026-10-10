@@ -19,6 +19,7 @@ on:
       - "infra/prometheus/**"
       - "ci/prometheus-tls-setup.sh"
       - "e2e/test_prometheus_push_e2e.py"
+      - "e2e/test_prometheus_scrape_e2e.py"
       - "scripts/prometheus_push_probe.py"
       - "typescript/scripts/prometheus-push-probe.ts"
       - "rust/examples/prometheus_push_probe.rs"
@@ -217,6 +218,27 @@ jobs:
           PROMETHEUS_BASIC_AUTH_PASSWORD: "e2e-test-only-password"
           PROVIDE_E2E_REQUIRE_ALL_RUNTIMES: "1"
         run: uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q e2e/test_prometheus_push_e2e.py
+      # Tier 3: a Prometheus on the host network scrapes the SDK listener on
+      # 127.0.0.1:9464 (plain) and :9465 (TLS from the test CA + basic auth).
+      - name: Start Prometheus 3 scraping the SDK listener
+        run: |
+          docker run -d --name prometheus-scrape --network host \
+            -v "$PWD/infra/prometheus/scrape-e2e.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$(dirname "$PROMETHEUS_TLS_CA"):/etc/prometheus/web:ro" \
+            prom/prometheus:v3.13.4 \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --web.listen-address=127.0.0.1:9091
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:9091/-/ready && exit 0
+            sleep 1
+          done
+          docker logs prometheus-scrape
+          exit 1
+      - name: Prometheus scrapes every SDK listener
+        env:
+          PROMETHEUS_SCRAPE_URL: "http://127.0.0.1:9091"
+          PROVIDE_E2E_REQUIRE_ALL_RUNTIMES: "1"
+        run: uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q e2e/test_prometheus_scrape_e2e.py
       - name: Prometheus logs
         if: always()
-        run: for c in prometheus prometheus-auth prometheus-tls; do docker logs "$c" || true; done
+        run: for c in prometheus prometheus-auth prometheus-tls prometheus-scrape; do docker logs "$c" || true; done

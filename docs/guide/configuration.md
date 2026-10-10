@@ -254,6 +254,50 @@ The `prometheus-push` job in `.github/workflows/ci-contracts.yml` pushes from
 all five SDKs to real Prometheus instances (plain, basic auth, and TLS with a
 private CA plus basic auth) and checks every series it reads back.
 
+## Serving Metrics for Prometheus to Scrape (Go)
+
+The Go SDK can also serve metrics for Prometheus to pull. Other SDKs follow;
+see `docs/plans/2026-10-10-prometheus-metrics-design.md`.
+
+Add `prometheus` to `OTEL_METRICS_EXPORTER` (`prometheus` alone, or
+`otlp,prometheus` to push as well), then either mount the handler on a server
+you already run:
+
+```go
+import provideotel "github.com/provide-io/provide-telemetry/go/otel"
+
+mux.Handle("/metrics", provideotel.MetricsHandler())
+```
+
+or let the SDK run its own listener with `PROVIDE_METRICS_PROMETHEUS_LISTEN=true`.
+It binds `127.0.0.1:9464` and serves `/metrics` unless
+`OTEL_EXPORTER_PROMETHEUS_HOST`, `OTEL_EXPORTER_PROMETHEUS_PORT` and
+`PROVIDE_METRICS_PROMETHEUS_PATH` say otherwise. To require TLS or basic auth,
+point `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` at a file in the format
+Prometheus itself takes as `--web.config.file`:
+
+```yaml
+tls_server_config:
+  cert_file: server.crt        # relative paths resolve against this file
+  key_file: server.key
+  client_ca_file: clients.crt  # optional: require client certificates
+  min_version: TLS12           # or TLS13
+basic_auth_users:
+  scraper: $2a$10$...          # bcrypt hash, e.g. htpasswd -nBC 10 scraper
+```
+
+Only those keys are accepted. If the file or a certificate it names has a
+problem, the listener does not start (it never falls back to plain HTTP); the
+reason is logged as `otel.prometheus_listener_failed` and appears in
+`GetHealthSnapshot().SetupError`. Certificates are re-read when they change.
+
+The scrape also carries the SDK's own health as `provide_telemetry_*` series
+(`provide_telemetry_export_failures_total{signal}`,
+`provide_telemetry_circuit_state{signal}` and so on), which stay visible when
+OTLP export is failing. Callback-reported values use
+`NewObservableGauge`, `NewObservableCounter` and `NewObservableUpDownCounter`;
+their callbacks run on each scrape.
+
 ## Resource Attributes
 
 Every emitted trace, metric, and log carries an OTel **Resource** identifying

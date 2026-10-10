@@ -47,7 +47,7 @@ area_paths() {
       printf '%s\n' "spec/**" "ci/**" "src/provide/telemetry/**" "typescript/src/**" \
         "go/**" "rust/src/**" "rust/examples/contract_probe.rs" "VERSION" \
         ".github/workflows/ci-contracts.yml" "csharp/src/**" "infra/prometheus/**" \
-        "e2e/test_prometheus_push_e2e.py" "scripts/prometheus_push_probe.py" \
+        "e2e/test_prometheus_push_e2e.py" "e2e/test_prometheus_scrape_e2e.py" "scripts/prometheus_push_probe.py" \
         "typescript/scripts/prometheus-push-probe.ts" "rust/examples/prometheus_push_probe.rs" \
         "csharp/probes/PrometheusPushProbe/**"
       ;;

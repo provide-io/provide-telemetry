@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+#
+# Prometheus scrape config for e2e/test_prometheus_scrape_e2e.py: scrape a
+# provide-telemetry Tier 3 listener plain on 127.0.0.1:9464 and secured (TLS
+# from the CI test CA plus basic auth) on 127.0.0.1:9465. Run with host
+# networking so 127.0.0.1 is the runner. /etc/prometheus/web is the directory
+# ci/prometheus-tls-setup.sh writes.
+
+global:
+  scrape_interval: 2s
+  scrape_timeout: 2s
+
+scrape_configs:
+  - job_name: provide-plain
+    static_configs:
+      - targets: ["127.0.0.1:9464"]
+  - job_name: provide-secured
+    scheme: https
+    tls_config:
+      ca_file: /etc/prometheus/web/ca.crt
+    basic_auth:
+      username: e2e
+      password: e2e-test-only-password
+    static_configs:
+      - targets: ["127.0.0.1:9465"]

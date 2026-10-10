@@ -369,9 +369,19 @@ Each stage is its own PR and leaves `main` releasable.
    A follow-up within Stage 2 added the basic-auth and TLS push modes and
    measured the gaps in the table under "Securing the listener and push".
 3. **Go: observable instruments, Tiers 2 and 3 with listener TLS and basic
-   auth, health collector.** litevirt
-   trials it by moving `:7444` onto `MetricsHandler()` and deleting its
-   `telemetryCollector`.
+   auth, health collector** (done). Config keys parsed and moved into
+   `config_defaults` for Go; the OTel Prometheus exporter v0.66.0 (matching
+   OTel v1.44 and the fixtures' otlptranslator v1.0.0) on a private registry;
+   `MetricsHandler()` / `RenderPrometheus()` in the otel module with a 503 per
+   not-ready state; the health collector; the listener with the web config
+   subset, certificate reload and fail-closed startup, reporting failures
+   through the new `BackendSetupState.ReportSetupError`; observable instruments
+   through an optional `ObservableBackend` interface. Every Go-applicable case
+   in `spec/prometheus_fixtures.yaml` runs as a Go test, Go is in the
+   `observable_metrics` and `prometheus` capability sets, and
+   `e2e/test_prometheus_scrape_e2e.py` has a real Prometheus scrape the Go
+   listener plain and over TLS with basic auth. litevirt can now move `:7444`
+   onto `MetricsHandler()` and delete its `telemetryCollector`.
 4. **Python**, then **TypeScript (Node)**, same scope as Stage 3.
 5. **Rust and C#**, including the push-security gaps (private CA in both,
    per-signal headers in C#). `metrics_handler` becomes `required: true` in the
