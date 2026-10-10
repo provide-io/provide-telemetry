@@ -33,6 +33,11 @@ const PROBE_VALUES = [
   'http://probe.invalid:4318',
   'probe-module=DEBUG',
   'probe-key=probe-value',
+  // Valid values for the Prometheus enums, which reject everything above.
+  'prometheus',
+  'auto',
+  '/probe-path',
+  'UnderscoreEscapingWithoutSuffixes',
 ];
 
 const OWNED_PREFIXES = ['PROVIDE_', 'OTEL_'];
