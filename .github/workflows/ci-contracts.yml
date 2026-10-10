@@ -23,6 +23,7 @@ on:
       - "scripts/prometheus_push_probe.py"
       - "typescript/scripts/prometheus-push-probe.ts"
       - "rust/examples/prometheus_push_probe.rs"
+      - "rust/examples/prometheus_scrape_probe.rs"
       - "csharp/probes/PrometheusPushProbe/**"
   # No paths filter: this workflow owns required status contexts, so it must
   # always run. The per-area gating lives on the jobs -- see the changes job.
@@ -234,6 +235,11 @@ jobs:
           done
           docker logs prometheus-scrape
           exit 1
+      # The Rust probe needs the prometheus-listener feature; building it here
+      # keeps its compile out of the probe's ready timeout.
+      - name: Build the Rust scrape probe
+        working-directory: rust
+        run: cargo build --locked --features prometheus-listener --example prometheus_scrape_probe
       - name: Prometheus scrapes every SDK listener
         env:
           PROMETHEUS_SCRAPE_URL: "http://127.0.0.1:9091"

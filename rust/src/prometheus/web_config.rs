@@ -93,30 +93,35 @@ impl TlsSettings {
         } else {
             &[&rustls::version::TLS13, &rustls::version::TLS12]
         };
+        // One closure for every rustls failure, so the one a test can reach (a
+        // key that does not match the certificate) runs the same code as those
+        // it cannot.
+        let rustls_error = |err: rustls::Error| err.to_string();
         let builder = ServerConfig::builder_with_provider(Arc::clone(&provider))
             .with_protocol_versions(versions)
-            .map_err(|err| err.to_string())?;
+            .map_err(rustls_error)?;
         let builder = match (&self.ca, self.client_auth) {
             (Some(ca), ClientAuth::Require | ClientAuth::IfGiven) => {
                 let mut roots = RootCertStore::empty();
-                for cert in load_certs(ca)? {
-                    roots
-                        .add(cert)
-                        .map_err(|err| format!("{}: {err}", ca.display()))?;
-                }
-                let verifier = WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider);
+                // Unusable certificates are skipped; with none left, building
+                // the verifier below fails.
+                roots.add_parsable_certificates(load_certs(ca)?);
+                let verifier =
+                    WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider);
                 let verifier = if self.client_auth == ClientAuth::IfGiven {
                     verifier.allow_unauthenticated()
                 } else {
                     verifier
                 };
-                builder.with_client_cert_verifier(verifier.build().map_err(|err| err.to_string())?)
+                builder.with_client_cert_verifier(
+                    verifier
+                        .build()
+                        .map_err(|err| format!("{}: {err}", ca.display()))?,
+                )
             }
             _ => builder.with_no_client_auth(),
         };
-        let mut config = builder
-            .with_single_cert(certs, key)
-            .map_err(|err| err.to_string())?;
+        let mut config = builder.with_single_cert(certs, key).map_err(rustls_error)?;
         config.alpn_protocols = vec![b"http/1.1".to_vec()];
         Ok(Arc::new(config))
     }
@@ -267,7 +272,11 @@ fn users(raw: &serde_yaml::Mapping, path: &str) -> Result<HashMap<String, String
 fn tls(raw: &Value, base: &Path) -> Result<TlsReloader, String> {
     let map = match raw {
         Value::Mapping(map) if only_keys(map, &TLS_KEYS) => map,
-        _ => return Err(format!("tls_server_config: only {TLS_KEYS:?} are supported")),
+        _ => {
+            return Err(format!(
+                "tls_server_config: only {TLS_KEYS:?} are supported"
+            ))
+        }
     };
     let field = |key: &str| map.get(key).and_then(scalar).filter(|v| !v.is_empty());
     let (Some(cert), Some(key)) = (field("cert_file"), field("key_file")) else {

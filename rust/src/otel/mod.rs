@@ -23,13 +23,13 @@ pub(crate) mod logs;
 #[cfg(feature = "otel")]
 pub(crate) mod metrics;
 #[cfg(feature = "otel")]
-pub(crate) mod resilient;
-#[cfg(feature = "otel")]
-mod resource;
-#[cfg(feature = "otel")]
 pub(crate) mod observable;
 #[cfg(feature = "otel")]
 pub(crate) mod prometheus_reader;
+#[cfg(feature = "otel")]
+pub(crate) mod resilient;
+#[cfg(feature = "otel")]
+mod resource;
 #[cfg(feature = "otel")]
 mod tls;
 #[cfg(feature = "otel")]

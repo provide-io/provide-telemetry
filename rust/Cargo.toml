@@ -80,6 +80,8 @@ mutants = "0.0.3"
 # reader; feature unification turns them on for test builds only.
 opentelemetry_sdk = { version = "0.31", features = ["spec_unstable_metrics_views"] }
 proptest = "1"
+# Certificates for the TLS tests (listener web config, OTLP client TLS).
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring"] }
 rstest = "0.26"
 serde_yaml = "0.9"
 tokio = { version = "1.44", features = ["macros"] }

@@ -47,10 +47,10 @@ use super::endpoint::{resolve_protocol, validate_optional_endpoint, OtlpProtocol
 use super::grpc::metadata_from_headers;
 use super::map_exporter_build;
 use super::prometheus_reader::PullReader;
+use super::resilient::ResilientMetricExporter;
 #[cfg(feature = "otel-grpc")]
 use super::tls::tonic_tls;
 use super::tls::{http_client, load_client_tls};
-use super::resilient::ResilientMetricExporter;
 
 #[derive(Clone)]
 pub(super) struct InstalledMeterProvider {
@@ -200,9 +200,10 @@ pub(super) fn install_meter_provider(
         runtime,
     });
     match pull {
-        Some(reader) => {
-            prometheus::mark_ready(Arc::new(move || reader.view()), prometheus::options_for(cfg))
-        }
+        Some(reader) => prometheus::mark_ready(
+            Arc::new(move || reader.view()),
+            prometheus::options_for(cfg),
+        ),
         None => prometheus::set_status(pull_status.unwrap_or(Status::NotSelected)),
     }
     Ok(true)
@@ -242,6 +243,7 @@ pub(super) fn shutdown_meter_provider(timeout_seconds: Option<f64>) {
             do_shutdown_meter_provider(installed);
         });
     }
+    super::observable::clear_observed();
     // Drop cached instruments so a subsequent install gets fresh ones.
     if let Some(m) = COUNTERS.get() {
         crate::_lock::lock(m).clear();

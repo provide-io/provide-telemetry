@@ -330,3 +330,27 @@ fn emit_log_accepts_valid_trace_ids_and_context_attributes() {
     shutdown_logger_provider(None);
     assert!(!logger_provider_installed());
 }
+
+#[cfg(feature = "otel-grpc")]
+#[tokio::test(flavor = "current_thread")]
+async fn build_exporter_carries_client_tls_over_grpc() {
+    let _guard = reset_logs_test_state();
+    let certs = crate::test_certs::TestCerts::generate();
+    let mut cfg = test_config();
+    cfg.logging.otlp_endpoint = Some("https://127.0.0.1:4317".to_string());
+    cfg.logging.otlp_protocol = "grpc".to_string();
+    cfg.logging.otlp_tls = crate::config::OtlpTlsConfig {
+        certificate: Some(certs.ca.display().to_string()),
+        client_certificate: Some(certs.client_cert.display().to_string()),
+        client_key: Some(certs.client_key.display().to_string()),
+    };
+    build_exporter(&cfg).expect("grpc exporter with client TLS should build");
+
+    cfg.logging.otlp_tls.certificate = Some("/nonexistent/ca.crt".to_string());
+    let err = build_exporter(&cfg).expect_err("an unreadable CA must fail the build");
+    assert!(
+        err.message.contains("cannot read certificate"),
+        "{}",
+        err.message
+    );
+}

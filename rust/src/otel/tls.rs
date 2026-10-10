@@ -25,7 +25,9 @@ pub(super) struct ClientTls {
 
 fn read(signal: &str, what: &str, path: &str) -> Result<Vec<u8>, TelemetryError> {
     std::fs::read(path).map_err(|err| {
-        TelemetryError::new(format!("OTLP {signal} TLS: cannot read {what} {path}: {err}"))
+        TelemetryError::new(format!(
+            "OTLP {signal} TLS: cannot read {what} {path}: {err}"
+        ))
     })
 }
 
@@ -66,12 +68,17 @@ pub(super) fn http_client(
     tls: &ClientTls,
     timeout: Duration,
 ) -> Result<reqwest::Client, TelemetryError> {
+    // One closure for every reqwest failure, so the one a test can reach
+    // (unparsable PEM) exercises the same code as the build failure it cannot.
+    let fail = |err: reqwest::Error| tls_error(signal, err);
     let mut builder = reqwest::Client::builder().timeout(timeout);
     if let Some(ca) = &tls.ca {
-        let certificates =
-            reqwest::Certificate::from_pem_bundle(ca).map_err(|err| tls_error(signal, err))?;
+        let certificates = reqwest::Certificate::from_pem_bundle(ca).map_err(fail)?;
         if certificates.is_empty() {
-            return Err(tls_error(signal, "the CA certificate file holds no certificate"));
+            return Err(tls_error(
+                signal,
+                "the CA certificate file holds no certificate",
+            ));
         }
         builder = builder.tls_built_in_root_certs(false);
         for certificate in certificates {
@@ -80,10 +87,10 @@ pub(super) fn http_client(
     }
     if let Some((cert, key)) = &tls.identity {
         let pem = [key.as_slice(), b"\n", cert.as_slice()].concat();
-        let identity = reqwest::Identity::from_pem(&pem).map_err(|err| tls_error(signal, err))?;
+        let identity = reqwest::Identity::from_pem(&pem).map_err(fail)?;
         builder = builder.identity(identity);
     }
-    builder.build().map_err(|err| tls_error(signal, err))
+    builder.build().map_err(fail)
 }
 
 /// The tonic TLS settings for the gRPC exporters.

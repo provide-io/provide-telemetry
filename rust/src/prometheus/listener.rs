@@ -59,12 +59,7 @@ pub(crate) fn sync(config: &TelemetryConfig) {
         return;
     }
     let p = &config.metrics.prometheus;
-    let key: Key = (
-        p.host.clone(),
-        p.port,
-        p.path.clone(),
-        p.web_config.clone(),
-    );
+    let key: Key = (p.host.clone(), p.port, p.path.clone(), p.web_config.clone());
     if slot.as_ref().is_some_and(|r| r.key == key) {
         return;
     }
@@ -118,6 +113,11 @@ struct Context {
     security: WebSecurity,
 }
 
+/// Prefix an I/O failure with what was being done.
+fn io_failure(context: String) -> impl FnOnce(std::io::Error) -> String {
+    move |err| format!("{context}: {err}")
+}
+
 fn start(key: Key) -> Result<Running, String> {
     let (host, port, path, web_config) = key.clone();
     let security = if web_config.is_empty() {
@@ -125,12 +125,12 @@ fn start(key: Key) -> Result<Running, String> {
     } else {
         load_web_config(&web_config)?
     };
-    let listener = TcpListener::bind((host.as_str(), port))
-        .map_err(|err| format!("bind {host}:{port}: {err}"))?;
+    let bind = format!("bind {host}:{port}");
+    let listener = TcpListener::bind((host.as_str(), port)).map_err(io_failure(bind.clone()))?;
     let address = listener
         .local_addr()
         .and_then(|address| listener.set_nonblocking(true).map(|()| address))
-        .map_err(|err| format!("bind {host}:{port}: {err}"))?;
+        .map_err(io_failure(bind))?;
     for warning in exposure_warnings(&host, &security) {
         eprintln!("provide_telemetry: {warning} host={host}");
     }
@@ -140,7 +140,7 @@ fn start(key: Key) -> Result<Running, String> {
     let thread = std::thread::Builder::new()
         .name("provide-prometheus-listener".to_string())
         .spawn(move || accept_loop(&listener, &flag, &context))
-        .map_err(|err| format!("spawn: {err}"))?;
+        .map_err(io_failure("spawn".to_string()))?;
     Ok(Running {
         key,
         address,
@@ -167,24 +167,22 @@ fn accept_loop(listener: &TcpListener, stop: &AtomicBool, context: &Arc<Context>
 /// Serve one request on `stream`, over TLS when the web config asks for it.
 /// Errors (a failed handshake, a slow or vanished client) just drop the connection.
 fn serve_connection(stream: TcpStream, context: &Context) {
-    // Accepted sockets inherit non-blocking mode on some platforms.
-    let configured = stream
-        .set_nonblocking(false)
-        .and_then(|()| stream.set_read_timeout(Some(READ_TIMEOUT)))
-        .and_then(|()| stream.set_write_timeout(Some(READ_TIMEOUT)));
-    if configured.is_err() {
-        return;
-    }
+    // Accepted sockets inherit non-blocking mode on some platforms. These only
+    // fail on a socket that is already gone, which the first read then reports.
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(READ_TIMEOUT));
     match &context.security.tls {
         None => {
             let mut stream = stream;
             serve(&mut stream, context);
         }
         Some(tls) => {
-            let Ok(config) = tls.config() else {
-                return;
-            };
-            let Ok(connection) = rustls::ServerConnection::new(config) else {
+            let connection = tls
+                .config()
+                .ok()
+                .and_then(|config| rustls::ServerConnection::new(config).ok());
+            let Some(connection) = connection else {
                 return;
             };
             let mut tls_stream = rustls::StreamOwned::new(connection, stream);
@@ -254,9 +252,9 @@ pub(crate) fn parse_request(head: &[u8]) -> Option<Request> {
 /// The path of a request target, without query or fragment; an absolute-form
 /// target (`http://host/metrics`) contributes its path.
 fn request_path(target: &str) -> String {
-    let without_scheme = target
-        .split_once("://")
-        .map_or(target, |(_, rest)| rest.find('/').map_or("", |i| &rest[i..]));
+    let without_scheme = target.split_once("://").map_or(target, |(_, rest)| {
+        rest.find('/').map_or("", |i| &rest[i..])
+    });
     let end = without_scheme
         .find(['?', '#'])
         .unwrap_or(without_scheme.len());

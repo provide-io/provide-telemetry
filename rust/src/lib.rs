@@ -34,6 +34,8 @@ pub mod schema;
 mod secret_patterns_generated;
 mod setup;
 pub mod slo;
+#[cfg(all(test, feature = "otel"))]
+mod test_certs;
 pub mod testing;
 pub mod tracer;
 pub mod tracing;

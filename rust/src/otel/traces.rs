@@ -32,10 +32,10 @@ use super::endpoint::{resolve_protocol, validate_optional_endpoint, OtlpProtocol
 #[cfg(feature = "otel-grpc")]
 use super::grpc::metadata_from_headers;
 use super::map_exporter_build;
+use super::resilient::ResilientSpanExporter;
 #[cfg(feature = "otel-grpc")]
 use super::tls::tonic_tls;
 use super::tls::{http_client, load_client_tls};
-use super::resilient::ResilientSpanExporter;
 
 #[derive(Clone)]
 pub(super) struct InstalledTracerProvider {

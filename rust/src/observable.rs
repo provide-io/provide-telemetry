@@ -118,15 +118,23 @@ where
             observations
         }
         Err(_) => {
-            if shared.failures.fetch_add(1, Ordering::AcqRel) == 0 {
-                eprintln!(
-                    "provide_telemetry: metrics.observable_callback_failed instrument={}",
-                    shared.name
-                );
-            }
+            note_failure(shared);
             Vec::new()
         }
     }
+}
+
+/// Count a failed collection; true the first time, when the one warning is logged.
+#[cfg_attr(not(feature = "otel"), allow(dead_code))] // only providers collect
+fn note_failure(shared: &Shared) -> bool {
+    let first = shared.failures.fetch_add(1, Ordering::AcqRel) == 0;
+    if first {
+        eprintln!(
+            "provide_telemetry: metrics.observable_callback_failed instrument={}",
+            shared.name
+        );
+    }
+    first
 }
 
 fn register<F>(

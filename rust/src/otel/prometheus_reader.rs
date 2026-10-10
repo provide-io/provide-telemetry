@@ -47,7 +47,9 @@ impl PullReader {
         if self.inner.collect(&mut metrics).is_err() {
             return ResourceView::default();
         }
-        view_of(&metrics)
+        let mut view = view_of(&metrics);
+        super::observable::retain_observed(&mut view);
+        view
     }
 }
 

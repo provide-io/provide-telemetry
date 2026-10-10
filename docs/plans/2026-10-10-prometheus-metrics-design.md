@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-10
 
-**Status:** Draft — one open question (Rust exporter) remains, needed before Stage 5
+**Status:** Draft — no open questions; Rust renders the exposition itself (decision 2)
 
 **Target release:** 0.9
 
@@ -119,7 +119,7 @@ Idiomatic per language, one behavior:
 | Python | `metrics_handler()` → ASGI app; `render_prometheus() -> tuple[bytes, str]` for WSGI and others |
 | TypeScript (Node) | `metricsHandler()` → `(req, res) => void` for `node:http` / Express; `renderPrometheus()` |
 | Go | `MetricsHandler() http.Handler` in the `otel` module |
-| Rust | `render_prometheus() -> (Vec<u8>, &'static str)`; an `axum`/`hyper` adapter behind a feature flag |
+| Rust | `render_prometheus(accept) -> Result<(Vec<u8>, &'static str), TelemetryError>`; `metrics_handler(method, accept)` returning status, headers and body for any HTTP server |
 | C# | `MapProvideTelemetryMetrics(this IEndpointRouteBuilder)` plus `RenderPrometheus()` |
 
 Behavior shared by all languages:
@@ -184,7 +184,7 @@ requires basic auth, and to one that also requires TLS from a private CA:
 | SDK | Basic auth via `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | Private CA via `OTEL_EXPORTER_OTLP_CERTIFICATE` |
 |---|---|---|
 | Python, TypeScript, Go | works | works |
-| Rust | works | ignored: export fails silently |
+| Rust | works | ignored: export fails silently (closed in Stage 5: honoured, with mutual TLS) |
 | C# | ignored (shared `OTEL_EXPORTER_OTLP_HEADERS` only) | ignored: export fails silently |
 
 The gaps are recorded in `push_ingestion.unsupported_modes` and asserted by the
@@ -311,7 +311,7 @@ Contract:
 | Go | `go.opentelemetry.io/otel/exporters/prometheus` | ✓ | ✓ | ✓ | Reference implementation. Use a private `prometheus.Registry`, never the default one, so hosts that already use `client_golang` do not collide. |
 | Python | `opentelemetry-exporter-prometheus` | ✓ | ✓ | ✓ | Multi-process servers (gunicorn) get one registry per worker. Docs say to use Tier 1 push there; no multiprocess-mode support. |
 | TypeScript | `@opentelemetry/exporter-prometheus` | ✓ | Node only | Node only | The browser build excludes the pull code entirely. |
-| Rust | `opentelemetry-prometheus` or own renderer | ✓ | ✓ | feature `prometheus-listener` | The upstream crate is discouraged by opentelemetry-rust. Stage 5 decides between it and rendering from `ResourceMetrics` ourselves. |
+| Rust | own renderer over a cumulative `ManualReader` | ✓ | ✓ | feature `prometheus-listener` | The upstream crate is discouraged by opentelemetry-rust and its naming does not match the fixtures, so the SDK renders `ResourceMetrics` itself with a port of otlptranslator's namers (decision 2). The listener runs on its own threads, so the host needs no async runtime. |
 | C# | `OpenTelemetry.Exporter.Prometheus.AspNetCore` / `.HttpListener` | ✓ | ✓ | ✓ | Both packages are prerelease. Lives in `Provide.Telemetry.OpenTelemetry`, never in the OTel-free core. |
 
 Exporter maturity is as of this draft and is re-checked at the start of each
@@ -398,6 +398,21 @@ Each stage is its own PR and leaves `main` releasable.
 5. **Rust and C#**, including the push-security gaps (private CA in both,
    per-signal headers in C#). `metrics_handler` becomes `required: true` in the
    spec once all five ship.
+   Rust (done): config keys in `config/prometheus.rs`, with the OTLP client TLS
+   variables for every signal and transport (`OTEL_EXPORTER_OTLP_*CERTIFICATE`,
+   `_CLIENT_CERTIFICATE`, `_CLIENT_KEY`), which closes its `tls_basic_auth`
+   push gap; `gauge()` was already an OTel Gauge. No exporter crate: a
+   cumulative `ManualReader` feeds a renderer ported from the Python one
+   (`prometheus/render.rs`, with scrape-time UTF-8 negotiation) and a port of
+   otlptranslator's namers (`prometheus/names.rs`) checked against every
+   translation, label and translator-only case. `render_prometheus(accept)` and
+   a framework-neutral `metrics_handler(method, accept)` serve the not-ready
+   statuses and the health families. The listener, behind the
+   `prometheus-listener` feature, is std threads plus rustls with the web
+   config subset, certificate reload, fail-closed startup and bcrypt basic auth.
+   Observable instruments filter out series their callback stopped reporting,
+   which the Rust SDK would otherwise keep exporting under cumulative
+   temporality. Rust is in both capability sets and in the scrape E2E.
 
 ## Decisions
 
@@ -414,9 +429,12 @@ Each stage is its own PR and leaves `main` releasable.
    asked, Prometheus 3's default translation, no scope labels, health on pull
    only.
 
+2. **Rust renders the exposition itself.** The upstream
+   `opentelemetry-prometheus` crate is discouraged by opentelemetry-rust and
+   cannot be configured to produce every translation strategy's names, so the
+   Rust SDK reads `ResourceMetrics` from its own pull reader and renders them
+   with the same rules as Python.
+
 ## Open Questions
 
-1. **Rust exporter.** Take the discouraged upstream `opentelemetry-prometheus`
-   crate now, or write the renderer ourselves from `ResourceMetrics` from the
-   start? Configurable translation favors our own renderer, since the upstream
-   crate may not support every value.
+None.

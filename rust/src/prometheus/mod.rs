@@ -125,7 +125,10 @@ const PER_SIGNAL: [(&str, PromType); 8] = [
         "provide_telemetry_export_latency_milliseconds",
         PromType::Gauge,
     ),
-    ("provide_telemetry_async_blocking_risk_total", PromType::Counter),
+    (
+        "provide_telemetry_async_blocking_risk_total",
+        PromType::Counter,
+    ),
     ("provide_telemetry_circuit_state", PromType::Gauge),
     ("provide_telemetry_circuit_open_total", PromType::Counter),
 ];
@@ -140,10 +143,7 @@ fn circuit_value(state: &str) -> f64 {
 }
 
 /// One signal's eight values, in [`PER_SIGNAL`] order.
-fn signal_values(
-    s: &HealthSnapshot,
-    signal: crate::sampling::Signal,
-) -> [f64; 8] {
+fn signal_values(s: &HealthSnapshot, signal: crate::sampling::Signal) -> [f64; 8] {
     use crate::sampling::Signal;
     match signal {
         Signal::Logs => [
@@ -201,7 +201,10 @@ pub(crate) fn health_families(snapshot: &HealthSnapshot) -> Vec<Family> {
             family
         })
         .collect();
-    let has_error = snapshot.setup_error.as_deref().is_some_and(|e| !e.is_empty());
+    let has_error = snapshot
+        .setup_error
+        .as_deref()
+        .is_some_and(|e| !e.is_empty());
     let mut setup_error = Family::new("provide_telemetry_setup_error", PromType::Gauge, "");
     setup_error.push(Vec::new(), if has_error { 1.0 } else { 0.0 });
     let mut receipts = Family::new(
@@ -282,7 +285,8 @@ pub(crate) fn sync_listener(config: &crate::config::TelemetryConfig) {
     listener::sync(config);
     #[cfg(not(feature = "prometheus-listener"))]
     if config.metrics.prometheus_listener_enabled() {
-        let message = "prometheus listener: rebuild provide-telemetry with the prometheus-listener feature";
+        let message =
+            "prometheus listener: rebuild provide-telemetry with the prometheus-listener feature";
         crate::health::set_setup_error(Some(message.to_string()));
         eprintln!("provide_telemetry: {message}");
     }

@@ -233,7 +233,12 @@ fn utf8_with_suffixes(name: &str, unit: &str, kind: Kind) -> String {
 
 /// Translate an OTel instrument name into a Prometheus metric name, or `None`
 /// when translation leaves no usable name, as the reference rejects it.
-pub(crate) fn metric_name(name: &str, unit: &str, kind: Kind, strategy: Strategy) -> Option<String> {
+pub(crate) fn metric_name(
+    name: &str,
+    unit: &str,
+    kind: Kind,
+    strategy: Strategy,
+) -> Option<String> {
     if !strategy.escapes {
         if strategy.suffixes {
             return Some(utf8_with_suffixes(name, unit, kind));
