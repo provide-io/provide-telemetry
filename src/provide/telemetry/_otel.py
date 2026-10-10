@@ -122,6 +122,15 @@ def load_otel_metrics_components() -> tuple[Any, Any, Any, Any] | None:
         return None
 
 
+def load_metric_reader_base() -> type | None:
+    """The SDK's MetricReader base class, for the Prometheus pull reader."""
+    try:
+        reader_base: type = _import_module("opentelemetry.sdk.metrics.export").MetricReader
+    except ImportError:
+        return None
+    return reader_base
+
+
 def load_otel_logs_components() -> tuple[Any, Any, Any, Any, Any] | None:
     try:
         logs_api_mod = _import_module("opentelemetry._logs")
