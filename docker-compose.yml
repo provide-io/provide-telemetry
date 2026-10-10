@@ -10,6 +10,7 @@
 #     OTLP HTTP     http://localhost:4318
 #     OTLP gRPC     localhost:4317
 #     OpenObserve   http://localhost:5080
+#     Prometheus    http://localhost:9090   (OTLP push: /api/v1/otlp/v1/metrics)
 #     Traefik UI    http://localhost:8080
 #
 #   PROXIED via provide.test (requires: sudo sh scripts/setup-provide-test-dns.sh)
@@ -101,6 +102,27 @@ services:
       - "traefik.http.routers.openobserve.entrypoints=web"
       - "traefik.http.services.openobserve.loadbalancer.server.port=5080"
 
+  prometheus:
+    # Same version and flags as the prometheus-push job in ci-contracts.yml.
+    image: prom/prometheus:v3.13.4
+    container_name: provide-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-otlp-receiver"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"   # Prometheus UI + API + OTLP receiver (direct)
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
+  prometheus-data:
   otel-lgtm-data:
   openobserve-data:

@@ -248,3 +248,36 @@ health_metrics:
     snapshot_overrides: {setup_error: ""}
     expected_samples:
       - {metric: provide_telemetry_setup_error, labels: {}, value: 0}
+
+# Tier 1: each SDK's prometheus_push_probe records these instruments and pushes
+# them over OTLP to a Prometheus 3 OTLP receiver configured with the default
+# translation strategy (infra/prometheus/prometheus.yml). The E2E test then
+# queries the series back. {prefix} is a dotted, per-run name such as
+# e2e.prom.go.1a2b3c; {escaped} is the same prefix with dots replaced by
+# underscores. job must equal the probe's service name.
+push_ingestion:
+  instruments:
+    - {instrument: counter, name: "{prefix}.requests", unit: "", value: 3, attributes: {route: /a}}
+    - {instrument: histogram, name: "{prefix}.request.duration", unit: ms, value: 12, attributes: {route: /a}}
+    - {instrument: gauge, name: "{prefix}.cpu.utilization", unit: "1", value: 1, attributes: {core: "0"}}
+  expected_series:
+    - {metric: "{escaped}_requests_total", labels: {route: /a}, value: 3}
+    - {metric: "{escaped}_request_duration_milliseconds_count", labels: {route: /a}, value: 1}
+    - {metric: "{escaped}_request_duration_milliseconds_sum", labels: {route: /a}, value: 12}
+    - {metric: "{escaped}_cpu_utilization_ratio", labels: {core: "0"}, value: 1}
+  # Series a language is known to name differently today, as expected -> actual.
+  # The E2E test asserts the actual name, so fixing the divergence fails the
+  # test until the entry is removed. See prometheus_metrics.translation.known_divergences.
+  known_divergences:
+    python:
+      "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"
+    typescript:
+      "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"
+    rust:
+      "{escaped}_request_duration_milliseconds_count": "{escaped}_request_duration_count"
+      "{escaped}_request_duration_milliseconds_sum": "{escaped}_request_duration_sum"
+      "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"
+    csharp:
+      "{escaped}_request_duration_milliseconds_count": "{escaped}_request_duration_count"
+      "{escaped}_request_duration_milliseconds_sum": "{escaped}_request_duration_sum"
+      "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"

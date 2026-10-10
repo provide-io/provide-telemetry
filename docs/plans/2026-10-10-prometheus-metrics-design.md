@@ -314,9 +314,15 @@ Each stage is its own PR and leaves `main` releasable.
    applicability list cannot be empty.
    `tests/tooling/test_prometheus_contract.py` keeps the spec section, the
    fixtures and the capability gates consistent with each other.
-2. **Tier 1 everywhere.** Prometheus 3 in `docker-compose.yml`, the OTLP→Prom
-   E2E test, and a "Sending metrics to Prometheus" section in
-   `docs/guide/configuration.md`. Expected to need little or no SDK code.
+2. **Tier 1 everywhere** (done). Prometheus 3.13.4 in `docker-compose.yml`
+   with `infra/prometheus/prometheus.yml`, a `prometheus_push_probe` per SDK,
+   `e2e/test_prometheus_push_e2e.py`, the `prometheus-push` job in
+   `ci-contracts.yml`, and a "Sending Metrics to Prometheus" section in
+   `docs/guide/configuration.md`. No SDK code changed. All five SDKs push
+   successfully; Go's names match the contract exactly. The run surfaced two
+   more divergences, now in `push_ingestion.known_divergences`: Rust drops
+   instrument units and descriptions before they reach OTel, and the C#
+   facade has no unit parameter.
 3. **Go: observable instruments, Tiers 2 and 3, health collector.** litevirt
    trials it by moving `:7444` onto `MetricsHandler()` and deleting its
    `telemetryCollector`.

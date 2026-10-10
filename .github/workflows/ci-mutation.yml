@@ -429,8 +429,9 @@ jobs:
         if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go/otel
         run: |
-          # The standalone flush probe requires a live collector and is covered
-          # by ci-go's collector-content gate, not the unit mutation runner.
+          # The standalone flush and Prometheus push probes need a live backend
+          # and are covered by ci-go's collector-content gate and ci-contracts'
+          # prometheus-push job, not the unit mutation runner.
           "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
@@ -438,6 +439,7 @@ jobs:
             --threshold-efficacy=100 \
             --threshold-mcover=100 \
             --exclude-files="cmd/flush_collector_probe/" \
+            --exclude-files="cmd/prometheus_push_probe/" \
             --exclude-files="examples/" \
             .
 

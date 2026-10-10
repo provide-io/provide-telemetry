@@ -194,6 +194,40 @@ scripts and E2E tests.
 | `OPENOBSERVE_PASSWORD` | str | — | OpenObserve basic auth password |
 | `OPENOBSERVE_REQUIRED_SIGNALS` | str | `logs` | Comma-separated signals to verify in E2E tests |
 
+## Sending Metrics to Prometheus
+
+Prometheus 3 accepts OTLP directly, so the ordinary OTLP metrics exporter works
+with it in every SDK; no Prometheus-specific setting is needed. Start
+Prometheus with `--web.enable-otlp-receiver` (the `prometheus` service in
+`docker-compose.yml` does) and point the metrics endpoint at it:
+
+```bash
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://localhost:9090/api/v1/otlp/v1/metrics
+# or, with the shared endpoint, the SDK appends /v1/metrics itself:
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:9090/api/v1/otlp
+```
+
+What to expect on the Prometheus side:
+
+- `job` is the service name and `instance` is `service.instance.id`. Other
+  resource attributes land on the `target_info` series unless they are listed
+  under `otlp.promote_resource_attributes` (see `infra/prometheus/prometheus.yml`).
+- Names are translated by Prometheus according to `otlp.translation_strategy`.
+  With the default, `UnderscoreEscapingWithSuffixes`, dots become underscores,
+  counters gain `_total` and units become suffixes: a histogram
+  `http.request.duration` with unit `ms` is stored as
+  `http_request_duration_milliseconds_bucket`, `_sum` and `_count`.
+- Prometheus rejects delta temporality by default. The SDKs export cumulative
+  metrics, which is what it expects.
+- Units currently reach Prometheus only from Python, TypeScript and Go. Rust
+  drops the unit it is given, and the C# facade takes no unit, so their names
+  carry no unit suffix. Python and TypeScript gauges are sent as non-monotonic
+  sums, so a gauge with unit `1` does not gain `_ratio` there. These are
+  tracked as `known_divergences` in `spec/telemetry-api.yaml`.
+
+The `prometheus-push` job in `.github/workflows/ci-contracts.yml` pushes from
+all five SDKs to a real Prometheus and checks every series it reads back.
+
 ## Resource Attributes
 
 Every emitted trace, metric, and log carries an OTel **Resource** identifying
