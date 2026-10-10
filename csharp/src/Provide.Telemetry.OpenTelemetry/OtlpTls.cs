@@ -102,9 +102,8 @@ internal sealed class OtlpTls
         }
         catch (CryptographicException)
         {
-            // A malformed block anywhere means the file is not a usable bundle,
-            // even when a certificate before it was imported.
-            roots.Clear();
+            // A malformed block anywhere fails the whole import, which adds
+            // nothing, so the bundle reads as holding no certificate.
         }
         return roots.Count > 0 ? roots : null;
     }
