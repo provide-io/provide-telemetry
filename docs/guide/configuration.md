@@ -246,10 +246,10 @@ OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Basic%20<base64 of user:passwo
 OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=/etc/ssl/private-ca.crt   # only for a private CA
 ```
 
-Python, TypeScript, Go and Rust honour all three (Rust also reads
-`OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` / `_CLIENT_KEY` for mutual TLS; a file
-it cannot read leaves that signal's exporter uninstalled and sets the health
-snapshot's setup error). C# ignores the certificate variables and the
+Python, TypeScript, Go and Rust honour all three (Rust also reads the client
+certificate and client key variables for mutual TLS; a file it cannot read
+leaves that signal's exporter uninstalled and sets the health snapshot's setup
+error). C# ignores the certificate variables and the
 per-signal headers variable; use the shared `OTEL_EXPORTER_OTLP_HEADERS` there.
 In the cases it ignores, export fails without an error: check
 `get_health_snapshot()`.
