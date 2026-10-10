@@ -537,6 +537,56 @@ config_defaults:
       default: "true"
       description: "Enable OTel metrics provider (falls back to in-process when false)"
       applicability: [python, typescript, go, rust, csharp]
+    - env: OTEL_METRICS_EXPORTER
+      type: str
+      default: "otlp"
+      description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader."
+      applicability: [go]
+    - env: OTEL_EXPORTER_PROMETHEUS_HOST
+      type: str
+      default: "127.0.0.1"
+      description: "Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup."
+      applicability: [go]
+    - env: OTEL_EXPORTER_PROMETHEUS_PORT
+      type: int
+      default: "9464"
+      description: "Tier 3 bind port."
+      applicability: [go]
+    - env: PROVIDE_METRICS_PROMETHEUS_LISTEN
+      type: str
+      default: "false"
+      description: "Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER)."
+      applicability: [go]
+    - env: PROVIDE_METRICS_PROMETHEUS_PATH
+      type: str
+      default: "/metrics"
+      description: "Tier 3 path. Ignored by Tier 2, where the host picks the mount path."
+      applicability: [go]
+    - env: PROVIDE_METRICS_PROMETHEUS_TRANSLATION
+      type: str
+      default: "UnderscoreEscapingWithSuffixes"
+      description: "Metric and label name translation strategy; one of translation.strategies."
+      applicability: [go]
+    - env: PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS
+      type: bool
+      default: "false"
+      description: "Add otel_scope_name / otel_scope_version labels to every series."
+      applicability: [go]
+    - env: PROVIDE_METRICS_PROMETHEUS_TARGET_INFO
+      type: bool
+      default: "true"
+      description: "Emit the target_info series carrying resource attributes."
+      applicability: [go]
+    - env: PROVIDE_METRICS_HEALTH_OTLP
+      type: bool
+      default: "false"
+      description: "Also export the health metrics over OTLP as observable instruments."
+      applicability: [go]
+    - env: PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG
+      type: str
+      default: ""
+      description: "Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth."
+      applicability: [go]
 
   otlp:
     - env: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -1108,48 +1158,9 @@ prometheus_metrics:
 
   # Keys move from here into config_defaults (with an applicability list) in the
   # PR that makes the first SDK parse them; config_defaults rejects an empty
-  # applicability, so planned keys cannot live there yet.
+  # applicability, so planned keys cannot live there yet. The Prometheus keys
+  # moved with the Go implementation; see config_defaults.metrics.
   planned_config:
-    - env: OTEL_METRICS_EXPORTER
-      type: str
-      default: "otlp"
-      description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader."
-    - env: OTEL_EXPORTER_PROMETHEUS_HOST
-      type: str
-      default: "127.0.0.1"
-      description: "Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup."
-    - env: OTEL_EXPORTER_PROMETHEUS_PORT
-      type: int
-      default: "9464"
-      description: "Tier 3 bind port."
-    - env: PROVIDE_METRICS_PROMETHEUS_LISTEN
-      type: str
-      default: "false"
-      description: "Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER)."
-    - env: PROVIDE_METRICS_PROMETHEUS_PATH
-      type: str
-      default: "/metrics"
-      description: "Tier 3 path. Ignored by Tier 2, where the host picks the mount path."
-    - env: PROVIDE_METRICS_PROMETHEUS_TRANSLATION
-      type: str
-      default: "UnderscoreEscapingWithSuffixes"
-      description: "Metric and label name translation strategy; one of translation.strategies."
-    - env: PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS
-      type: bool
-      default: "false"
-      description: "Add otel_scope_name / otel_scope_version labels to every series."
-    - env: PROVIDE_METRICS_PROMETHEUS_TARGET_INFO
-      type: bool
-      default: "true"
-      description: "Emit the target_info series carrying resource attributes."
-    - env: PROVIDE_METRICS_HEALTH_OTLP
-      type: bool
-      default: "false"
-      description: "Also export the health metrics over OTLP as observable instruments."
-    - env: PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG
-      type: str
-      default: ""
-      description: "Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth."
     - env: OTEL_EXPORTER_OTLP_CERTIFICATE
       type: str
       default: ""
@@ -1166,8 +1177,9 @@ prometheus_metrics:
   config_rules:
     - "OTEL_METRICS_EXPORTER is split on commas, entries trimmed and lowercased, empty entries dropped. An empty value means the default."
     - "none combined with any other exporter is invalid."
-    - "An unknown exporter, LISTEN value, or translation strategy is a ConfigurationError in strict mode; otherwise the default is used and one warning is logged."
-    - "PROVIDE_METRICS_PROMETHEUS_PATH must start with '/' and contain no '?' or '#'. An invalid path follows the same strict/default rule as other enum keys."
+    - "An unknown exporter, LISTEN value, or translation strategy is a ConfigurationError from config parsing, as for the other enum keys (PROVIDE_LOG_FORMAT and the like)."
+    - "PROVIDE_METRICS_PROMETHEUS_PATH must start with '/' and contain no '?' or '#'; anything else is a ConfigurationError. An empty value means the default."
+    - "OTEL_EXPORTER_PROMETHEUS_PORT must be an integer in 0-65535; 0 asks the OS for a free port."
     - "PROVIDE_METRICS_ENABLED=false disables every metrics reader, including the Prometheus reader and the listener."
     - "LISTEN=true without prometheus in OTEL_METRICS_EXPORTER still attaches the Prometheus reader; asking for a listener implies the reader."
 

@@ -105,7 +105,8 @@ func _backendOptionsSupplied(state *_setupState) bool {
 }
 
 func _backendConfigured(cfg *TelemetryConfig) bool {
-	return cfg.Tracing.OTLPEndpoint != "" || cfg.Metrics.OTLPEndpoint != "" || cfg.Logging.OTLPEndpoint != ""
+	return cfg.Tracing.OTLPEndpoint != "" || cfg.Metrics.OTLPEndpoint != "" || cfg.Logging.OTLPEndpoint != "" ||
+		cfg.Metrics.PrometheusReaderEnabled()
 }
 
 // _backendTracerName is the instrumentation name handed to the backend when the

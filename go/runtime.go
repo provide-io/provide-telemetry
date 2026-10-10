@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"slices"
 	"strings"
 	"sync/atomic"
 )
@@ -403,7 +404,10 @@ func _tracerFieldsChanged(current, target *TelemetryConfig) bool {
 func _meterFieldsChanged(current, target *TelemetryConfig) bool {
 	return current.Metrics.Enabled != target.Metrics.Enabled ||
 		current.Metrics.OTLPEndpoint != target.Metrics.OTLPEndpoint ||
-		!maps.Equal(current.Metrics.OTLPHeaders, target.Metrics.OTLPHeaders)
+		!maps.Equal(current.Metrics.OTLPHeaders, target.Metrics.OTLPHeaders) ||
+		!slices.Equal(current.Metrics.Exporters, target.Metrics.Exporters) ||
+		current.Metrics.HealthOTLP != target.Metrics.HealthOTLP ||
+		current.Metrics.Prometheus != target.Metrics.Prometheus
 }
 
 func _loggerFieldsChanged(current, target *TelemetryConfig) bool {

@@ -60,6 +60,16 @@ telemetry.
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `PROVIDE_METRICS_ENABLED` | bool | `true` | Enable OTel metrics provider (falls back to in-process when false) |
+| `OTEL_METRICS_EXPORTER` | str | `otlp` | Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader. |
+| `OTEL_EXPORTER_PROMETHEUS_HOST` | str | `127.0.0.1` | Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup. |
+| `OTEL_EXPORTER_PROMETHEUS_PORT` | int | `9464` | Tier 3 bind port. |
+| `PROVIDE_METRICS_PROMETHEUS_LISTEN` | str | `false` | Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER). |
+| `PROVIDE_METRICS_PROMETHEUS_PATH` | str | `/metrics` | Tier 3 path. Ignored by Tier 2, where the host picks the mount path. |
+| `PROVIDE_METRICS_PROMETHEUS_TRANSLATION` | str | `UnderscoreEscapingWithSuffixes` | Metric and label name translation strategy; one of translation.strategies. |
+| `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS` | bool | `false` | Add otel_scope_name / otel_scope_version labels to every series. |
+| `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO` | bool | `true` | Emit the target_info series carrying resource attributes. |
+| `PROVIDE_METRICS_HEALTH_OTLP` | bool | `false` | Also export the health metrics over OTLP as observable instruments. |
+| `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` | str | `""` | Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth. |
 <!-- END GENERATED CONFIG: metrics -->
 
 ## OTLP Endpoints and Headers

@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CONFIG_SOURCES = (
@@ -22,6 +23,7 @@ _CONFIG_SOURCES = (
     _ROOT / "src" / "provide" / "telemetry" / "consent.py",
 )
 _CONFIG_MD = _ROOT / "docs" / "guide" / "configuration.md"
+_SPEC = _ROOT / "spec" / "telemetry-api.yaml"
 
 # Matches env var string literals used in from_env(), including helper-call
 # arguments such as _resolve_otlp_endpoint(..., "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", ...).
@@ -30,6 +32,21 @@ _ENV_VAR_RE = re.compile(r'"((?:PROVIDE_|OTEL_EXPORTER_OTLP_)[A-Z_]+)"')
 
 def _extract_env_vars_from_config() -> set[str]:
     return {var for path in _CONFIG_SOURCES for var in _ENV_VAR_RE.findall(path.read_text(encoding="utf-8"))}
+
+
+def _non_python_spec_vars() -> set[str]:
+    """Config the spec says other SDKs parse but Python does not (yet).
+
+    configuration.md documents every SDK's config, so a variable only Go reads,
+    for example, is documented without appearing in the Python sources.
+    """
+    spec = yaml.safe_load(_SPEC.read_text(encoding="utf-8"))
+    return {
+        entry["env"]
+        for entries in spec["config_defaults"].values()
+        for entry in entries
+        if "python" not in (entry.get("applicability") or [])
+    }
 
 
 def _extract_documented_vars() -> set[str]:
@@ -61,5 +78,5 @@ def test_no_stale_documented_vars() -> None:
         "OPENOBSERVE_PASSWORD",
         "OPENOBSERVE_REQUIRED_SIGNALS",
     }
-    stale = (doc_vars - code_vars) - external_vars
+    stale = (doc_vars - code_vars) - external_vars - _non_python_spec_vars()
     assert not stale, f"env vars in CONFIGURATION.md but not in config sources: {sorted(stale)}"

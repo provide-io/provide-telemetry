@@ -117,13 +117,16 @@ def test_every_instrument_type_has_a_name_case(contract: dict[str, Any], fixture
 def test_translation_strategy_cases_use_known_strategies(contract: dict[str, Any], fixtures: dict[str, Any]) -> None:
     strategies = set(contract["translation"]["strategies"])
     for case in fixtures["translation_strategy"]:
-        assert case["strategy"] in strategies, case["id"]
+        if case.get("error"):
+            assert case["value"] not in strategies, case["id"]
+        else:
+            assert case["strategy"] in strategies, case["id"]
 
 
 def test_exporter_selection_cases_are_well_formed(fixtures: dict[str, Any]) -> None:
     for case in fixtures["exporter_selection"]:
         if case.get("error"):
-            assert set(case["fallback_exporters"]) <= _EXPORTERS, case["id"]
+            assert "exporters" not in case and "listener" not in case, case["id"]
         else:
             assert set(case["exporters"]) <= _EXPORTERS, case["id"]
             assert isinstance(case["listener"], bool), case["id"]
@@ -131,8 +134,17 @@ def test_exporter_selection_cases_are_well_formed(fixtures: dict[str, Any]) -> N
 
 def test_listener_path_cases_resolve_to_valid_paths(fixtures: dict[str, Any]) -> None:
     for case in fixtures["listener_path"]:
+        if case.get("error"):
+            assert "path" not in case, case["id"]
+            continue
         path = case["path"]
         assert path.startswith("/") and "?" not in path and "#" not in path, case["id"]
+
+
+def test_listener_port_cases_are_in_range(fixtures: dict[str, Any]) -> None:
+    for case in fixtures["listener_port"]:
+        if not case.get("error"):
+            assert 0 <= case["port"] <= 65535, case["id"]
 
 
 def test_planned_config_has_not_also_landed_in_config_defaults(spec: dict[str, Any], contract: dict[str, Any]) -> None:
@@ -142,11 +154,13 @@ def test_planned_config_has_not_also_landed_in_config_defaults(spec: dict[str, A
     assert not planned & landed
 
 
-def test_planned_config_defaults_match_config_rules(contract: dict[str, Any]) -> None:
-    planned = {entry["env"]: entry["default"] for entry in contract["planned_config"]}
-    assert planned["PROVIDE_METRICS_PROMETHEUS_TRANSLATION"] == contract["translation"]["default"]
-    assert planned["OTEL_EXPORTER_PROMETHEUS_HOST"] == "127.0.0.1"
-    assert planned["PROVIDE_METRICS_PROMETHEUS_LISTEN"] == "false"
+def test_prometheus_config_defaults_match_the_contract(spec: dict[str, Any], contract: dict[str, Any]) -> None:
+    """Defaults live in planned_config or config_defaults depending on stage; check wherever they are."""
+    entries = [*contract["planned_config"], *(e for es in spec["config_defaults"].values() for e in es)]
+    defaults = {entry["env"]: entry["default"] for entry in entries}
+    assert defaults["PROVIDE_METRICS_PROMETHEUS_TRANSLATION"] == contract["translation"]["default"]
+    assert defaults["OTEL_EXPORTER_PROMETHEUS_HOST"] == "127.0.0.1"
+    assert defaults["PROVIDE_METRICS_PROMETHEUS_LISTEN"] == "false"
 
 
 def test_every_capability_in_the_api_is_known_to_conformance(spec: dict[str, Any]) -> None:

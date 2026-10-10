@@ -40,6 +40,11 @@ var probeValues = []string{
 	"http://probe.invalid:4318",
 	"probe-module=DEBUG",
 	"probe-key=probe-value",
+	// Valid values for the Prometheus enums, which reject everything above.
+	"prometheus",
+	"auto",
+	"/probe-path",
+	"UnderscoreEscapingWithoutSuffixes",
 }
 
 var ownedPrefixes = []string{"PROVIDE_", "OTEL_"}

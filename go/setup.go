@@ -108,6 +108,7 @@ func cloneTelemetryConfig(cfg *TelemetryConfig) *TelemetryConfig {
 	clone.Tracing.OTLPHeaders = maps.Clone(cfg.Tracing.OTLPHeaders)
 	clone.Metrics = cfg.Metrics
 	clone.Metrics.OTLPHeaders = maps.Clone(cfg.Metrics.OTLPHeaders)
+	clone.Metrics.Exporters = append([]string(nil), cfg.Metrics.Exporters...)
 	clone.EventSchema = cfg.EventSchema
 	clone.EventSchema.RequiredKeys = append([]string(nil), cfg.EventSchema.RequiredKeys...)
 	return &clone

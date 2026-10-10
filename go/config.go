@@ -76,6 +76,67 @@ type MetricsConfig struct {
 	Enabled      bool // default true
 	OTLPEndpoint string
 	OTLPHeaders  map[string]string
+	// Exporters lists the metric exporters from OTEL_METRICS_EXPORTER: any of
+	// "otlp" and "prometheus", or empty for none. Default ["otlp"].
+	Exporters []string
+	// HealthOTLP also exports the health metrics over OTLP.
+	HealthOTLP bool
+	Prometheus PrometheusConfig
+}
+
+// PrometheusConfig configures the Prometheus pull reader, handler and listener.
+// See the prometheus_metrics section of spec/telemetry-api.yaml.
+type PrometheusConfig struct {
+	// Listen is "false" (default), "true", or "auto" (listen whenever
+	// "prometheus" is in MetricsConfig.Exporters).
+	Listen string
+	Host   string // default "127.0.0.1"
+	Port   int    // default 9464; 0 asks the OS for a free port
+	Path   string // default "/metrics"
+	// Translation is the metric-name translation strategy, one of
+	// PrometheusTranslationStrategies. Default "UnderscoreEscapingWithSuffixes".
+	Translation string
+	ScopeLabels bool   // default false
+	TargetInfo  bool   // default true
+	WebConfig   string // path to a Prometheus web config file; empty = plain HTTP
+}
+
+// HasExporter reports whether name is one of the configured metric exporters.
+func (m MetricsConfig) HasExporter(name string) bool {
+	for _, e := range m.Exporters {
+		if e == name {
+			return true
+		}
+	}
+	return false
+}
+
+// PrometheusListenerEnabled reports whether the standalone Prometheus listener
+// should run.
+func (m MetricsConfig) PrometheusListenerEnabled() bool {
+	if !m.Enabled {
+		return false
+	}
+	switch m.Prometheus.Listen {
+	case _prometheusListenTrue:
+		return true
+	case _prometheusListenAuto:
+		return m.HasExporter(_metricsExporterPrometheus)
+	default:
+		return false
+	}
+}
+
+// PrometheusReaderEnabled reports whether the Prometheus pull reader should be
+// attached. Asking for the listener implies the reader.
+func (m MetricsConfig) PrometheusReaderEnabled() bool {
+	return m.Enabled && (m.HasExporter(_metricsExporterPrometheus) || m.PrometheusListenerEnabled())
+}
+
+// OTLPReaderEnabled reports whether OTLP metrics export is selected. It still
+// needs an endpoint to do anything.
+func (m MetricsConfig) OTLPReaderEnabled() bool {
+	return m.Enabled && m.HasExporter(_metricsExporterOTLP)
 }
 
 // SchemaConfig holds event schema validation configuration.
@@ -281,6 +342,15 @@ func DefaultTelemetryConfig() *TelemetryConfig {
 		Metrics: MetricsConfig{
 			Enabled:     true,
 			OTLPHeaders: map[string]string{},
+			Exporters:   []string{_metricsExporterOTLP},
+			Prometheus: PrometheusConfig{
+				Listen:      _prometheusListenFalse,
+				Host:        _prometheusDefaultHost,
+				Port:        _prometheusDefaultPort,
+				Path:        _prometheusDefaultPath,
+				Translation: _prometheusDefaultTranslation,
+				TargetInfo:  true,
+			},
 		},
 		EventSchema: SchemaConfig{
 			RequiredKeys: []string{},
@@ -321,6 +391,7 @@ func ConfigFromEnv() (*TelemetryConfig, error) {
 		applyExporterEnv,
 		applyTracingEnv,
 		applyMetricsEnv,
+		applyPrometheusEnv,
 		applySamplingEnv,
 		applyBackpressureEnv,
 		applySLOEnv,
