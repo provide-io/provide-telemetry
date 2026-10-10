@@ -198,7 +198,13 @@ func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.Mete
 		opts = append(opts, sdkmetric.WithReader(reader), sdkmetric.WithView(_prometheusLabelView(cfg.Metrics.Prometheus)))
 		registry = reg
 	}
-	return sdkmetric.NewMeterProvider(opts...), registry, nil
+	provider := sdkmetric.NewMeterProvider(opts...)
+	if cfg.Metrics.HealthOTLP {
+		if err := _registerHealth(provider.Meter("provide.telemetry"), telemetry.GetHealthSnapshot); err != nil {
+			return nil, nil, err
+		}
+	}
+	return provider, registry, nil
 }
 
 func _newOTLPMetricsReader(cfg *telemetry.TelemetryConfig) (sdkmetric.Reader, error) {

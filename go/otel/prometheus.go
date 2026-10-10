@@ -12,6 +12,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/otlptranslator"
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel/attribute"
@@ -98,17 +99,42 @@ func _refineNotSetUp(status _promStatus) _promStatus {
 
 // _newPrometheusReader builds the pull reader for cfg on a fresh private
 // registry, so a host already using prometheus.DefaultRegisterer cannot collide
-// with it, and registers the health collector beside it.
+// with it, and the health collector on a second one. A scrape gathers both,
+// minus any health-named family from the reader: with PROVIDE_METRICS_HEALTH_OTLP
+// the provider carries the health instruments too, and the scrape serves only
+// the collector's copy.
 func _newPrometheusReader(cfg *telemetry.TelemetryConfig) (sdkmetric.Reader, _promRegistryLike, error) {
 	registry := _newPromRegistry()
 	reader, err := promexporter.New(_prometheusExporterOptions(cfg.Metrics.Prometheus, registry)...)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := registry.Register(_newHealthCollector(telemetry.GetHealthSnapshot)); err != nil {
+	health := _newPromRegistry()
+	if err := health.Register(_newHealthCollector(telemetry.GetHealthSnapshot)); err != nil {
 		return nil, nil, err
 	}
-	return reader, registry, nil
+	return reader, _servedRegistry{Registerer: registry, Gatherer: prometheus.Gatherers{_withoutHealth{registry}, health}}, nil
+}
+
+// _servedRegistry is what a scrape gathers: the reader's registry, filtered,
+// and the health collector's.
+type _servedRegistry struct {
+	prometheus.Registerer
+	prometheus.Gatherer
+}
+
+// _withoutHealth drops the health-named families from a gather.
+type _withoutHealth struct{ prometheus.Gatherer }
+
+func (g _withoutHealth) Gather() ([]*dto.MetricFamily, error) {
+	families, err := g.Gatherer.Gather()
+	kept := make([]*dto.MetricFamily, 0, len(families))
+	for _, f := range families {
+		if _, health := _healthHelp[f.GetName()]; !health {
+			kept = append(kept, f)
+		}
+	}
+	return kept, err
 }
 
 func _prometheusExporterOptions(p telemetry.PrometheusConfig, registry prometheus.Registerer) []promexporter.Option {
