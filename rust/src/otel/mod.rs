@@ -54,12 +54,8 @@ fn map_exporter_build<T, E: std::fmt::Display>(
     result.map_err(|err| TelemetryError::new(format!("OTLP {signal} exporter build failed: {err}")))
 }
 
-/// Without the SDK nothing is installed; the pull endpoint records why it
-/// cannot serve (`prometheus::status_without_sdk`, which is compiled, and so
-/// tested and mutated, under every feature set).
 #[cfg(not(feature = "otel"))]
-pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError> {
-    crate::prometheus::set_status(crate::prometheus::status_without_sdk(config));
+pub(crate) fn setup_otel(_config: &TelemetryConfig) -> Result<(), TelemetryError> {
     Ok(())
 }
 

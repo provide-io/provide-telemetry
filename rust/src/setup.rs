@@ -63,6 +63,11 @@ pub fn setup_telemetry(config: Option<TelemetryConfig>) -> Result<TelemetryConfi
     // records any new one below (an exporter or the Prometheus listener).
     crate::health::set_setup_error(None);
     setup_otel(&config)?;
+    // Without the SDK no meter provider records why the pull endpoint cannot
+    // serve. A statement here rather than in the cfg'd setup_otel body, which
+    // cargo-mutants (run with --all-features) would mutate but never compile.
+    #[cfg(not(feature = "otel"))]
+    crate::prometheus::set_status(crate::prometheus::status_without_sdk(&config));
     apply_policies(&config);
     set_active_config(Some(config.clone()));
     // After the providers: the listener serves the pull reader they attached.
