@@ -253,6 +253,19 @@ describe('registerOtelProviders with an unreadable TLS file', () => {
     );
   });
 
+  it('a good per-signal logs override keeps the logs exporter', async () => {
+    const cfg = setup({ tracingEnabled: false, metricsEnabled: false });
+    process.env['OTEL_EXPORTER_OTLP_CERTIFICATE'] = missing;
+    process.env['OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE'] = pki.caFile;
+    try {
+      await registerOtelProviders(cfg);
+    } finally {
+      delete process.env['OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE'];
+    }
+    expect(_getProvidersBySignal().logs).toBeDefined();
+    expect(getHealthSnapshot().setupError).toBeNull();
+  });
+
   it('a good per-signal metrics override keeps the OTLP metrics reader', async () => {
     const cfg = setup({ tracingEnabled: false, otlpLogsEnabled: false });
     process.env['OTEL_EXPORTER_OTLP_CERTIFICATE'] = missing;
