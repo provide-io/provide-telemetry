@@ -195,7 +195,7 @@ func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.Mete
 		if err != nil {
 			return nil, nil, err
 		}
-		opts = append(opts, sdkmetric.WithReader(reader))
+		opts = append(opts, sdkmetric.WithReader(reader), sdkmetric.WithView(_prometheusLabelView(cfg.Metrics.Prometheus)))
 		registry = reg
 	}
 	return sdkmetric.NewMeterProvider(opts...), registry, nil

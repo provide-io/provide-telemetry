@@ -10,6 +10,7 @@ package otel
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -204,5 +205,18 @@ func TestPrometheusReader_RegistrationFailuresSurface(t *testing.T) {
 		if mp, reg, err := _buildDefaultMeterProvider(cfg); err == nil || mp != nil || reg != nil {
 			t.Fatalf("failOn %d: provider build should fail, got %v %v %v", failOn, mp, reg, err)
 		}
+	}
+}
+
+func TestMetricsHandler_ReservedAttributeIsDroppedNotTheMetric(t *testing.T) {
+	_promReset(t)
+	t.Setenv("OTEL_METRICS_EXPORTER", "prometheus")
+	t.Setenv("PROVIDE_METRICS_PROMETHEUS_TRANSLATION", "NoTranslation")
+	_promSetup(t)
+	telemetry.NewCounter("reserved.probe").Add(context.Background(), 1, slog.String("__internal", "x"), slog.String("kept", "y"))
+	rec := _scrape(http.MethodGet)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `kept="y"`) || strings.Contains(body, "__internal") {
+		t.Fatalf("status %d, body:\n%s", rec.Code, body)
 	}
 }

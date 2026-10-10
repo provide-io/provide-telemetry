@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/otlptranslator"
 	telemetry "github.com/provide-io/provide-telemetry/go"
+	"go.opentelemetry.io/otel/attribute"
 	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
@@ -171,3 +172,18 @@ type _bufferedResponse struct {
 func (r *_bufferedResponse) Header() http.Header         { return r.header }
 func (r *_bufferedResponse) Write(b []byte) (int, error) { return r.body.Write(b) }
 func (r *_bufferedResponse) WriteHeader(status int)      { r.status = status }
+
+// _prometheusLabelView drops attributes the Prometheus output cannot carry:
+// keys the reference translator rejects, and keys it translates to a label
+// name starting with "__", which Prometheus reserves. client_golang would
+// otherwise reject the whole metric at scrape time. Views apply to every
+// reader, so these keys are also dropped from OTLP while the Prometheus reader
+// is attached (prometheus_metrics.translation.rules).
+func _prometheusLabelView(p telemetry.PrometheusConfig) sdkmetric.View {
+	namer := otlptranslator.LabelNamer{UTF8Allowed: !otlptranslator.TranslationStrategyOption(p.Translation).ShouldEscape()}
+	filter := func(kv attribute.KeyValue) bool {
+		name, err := namer.Build(string(kv.Key))
+		return err == nil && !strings.HasPrefix(name, "__")
+	}
+	return sdkmetric.NewView(sdkmetric.Instrument{Name: "*"}, sdkmetric.Stream{AttributeFilter: filter})
+}

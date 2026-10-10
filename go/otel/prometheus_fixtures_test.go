@@ -52,8 +52,21 @@ type _promHealthCase struct {
 	ExpectedSamples   []_promSample          `yaml:"expected_samples"`
 }
 
+type _promCorpusCase struct {
+	Name       string             `yaml:"name"`
+	Unit       string             `yaml:"unit"`
+	Instrument string             `yaml:"instrument"`
+	Expected   map[string]*string `yaml:"expected"`
+}
+
 type _promOtelFixtures struct {
-	MetricNames   []_promNameCase   `yaml:"metric_names"`
+	MetricNames []_promNameCase   `yaml:"metric_names"`
+	Corpus      []_promCorpusCase `yaml:"translation_corpus"`
+	LabelCorpus []struct {
+		Attribute string  `yaml:"attribute"`
+		Escaped   *string `yaml:"escaped"`
+		UTF8      *string `yaml:"utf8"`
+	} `yaml:"label_corpus"`
 	LabelNames    []_promLabelCase  `yaml:"label_names"`
 	HealthMetrics []_promHealthCase `yaml:"health_metrics"`
 }
@@ -82,7 +95,7 @@ func _promTestProvider(t *testing.T, strategy string) (*sdkmetric.MeterProvider,
 	if err != nil {
 		t.Fatalf("new reader: %v", err)
 	}
-	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader), sdkmetric.WithView(_prometheusLabelView(cfg.Metrics.Prometheus)))
 	t.Cleanup(func() { _ = mp.Shutdown(context.Background()) })
 	return mp, registry
 }
@@ -288,6 +301,62 @@ func TestPrometheusHealth_UnknownCircuitStateIsMinusOne(t *testing.T) {
 	for state, want := range map[string]float64{"closed": 0, "half-open": 1, "open": 2, "": -1, "weird": -1} {
 		if got := _circuitStateValue(state); got != want {
 			t.Errorf("%q -> %v, want %v", state, got, want)
+		}
+	}
+}
+
+// TestPrometheusFixtures_TranslationCorpus drives the edge cases through the
+// real exporter. Cases the reference rejects (null) are skipped: what an
+// exporter does with an untranslatable name is not part of the contract.
+func TestPrometheusFixtures_TranslationCorpus(t *testing.T) {
+	for i, c := range _loadPromOtelFixtures(t).Corpus {
+		for strategy, want := range c.Expected {
+			if want == nil {
+				continue
+			}
+			t.Run(fmt.Sprintf("%d/%s/%s", i, c.Instrument, strategy), func(t *testing.T) {
+				mp, registry := _promTestProvider(t, strategy)
+				_recordInstrument(t, mp.Meter("fixture"), c.Instrument, c.Name, c.Unit)
+				families := _nonHealthFamilies(t, registry)
+				if len(families) != 1 || families[0].GetName() != *want {
+					names := []string{}
+					for _, f := range families {
+						names = append(names, f.GetName())
+					}
+					t.Fatalf("%q unit %q: families = %v, want [%s]", c.Name, c.Unit, names, *want)
+				}
+			})
+		}
+	}
+}
+
+func TestPrometheusFixtures_LabelCorpus(t *testing.T) {
+	cases := _loadPromOtelFixtures(t).LabelCorpus
+	for _, strategy := range telemetry.PrometheusTranslationStrategies {
+		escaping := strings.HasPrefix(strategy, "UnderscoreEscaping")
+		for _, c := range cases {
+			want := c.UTF8
+			if escaping {
+				want = c.Escaped
+			}
+			dropped := want == nil || strings.HasPrefix(*want, "__")
+			t.Run(strategy+"/"+c.Attribute, func(t *testing.T) {
+				mp, registry := _promTestProvider(t, strategy)
+				_recordInstrument(t, mp.Meter("fixture"), "counter", "label.corpus", "",
+					attribute.String(c.Attribute, "v"), attribute.String("kept", "v"))
+				names := []string{}
+				for _, l := range _nonHealthFamilies(t, registry)[0].GetMetric()[0].GetLabel() {
+					names = append(names, l.GetName())
+				}
+				expected := []string{"kept"}
+				if !dropped {
+					expected = append(expected, *want)
+					sort.Strings(expected)
+				}
+				if fmt.Sprint(names) != fmt.Sprint(expected) {
+					t.Fatalf("labels = %v, want %v", names, expected)
+				}
+			})
 		}
 	}
 }
