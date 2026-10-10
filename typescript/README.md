@@ -136,14 +136,37 @@ const result = await withTrace('my.operation.ok', async () => {
 ### Metrics
 
 ```typescript
-import { counter, gauge, histogram } from '@provide-io/telemetry';
+import { counter, gauge, histogram, observableGauge } from '@provide-io/telemetry';
 
 const requests = counter('http.requests', { unit: '1', description: 'Total HTTP requests' });
 requests.add(1, { method: 'GET', status: '200' });
 
 const latency = histogram('http.duration', { unit: 'ms' });
 latency.record(42, { route: '/api/users' });
+
+// Values computed at collection time (each scrape or export interval).
+const depth = observableGauge('queue.depth', () => [{ value: queue.length }]);
+depth.unregister();
 ```
+
+### Prometheus (Node only)
+
+With `OTEL_METRICS_EXPORTER=prometheus` (or `otlp,prometheus`),
+`registerOtelProviders()` attaches a Prometheus pull reader. Mount the handler
+on a server you already run, or set `PROVIDE_METRICS_PROMETHEUS_LISTEN=true`
+for a standalone listener on `127.0.0.1:9464/metrics`:
+
+```typescript
+import { metricsHandler, renderPrometheus } from '@provide-io/telemetry/prometheus';
+
+app.get('/metrics', metricsHandler()); // node:http, Express, Connect
+const { body, contentType } = await renderPrometheus(req.headers.accept);
+```
+
+TLS and basic auth for the listener come from a Prometheus web config file
+named by `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`, which needs the optional
+`yaml` and `bcryptjs` packages. See the configuration guide's "Serving Metrics
+for Prometheus to Scrape". The browser build has no pull support.
 
 ### Context binding
 

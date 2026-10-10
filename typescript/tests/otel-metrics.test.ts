@@ -17,7 +17,7 @@ import { counter, gauge, histogram } from '../src/metrics.js';
 import { observableGauge } from '../src/metrics-observable.js';
 import { registerOtelProviders } from '../src/otel.js';
 import { recordPullStatusWithoutProvider, setupOtelMeterProvider } from '../src/otel-metrics.js';
-import { _getProvidersBySignal } from '../src/provider-registry.js';
+import { _getProvidersBySignal, _getRegisteredProviders } from '../src/provider-registry.js';
 import {
   getPullStatus,
   HOST_PROVIDER,
@@ -144,6 +144,27 @@ describe('registerOtelProviders with the pull reader', () => {
     expect(getPullStatus()).toBe(NOT_SELECTED);
     await registerOtelProviders(setup({}));
     expect(getPullStatus()).toBe(NOT_SELECTED);
+  });
+
+  it('records not_selected from a fresh state when nothing is configured', async () => {
+    expect(getPullStatus()).toBe('not_set_up');
+    await registerOtelProviders(setup({}));
+    expect(getPullStatus()).toBe(NOT_SELECTED);
+  });
+
+  it('records otel_disabled from a fresh state', async () => {
+    await registerOtelProviders(setup({ otelEnabled: false, metricsExporters: ['prometheus'] }));
+    expect(getPullStatus()).toBe(OTEL_DISABLED);
+  });
+
+  it('registers no metrics provider when only traces are exported', async () => {
+    await registerOtelProviders(
+      setup({ tracingEnabled: true, otlpTracesEndpoint: 'http://127.0.0.1:9/v1/traces' }),
+    );
+    expect(_getRegisteredProviders()).toHaveLength(1);
+    expect(_getRegisteredProviders().every((p) => p !== undefined)).toBe(true);
+    expect(_getProvidersBySignal().metrics).toBeUndefined();
+    expect(_getProvidersBySignal().traces).toBeDefined();
   });
 
   it('an invalid OTLP endpoint is a setup failure', async () => {
