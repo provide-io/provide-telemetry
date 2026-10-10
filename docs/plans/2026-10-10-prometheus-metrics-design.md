@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-10
 
-**Status:** Draft — open questions at the end need a decision before Stage 2
+**Status:** Draft — one open question (Rust exporter) remains, needed before Stage 5
 
 **Target release:** 0.9
 
@@ -94,7 +94,11 @@ under `config.metrics` in `spec/telemetry-api.yaml`:
 | `OTEL_METRICS_EXPORTER` | `otlp` | Comma list of `otlp`, `prometheus`, `none`. `prometheus` attaches the pull reader; with a host/port set it also starts the Tier 3 listener. |
 | `OTEL_EXPORTER_PROMETHEUS_HOST` | `127.0.0.1` | Tier 3 bind host. The OTel spec default is `localhost`; we pin loopback so a library never exposes a port by accident. `0.0.0.0` is an explicit opt-in and logs a warning once at setup. |
 | `OTEL_EXPORTER_PROMETHEUS_PORT` | `9464` | Tier 3 bind port. |
-| `PROVIDE_METRICS_PROMETHEUS_LISTEN` | `false` | Starts the Tier 3 listener. Kept separate from `OTEL_METRICS_EXPORTER=prometheus` so a host can enable the reader for Tier 2 without the SDK opening a port. |
+| `PROVIDE_METRICS_PROMETHEUS_LISTEN` | `false` | Starts the Tier 3 listener. Kept separate from `OTEL_METRICS_EXPORTER=prometheus` so a host can enable the reader for Tier 2 without the SDK opening a port. Set it to `auto` to follow the OTel convention, where `OTEL_METRICS_EXPORTER=prometheus` alone starts the listener. |
+| `PROVIDE_METRICS_PROMETHEUS_TRANSLATION` | `UnderscoreEscapingWithSuffixes` | How metric names are translated; see [Metric names](#metric-names). |
+| `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS` | `false` | Add `otel_scope_name` / `otel_scope_version` labels to every series. |
+| `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO` | `true` | Emit the `target_info` series carrying resource attributes. |
+| `PROVIDE_METRICS_HEALTH_OTLP` | `false` | Also export the health metrics over OTLP. See [Health metrics](#health-metrics). |
 
 Rules:
 
@@ -132,7 +136,8 @@ Behavior shared by all languages:
 
 ### Tier 3: the standalone listener
 
-- Started by `setup()` when `PROVIDE_METRICS_PROMETHEUS_LISTEN=true`, stopped
+- Started by `setup()` when `PROVIDE_METRICS_PROMETHEUS_LISTEN=true` (or `auto`
+  with `prometheus` in `OTEL_METRICS_EXPORTER`), stopped
   by `shutdown()`, restarted on reconfiguration only if host or port changed.
 - Serves the Tier 2 handler at `/metrics`; every other path is `404`.
 - Server timeouts set (read-header, read, write, idle) so a slow client cannot
@@ -187,9 +192,16 @@ The health collector maps `health_snapshot` onto these series:
 | `setup_error` | `provide_telemetry_setup_error` (1 when set) | gauge |
 | `receipt_failures` | `provide_telemetry_receipt_failures_total` | counter |
 
-These are written straight into the Prometheus output by a collector on the
-pull path. They do not go through the `MeterProvider`, so OTLP never exports
-health about OTLP. The circuit-state encoding matches what litevirt uses today,
+By default these are written straight into the Prometheus output by a
+collector on the pull path. They do not go through the `MeterProvider`, so
+OTLP does not export health about OTLP. Push-only users can set
+`PROVIDE_METRICS_HEALTH_OTLP=true`, which registers the same series as
+observable instruments on the provider so they reach OTLP too. When both pull
+and that flag are on, the pull endpoint still serves health from its own
+collector and the provider copy is filtered out of the pull output, so no
+series appears twice. The docs warn that health pushed over OTLP goes quiet
+exactly when OTLP export fails, so alerts should use `absent()` rather than
+thresholds. The circuit-state encoding matches what litevirt uses today,
 so its dashboards keep working after migration.
 
 ### Metric names
@@ -202,14 +214,40 @@ expected to come out as `http_requests_total` and something like
 `http_request_duration_ms_milliseconds`. Each exporter's exact output must be
 captured in a fixture during Stage 2.
 
+Translation is configurable with `PROVIDE_METRICS_PROMETHEUS_TRANSLATION`.
+The values reuse the names of Prometheus 3's own OTLP receiver setting
+(`otlp.translation_strategy`), so a service can produce the same names whether
+it is pushed (Tier 1) or scraped (Tiers 2 and 3) by setting both sides to the
+same value:
+
+| Value | Characters | Suffixes | Example for `http.request.duration_ms` (unit `ms`) |
+|---|---|---|---|
+| `UnderscoreEscapingWithSuffixes` (default) | invalid characters become `_` | `_total` and unit suffixes added | `http_request_duration_ms_milliseconds` |
+| `UnderscoreEscapingWithoutSuffixes` | invalid characters become `_` | none added | `http_request_duration_ms` |
+| `NoUTF8EscapingWithSuffixes` | kept as UTF-8 | added | `http.request.duration_ms_milliseconds` |
+| `NoTranslation` | kept as UTF-8 | none added | `http.request.duration_ms` |
+
+The examples are the expected output; Stage 1 pins the exact strings in the
+exposition fixture. The UTF-8 values need Prometheus 3 on the scraping side
+and content negotiation in the handler; older scrapers get the default.
+
+`UnderscoreEscapingWithoutSuffixes` is the migration path for hosts with
+hand-written `client_golang` names: litevirt can keep
+`litevirt_lb_keepalived_up` and its Grafana dashboards unchanged.
+
 Contract:
 
-- Names are translated by one shared rule-set, defined in the spec and checked
-  by a cross-language fixture, not by whatever each exporter does by default.
-- Unit suffixes are not appended when the name already ends with the unit or
-  its Prometheus base-unit equivalent.
-- `otel_scope_*` labels are off. `target_info` stays on, since it carries the
-  resource labels Prometheus joins on.
+- Translation is done by one shared rule-set per value, defined in the spec
+  and checked by the cross-language fixture, not by whatever each exporter does
+  by default. Where an exporter cannot be configured to match, the SDK
+  translates before handing names to it.
+- Under the `WithSuffixes` values, a unit suffix is not appended when the name
+  already ends with the unit or its Prometheus base-unit equivalent, and
+  `_total` is not appended twice.
+- `otel_scope_*` labels and `target_info` follow their own switches
+  (default off and on respectively), independent of the translation value.
+- An unknown translation value falls back to the default, with the same
+  strict-mode error and one-time warning as other enum keys.
 
 ### Temporality and cardinality
 
@@ -243,7 +281,8 @@ language's stage.
   failure isolation; listener start, stop, rebind and bind failure; health
   mapping for every field.
 - **Exposition fixture:** one shared fixture in `spec/` listing instruments to
-  create and the exact expected exposition lines. Every SDK must produce
+  create and the exact expected exposition lines for each translation value
+  and each scope-label / `target_info` switch. Every SDK must produce
   byte-identical output after sorting lines, which enforces the naming
   contract.
 - **Scrape test:** each SDK starts a Tier 3 listener on an ephemeral port and
@@ -274,17 +313,17 @@ Each stage is its own PR and leaves `main` releasable.
 5. **Rust and C#.** `metrics_handler` becomes `required: true` in the spec once
    all five ship.
 
+## Decisions
+
+1. **Everything that changes behavior is configurable.** Listener start,
+   name translation, scope labels, `target_info` and health over OTLP each
+   have their own key with a conservative default: no port opened unless
+   asked, Prometheus 3's default translation, no scope labels, health on pull
+   only.
+
 ## Open Questions
 
-1. **Separate listen switch.** This draft adds `PROVIDE_METRICS_PROMETHEUS_LISTEN`
-   so enabling the reader never opens a port by itself. The alternative is
-   OTel's convention, where `OTEL_METRICS_EXPORTER=prometheus` alone starts
-   the listener. Which wins: matching OTel or never opening a port implicitly?
-2. **Name translation default.** Should our rule-set keep OTel's unit suffixes
-   (closer to other OTel-instrumented services) or drop them (closer to names
-   written by hand in `client_golang`, which helps hosts like litevirt migrate
-   without breaking dashboards)?
-3. **Health metrics on OTLP.** This draft keeps health off the OTLP path.
-   Should it be available there too, behind a flag, for push-only users?
-4. **Rust exporter.** Take the discouraged upstream crate now, or write the
-   renderer ourselves from the start?
+1. **Rust exporter.** Take the discouraged upstream `opentelemetry-prometheus`
+   crate now, or write the renderer ourselves from `ResourceMetrics` from the
+   start? Configurable translation favors our own renderer, since the upstream
+   crate may not support every value.
