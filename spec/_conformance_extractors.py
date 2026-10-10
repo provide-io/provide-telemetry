@@ -254,6 +254,18 @@ def get_typescript_exports(repo_root: Path | None = None) -> dict[str, str]:
             kind = src_kinds.get(original, src_kinds.get(exported, "function"))
             exports[exported] = kind
 
+    # The Node-only @provide-io/telemetry/prometheus entry point: the Tier 2
+    # pull surface lives there so the browser build never reaches it.
+    node_entry = ts_src_dir / "prometheus.ts"
+    if node_entry.exists():
+        node_text = node_entry.read_text(encoding="utf-8")
+        for m in re.finditer(r"^export\s+(?:async\s+)?function\s+(\w+)", node_text, re.MULTILINE):
+            exports[m.group(1)] = "function"
+        for block in re.finditer(r"^export\s+\{([^}]+)\}", node_text, re.MULTILINE):
+            for item in re.split(r"\s*,\s*", block.group(1).strip()):
+                if item:
+                    exports[item.split(" as ")[-1].strip()] = src_kinds.get(item.split(" as ")[0].strip(), "function")
+
     return exports
 
 

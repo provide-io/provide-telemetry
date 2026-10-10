@@ -310,7 +310,7 @@ Contract:
 |---|---|---|---|---|---|
 | Go | `go.opentelemetry.io/otel/exporters/prometheus` | ✓ | ✓ | ✓ | Reference implementation. Use a private `prometheus.Registry`, never the default one, so hosts that already use `client_golang` do not collide. |
 | Python | `opentelemetry-exporter-prometheus` | ✓ | ✓ | ✓ | Multi-process servers (gunicorn) get one registry per worker. Docs say to use Tier 1 push there; no multiprocess-mode support. |
-| TypeScript | `@opentelemetry/exporter-prometheus` | ✓ | Node only | Node only | The browser build excludes the pull code entirely. |
+| TypeScript | own renderer (port of Python's) | ✓ | Node only | Node only | The browser build excludes the pull code entirely. |
 | Rust | `opentelemetry-prometheus` or own renderer | ✓ | ✓ | feature `prometheus-listener` | The upstream crate is discouraged by opentelemetry-rust. Stage 5 decides between it and rendering from `ResourceMetrics` ourselves. |
 | C# | `OpenTelemetry.Exporter.Prometheus.AspNetCore` / `.HttpListener` | ✓ | ✓ | ✓ | Both packages are prerelease. Lives in `Provide.Telemetry.OpenTelemetry`, never in the OTel-free core. |
 
@@ -383,7 +383,7 @@ Each stage is its own PR and leaves `main` releasable.
    `e2e/test_prometheus_scrape_e2e.py` has a real Prometheus scrape the Go
    listener plain and over TLS with basic auth. litevirt can now move `:7444`
    onto `MetricsHandler()` and delete its `telemetryCollector`.
-4. **Python** (done), then **TypeScript (Node)**, same scope as Stage 3.
+4. **Python** (done), then **TypeScript (Node)** (done), same scope as Stage 3.
    Python: config keys in `_config_prometheus.py`; `gauge()` moved to an OTel
    Gauge, closing its half of decision 0; a port of otlptranslator's namers
    (`metrics/_prom_names.py`) checked against every translation, label and
@@ -395,6 +395,21 @@ Each stage is its own PR and leaves `main` releasable.
    startup (`bcrypt` and `PyYAML` in the `prometheus` extra); observable
    instruments. Python is in both capability sets and in the scrape E2E.
    `PROVIDE_METRICS_HEALTH_OTLP` is parsed but, as in Go, not yet acted on.
+   TypeScript: the config keys in `config-prometheus.ts`; `gauge()` on an OTel
+   Gauge, closing the other half of decision 0 and its push divergence; a port
+   of the namers (`prom-names.ts`) and the renderer (`prom-render.ts`) rather
+   than `@opentelemetry/exporter-prometheus`, whose naming does not follow
+   otlptranslator; a cumulative pull `MetricReader` with the not-ready statuses
+   (plus `otel_disabled` for `otelEnabled: false`), attached by
+   `registerOtelProviders()`; `metricsHandler()` (a `(req, res)` listener) and
+   `renderPrometheus()` from the Node-only `@provide-io/telemetry/prometheus`
+   entry; the listener on `node:http`/`node:https`, loaded through a
+   runtime-only import so the browser bundle never contains it (a test bundles
+   the browser entries with esbuild to prove it), with the web config subset,
+   per-connection certificate reload and fail-closed startup (`yaml` and
+   `bcryptjs` as optional peers); observable instruments. TypeScript is in both
+   capability sets and in the scrape E2E. `PROVIDE_METRICS_HEALTH_OTLP` is
+   parsed but not yet acted on.
 5. **Rust and C#**, including the push-security gaps (private CA in both,
    per-signal headers in C#). `metrics_handler` becomes `required: true` in the
    spec once all five ship.
