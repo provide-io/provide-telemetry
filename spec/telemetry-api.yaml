@@ -17,7 +17,7 @@
 #               Supported values: "governance", "observable_metrics", "prometheus"
 #               Capability rules by language:
 #                 python, typescript, go, rust, csharp — governance always present
-#                 observable_metrics, prometheus — none yet; a language is added to
+#                 observable_metrics, prometheus — go so far; a language is added to
 #                   the matching set in validate_conformance.py in the PR that ships
 #                   it (see docs/plans/2026-10-10-prometheus-metrics-design.md)
 #   note:       human-readable description or rationale
@@ -128,7 +128,7 @@ api:
       kind: function
       required: false
       capability: prometheus
-      note: "Tier 2 pull handler the host mounts on its own HTTP server; idiomatic shape per language (ASGI app, http.Handler, node:http listener, ASP.NET endpoint mapping). Not exported by browser TypeScript."
+      note: "Tier 2 pull handler the host mounts on its own HTTP server; idiomatic shape per language (ASGI app, http.Handler, node:http listener, ASP.NET endpoint mapping). Not exported by browser TypeScript. Go exports it from the otel module, which owns the MeterProvider."
     - name: render_prometheus
       kind: function
       required: false
@@ -1184,10 +1184,11 @@ prometheus_metrics:
     - "LISTEN=true without prometheus in OTEL_METRICS_EXPORTER still attaches the Prometheus reader; asking for a listener implies the reader."
 
   observable_instruments:
-    - "A callback reports zero or more (value, attributes) observations per collection."
-    - "A callback that raises or panics contributes no observations for that collection, is counted, and never fails the collection or the scrape."
-    - "Registration returns a handle that unregisters the callback."
-    - "Without a live provider, callbacks register against the fallback and run when a collection is requested, so they stay testable."
+    - "A callback reports zero or more (value, attributes) observations per collection: each scrape for Prometheus, each export interval for OTLP."
+    - "A callback that raises or panics contributes no observations for that collection and never fails the collection or the scrape. The SDK logs one warning per instrument, not one per collection."
+    - "Observations obey the metrics gates that apply at collection time: none when metrics are disabled or consent denies metrics. They are not sampled and do not take backpressure tickets, since each is a snapshot rather than an event."
+    - "Registration returns a handle whose unregister stops the callback; unregistering twice is a no-op."
+    - "Like the synchronous instruments, an observable binds to the provider live at creation. Created before setup, or with no provider, its callback is never invoked and unregister is a no-op, so create observables after setup."
 
   translation:
     reference: "github.com/prometheus/otlptranslator v1.0.0 (MetricNamer and LabelNamer)"
@@ -1552,6 +1553,15 @@ language_overrides:
     - spec_name: histogram
       accepted_kinds: [type]
       note: "Go exports Histogram as interface type; NewHistogram() is the constructor"
+    - spec_name: observable_counter
+      accepted_kinds: [type]
+      note: "Go exports ObservableCounter as interface type; NewObservableCounter() is the constructor"
+    - spec_name: observable_gauge
+      accepted_kinds: [type]
+      note: "Go exports ObservableGauge as interface type; NewObservableGauge() is the constructor"
+    - spec_name: observable_up_down_counter
+      accepted_kinds: [type]
+      note: "Go exports ObservableUpDownCounter as interface type; NewObservableUpDownCounter() is the constructor"
     - spec_name: logger
       accepted_kinds: [function]
       note: >-

@@ -101,7 +101,11 @@ def get_python_exports(repo_root: Path | None = None) -> dict[str, str]:
 
 
 def get_go_exports(repo_root: Path | None = None) -> dict[str, str]:
-    """Parse exported symbol names and kinds from all non-test Go files in go/."""
+    """Parse exported symbol names and kinds from the non-test Go files of the SDK.
+
+    That is the root package in go/ plus the otel module in go/otel/, which
+    owns the MeterProvider and so exports the Prometheus handler.
+    """
     repo_root = repo_root or _REPO_ROOT
     go_dir = repo_root / "go"
     if not go_dir.is_dir():
@@ -112,7 +116,7 @@ def get_go_exports(repo_root: Path | None = None) -> dict[str, str]:
         (r"^var ([A-Z][A-Za-z0-9]*)", "instance"),
         (r"^type ([A-Z][A-Za-z0-9]*)", "type"),
     ]
-    for go_file in sorted(go_dir.glob("*.go")):
+    for go_file in [*sorted(go_dir.glob("*.go")), *sorted((go_dir / "otel").glob("*.go"))]:
         if go_file.name.endswith("_test.go"):
             continue
         text = go_file.read_text(encoding="utf-8")

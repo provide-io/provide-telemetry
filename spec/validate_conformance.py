@@ -265,8 +265,8 @@ _GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go",
 # Languages that ship the staged Prometheus work (see the prometheus_metrics
 # section of the spec). Each set starts empty and gains a language in the PR that
 # ships it, so from then on a missing export is a conformance error.
-_OBSERVABLE_METRICS_LANGUAGES: frozenset[str] = frozenset()
-_PROMETHEUS_LANGUAGES: frozenset[str] = frozenset()
+_OBSERVABLE_METRICS_LANGUAGES: frozenset[str] = frozenset({"go"})
+_PROMETHEUS_LANGUAGES: frozenset[str] = frozenset({"go"})
 
 _CAPABILITY_LANGUAGES: dict[str, frozenset[str]] = {
     "governance": _GOVERNANCE_LANGUAGES,
