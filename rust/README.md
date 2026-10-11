@@ -199,7 +199,7 @@ let _cleared = clear_session_context();
 use provide_telemetry::{extract_w3c_context, bind_propagation_context};
 
 // In an HTTP handler — extract incoming traceparent/tracestate/baggage.
-let header = |name| headers.get(name).and_then(|v| v.to_str().ok());
+let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
 let pc = extract_w3c_context(header("traceparent"), header("tracestate"), header("baggage"));
 let _propagation = bind_propagation_context(pc);
 // ... handle request; the binding is undone when `_propagation` drops ...
