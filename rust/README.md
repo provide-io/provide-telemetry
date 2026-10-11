@@ -14,7 +14,7 @@ provide-telemetry = { path = "../rust" }          # local workspace
 serde_json = "1"                                  # structured log fields are serde_json::Value
 
 # or once published:
-# provide-telemetry = "0.10"
+# provide-telemetry = "0.11"
 ```
 
 Requires Rust 1.81+.
