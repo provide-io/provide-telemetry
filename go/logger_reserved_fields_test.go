@@ -133,3 +133,31 @@ func TestReservedFields_GroupedKeysAreLeftAlone(t *testing.T) {
 		t.Fatalf("root trace.id = %v", decoded["trace.id"])
 	}
 }
+
+// A stamped field also displaces its cross-language wire name, which is what
+// the record is normalised to beside the other SDKs: a caller's "trace_id"
+// next to a stamped "trace.id" would otherwise be the same duplicate by
+// another spelling. Unstamped, the wire-named field is the caller's.
+func TestReservedFields_WireNamesAreReplacedOnlyWhenStamped(t *testing.T) {
+	ctx := SetTraceContext(context.Background(), "real-trace", "real-span")
+	wire := []any{
+		"service", "fake-svc", "env", "fake-env", "version", "9.9.9",
+		"trace_id", "fake-trace", "span_id", "fake-span",
+	}
+	line, decoded := _reservedRecord(t, _reservedConfig(), ctx, wire...)
+	for _, key := range []string{"service", "env", "version", "trace_id", "span_id"} {
+		if _, ok := decoded[key]; ok {
+			t.Fatalf("%s survived beside its stamped field: %s", key, line)
+		}
+	}
+	_assertSingleField(t, line, decoded, "service.name", "real-svc")
+	_assertSingleField(t, line, decoded, "trace.id", "real-trace")
+
+	cfg := DefaultTelemetryConfig()
+	cfg.Logging.Sanitize = false
+	cfg.ServiceName, cfg.Environment, cfg.Version = "", "", ""
+	line, decoded = _reservedRecord(t, cfg, context.Background(), wire...)
+	for i := 0; i < len(wire); i += 2 {
+		_assertSingleField(t, line, decoded, wire[i].(string), wire[i+1].(string))
+	}
+}

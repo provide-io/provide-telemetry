@@ -253,6 +253,16 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 	return _stampRootFields(r, stamped)
 }
 
+// _reservedWireNames maps each root field the library stamps to the name the
+// other SDKs, and the cross-language log record, give the same field.
+var _reservedWireNames = map[string]string{
+	"service.name":    "service",
+	"service.env":     "env",
+	"service.version": "version",
+	"trace.id":        "trace_id",
+	"span.id":         "span_id",
+}
+
 // _stampRootFields sets the library's own root fields on r, replacing any
 // root attribute the caller supplied under the same key.
 //
@@ -268,13 +278,22 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 //
 // Only root keys are compared. A "trace.id" nested inside a group is a
 // different field, and the caller's to name.
+//
+// Each stamped key also displaces its cross-language wire name — "service"
+// for "service.name", "trace_id" for "trace.id" — because that is the name
+// the record is normalised to when compared or shipped alongside the other
+// SDKs (spec/telemetry-api.yaml reserved_root_fields), and a caller's
+// "trace_id" next to a stamped "trace.id" is the same duplicate by another
+// spelling.
 func _stampRootFields(r slog.Record, stamped []slog.Attr) slog.Record {
 	if len(stamped) == 0 {
 		return r
 	}
 	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
-		if !slices.ContainsFunc(stamped, func(s slog.Attr) bool { return s.Key == a.Key }) {
+		if !slices.ContainsFunc(stamped, func(s slog.Attr) bool {
+			return s.Key == a.Key || _reservedWireNames[s.Key] == a.Key
+		}) {
 			nr.AddAttrs(a)
 		}
 		return true
