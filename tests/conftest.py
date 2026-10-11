@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import os
 import sys
+from collections.abc import Generator
 from pathlib import Path
 
 import hypothesis
@@ -49,6 +51,22 @@ if str(PROJECT_ROOT) not in sys.path:
 # instrumentation and have baselines to compare against.
 hypothesis.settings.register_profile("provide", deadline=None)
 hypothesis.settings.load_profile("provide")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def drop_git_hook_environment() -> Generator[None]:
+    """Run the suite without the GIT_* variables a git hook exports.
+
+    The pre-commit hook runs this suite with GIT_DIR and GIT_INDEX_FILE pointing
+    at the real repository, and every git a test spawns inherits them. `git init`
+    in tmp_path then re-initialises the real repository as bare, and `go build`
+    fails its VCS stamping with exit status 128. Without them, git finds the
+    repository from the working directory, which is what every test expects.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        for name in [key for key in os.environ if key.startswith("GIT_")]:
+            patch.delenv(name)
+        yield
 
 
 @pytest.fixture(autouse=True)
