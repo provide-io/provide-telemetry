@@ -90,7 +90,9 @@ async function main(): Promise<void> {
   recordRedMetrics({ route: '/game/start', method: 'POST', statusCode: 200, durationMs: 22.0 });
   recordRedMetrics({ route: '/game/start', method: 'POST', statusCode: 500, durationMs: 150.0 });
   recordUseMetrics({ resource: 'cpu', utilization: 55 });
-  histogram('example.hardening.latency', { description: 'Request latency', unit: 'ms' }).record(22.0);
+  histogram('example.hardening.latency', { description: 'Request latency', unit: 'ms' }).record(
+    22.0,
+  );
   console.log('  ✅ RED: 2 requests (1 success, 1 error)');
   console.log('  ✅ USE: cpu=55%');
 
@@ -107,7 +109,9 @@ async function main(): Promise<void> {
   // ── 🩺 Health snapshot ──────────────────────────────────
   console.log('\n🩺 Health snapshot summary:');
   const s = getHealthSnapshot();
-  console.log(`  📉 Dropped:        logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`);
+  console.log(
+    `  📉 Dropped:        logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`,
+  );
   console.log(`  🔄 retriesLogs:            ${s.retriesLogs}`);
   console.log(`  ❌ exportFailuresLogs:     ${s.exportFailuresLogs}`);
   console.log(`  ⚠️  asyncRiskLogs:         ${s.asyncBlockingRiskLogs}`);

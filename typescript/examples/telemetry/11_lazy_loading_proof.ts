@@ -56,7 +56,11 @@ function runScript(script: string): number {
     });
     return parseFloat(out.trim());
   } finally {
-    try { require('node:fs').unlinkSync(tmpFile); } catch { /* ignore */ }
+    try {
+      require('node:fs').unlinkSync(tmpFile);
+    } catch {
+      /* ignore */
+    }
   }
 }
 

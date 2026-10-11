@@ -43,7 +43,8 @@ function bench(fn: () => void, iterations: number = ITERATIONS): number {
 // `import … from` / `export … from` / bare `import '…'`, possibly spanning
 // lines. `import type` is erased at compile time and dynamic import() is
 // lazy, so neither counts as an eager load.
-const STATIC_IMPORT = /^\s*(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm;
+const STATIC_IMPORT =
+  /^\s*(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm;
 
 /** Every package the entry file reaches through static imports, following relative imports. */
 function staticPackageImports(entry: string): Set<string> {
@@ -75,7 +76,10 @@ async function main(): Promise<void> {
 
   // ── ⚙️  setupTelemetry cost ──────────────────────────────
   console.log('⚙️  Setup Cost\n');
-  rows.push(['setupTelemetry()', fmt(bench(() => setupTelemetry({ serviceName: 'perf-test' }), 100))]);
+  rows.push([
+    'setupTelemetry()',
+    fmt(bench(() => setupTelemetry({ serviceName: 'perf-test' }), 100)),
+  ]);
 
   setupTelemetry({ serviceName: 'perf-test', consoleOutput: false });
 

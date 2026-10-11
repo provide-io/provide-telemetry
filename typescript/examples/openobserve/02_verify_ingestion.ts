@@ -52,7 +52,9 @@ function requestJson(url: string, auth: string, method = 'GET', body?: unknown):
         method,
         headers: {
           Authorization: auth,
-          ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {}),
+          ...(payload
+            ? { 'Content-Type': 'application/json', 'Content-Length': payload.length }
+            : {}),
         },
       },
       (res) => {
@@ -63,7 +65,11 @@ function requestJson(url: string, auth: string, method = 'GET', body?: unknown):
           if ((res.statusCode ?? 0) >= 400) {
             reject(new Error(`OpenObserve API returned ${res.statusCode}: ${raw}`));
           } else {
-            try { resolve(JSON.parse(raw)); } catch { resolve(raw); }
+            try {
+              resolve(JSON.parse(raw));
+            } catch {
+              resolve(raw);
+            }
           }
         });
       },
@@ -75,15 +81,17 @@ function requestJson(url: string, auth: string, method = 'GET', body?: unknown):
 }
 
 async function searchHits(
-  baseUrl: string, streamType: string, auth: string,
-  startUs: number, endUs: number,
+  baseUrl: string,
+  streamType: string,
+  auth: string,
+  startUs: number,
+  endUs: number,
 ): Promise<Record<string, unknown>[]> {
   const sql = 'select * from "default" order by _timestamp desc limit 500';
   try {
-    const res = await requestJson(
-      `${baseUrl}/_search?type=${streamType}`, auth, 'POST',
-      { query: { sql, start_time: startUs, end_time: endUs } },
-    ) as Record<string, unknown>;
+    const res = (await requestJson(`${baseUrl}/_search?type=${streamType}`, auth, 'POST', {
+      query: { sql, start_time: startUs, end_time: endUs },
+    })) as Record<string, unknown>;
     const hits = res['hits'];
     if (!Array.isArray(hits)) return [];
     return hits.filter((h): h is Record<string, unknown> => typeof h === 'object' && h !== null);
@@ -93,8 +101,15 @@ async function searchHits(
   }
 }
 
-async function streamNames(baseUrl: string, streamType: string, auth: string): Promise<Set<string>> {
-  const res = await requestJson(`${baseUrl}/streams?type=${streamType}`, auth) as Record<string, unknown>;
+async function streamNames(
+  baseUrl: string,
+  streamType: string,
+  auth: string,
+): Promise<Set<string>> {
+  const res = (await requestJson(`${baseUrl}/streams?type=${streamType}`, auth)) as Record<
+    string,
+    unknown
+  >;
   const list = res['list'];
   if (!Array.isArray(list)) return new Set();
   return new Set(list.map((item: unknown) => (item as Record<string, unknown>)['name'] as string));
@@ -102,7 +117,12 @@ async function streamNames(baseUrl: string, streamType: string, auth: string): P
 
 function requiredSignalsFromEnv(): Set<string> {
   const raw = process.env['OPENOBSERVE_REQUIRED_SIGNALS'] ?? 'logs';
-  const requested = new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const requested = new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
   if (requested.size === 0) requested.add('logs');
   const valid = new Set(['logs', 'metrics', 'traces']);
   for (const s of requested) {
@@ -137,7 +157,11 @@ async function main(): Promise<void> {
     (h) => (h['event'] === otlpLogEvent || h['event'] === jsonLogEvent) && h['run_id'] === runId,
   ).length;
   const beforeTraces = beforeTraceHits.filter((h) => h['operation_name'] === traceName).length;
-  const before = { logs: beforeLogs, metrics_stream_present: beforeMetricStreams.has(metricStream), traces: beforeTraces };
+  const before = {
+    logs: beforeLogs,
+    metrics_stream_present: beforeMetricStreams.has(metricStream),
+    traces: beforeTraces,
+  };
   const requiredSignals = requiredSignalsFromEnv();
   console.log(`before=${JSON.stringify(before)}`);
   console.log(`required_signals=${JSON.stringify([...requiredSignals].sort())}`);
@@ -156,7 +180,8 @@ async function main(): Promise<void> {
     const mStreams = await streamNames(baseUrl, 'metrics', auth);
     after = {
       logs: logHits.filter(
-        (h) => (h['event'] === otlpLogEvent || h['event'] === jsonLogEvent) && h['run_id'] === runId,
+        (h) =>
+          (h['event'] === otlpLogEvent || h['event'] === jsonLogEvent) && h['run_id'] === runId,
       ).length,
       metrics_stream_present: mStreams.has(metricStream),
       traces: traceHits.filter((h) => h['operation_name'] === traceName).length,

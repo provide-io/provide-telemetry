@@ -79,9 +79,9 @@ async function main(): Promise<void> {
   console.log('\n  3️⃣  Catch-all with TelemetryError:');
   let errorsCaught = 0;
   const badInputs: string[][] = [
-    ['x'],                            // too few segments
-    ['A', 'B', 'C'],                  // uppercase
-    ['a', 'b', 'c', 'd', 'e', 'f'],  // too many segments
+    ['x'], // too few segments
+    ['A', 'B', 'C'], // uppercase
+    ['a', 'b', 'c', 'd', 'e', 'f'], // too many segments
   ];
   for (const segs of badInputs) {
     try {
@@ -90,7 +90,9 @@ async function main(): Promise<void> {
       if (err instanceof TelemetryError) errorsCaught++;
     }
   }
-  console.log(`     Caught ${errorsCaught} errors with single 'catch (err instanceof TelemetryError)'`);
+  console.log(
+    `     Caught ${errorsCaught} errors with single 'catch (err instanceof TelemetryError)'`,
+  );
 
   // Valid names still work
   console.log('\n  4️⃣  Valid event names:');
@@ -117,7 +119,9 @@ async function main(): Promise<void> {
 
   // Health snapshot shows the state
   const health = getHealthSnapshot();
-  console.log(`  📊 Health: exportFailuresLogs=${health.exportFailuresLogs}, logsDropped=${health.logsDropped}`);
+  console.log(
+    `  📊 Health: exportFailuresLogs=${health.exportFailuresLogs}, logsDropped=${health.logsDropped}`,
+  );
 
   // ── ⚠️  Sampling rate clamping diagnostic ────────────────
   console.log('\n⚠️  Sampling rate clamping (rate clamped to [0,1]):\n');
@@ -137,7 +141,9 @@ async function main(): Promise<void> {
       validateEventName(name);
       console.log(`  ${JSON.stringify(name)} → valid`);
     } catch (err) {
-      console.log(`  ${JSON.stringify(name)} → invalid: ${err instanceof Error ? err.message : String(err)}`);
+      console.log(
+        `  ${JSON.stringify(name)} → invalid: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

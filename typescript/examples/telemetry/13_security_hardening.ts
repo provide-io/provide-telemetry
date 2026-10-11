@@ -58,12 +58,19 @@ async function main(): Promise<void> {
 
   // 3. Default sensitive field redaction (password, token, api_key, etc.)
   console.log('3. Default sensitive field redaction:');
-  log.info({ ...event('security', 'demo', 'pii'), password: 'hunter2', token: 'abc123', user: 'alice' }); // pragma: allowlist secret
+  log.info({
+    ...event('security', 'demo', 'pii'),
+    password: 'hunter2', // pragma: allowlist secret
+    token: 'abc123', // pragma: allowlist secret
+    user: 'alice',
+  });
   console.log('   (password and token fields redacted in log output)\n');
 
   // 4. Nesting depth limit
   console.log('4. Nesting depth limit (default 8):');
-  const deep: Record<string, unknown> = { l1: { l2: { l3: { l4: { l5: { l6: { l7: { l8: { l9: 'deep' } } } } } } } } };
+  const deep: Record<string, unknown> = {
+    l1: { l2: { l3: { l4: { l5: { l6: { l7: { l8: { l9: 'deep' } } } } } } } },
+  };
   sanitizePayload(deep, [], { maxDepth: 4 });
   console.log(`   Sanitized with maxDepth=4: ${JSON.stringify(deep)}\n`);
 

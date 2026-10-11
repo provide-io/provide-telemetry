@@ -53,7 +53,9 @@ async function main(): Promise<void> {
   const cfg = getConfig();
   const log = getLogger('examples.basic');
 
-  console.log(`⚙️  Service: ${cfg.serviceName}  |  Env: ${cfg.environment}  |  Version: ${cfg.version}`);
+  console.log(
+    `⚙️  Service: ${cfg.serviceName}  |  Env: ${cfg.environment}  |  Version: ${cfg.version}`,
+  );
 
   // ── 📋 Structured context binding ───────────────────────
   console.log('\n📋 Binding structured context fields...');
