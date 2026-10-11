@@ -3,7 +3,7 @@
 ## Versioning
 
 - Tag format is per-language: `vX.Y.Z` (Python, root), `typescript/vX.Y.Z`,
-  `rust/vX.Y.Z`, `go/vX.Y.Z`, `go/otel/vX.Y.Z`. See "Publish Path" below for
+  `rust/vX.Y.Z`, `go/vX.Y.Z`, `go/otel/vX.Y.Z`, `csharp/vX.Y.Z`. See "Publish Path" below for
   what triggers off each.
 - `scripts/check_version_sync.py` requires every language's version to share
   root `VERSION`'s major.minor; patch numbers are independent per language and
@@ -32,14 +32,16 @@ uv run twine check dist/*
 
 ## GitHub Workflows
 
-- `.github/workflows/ci-python.yml`, `ci-typescript.yml`, `ci-go.yml`, and
-  `ci-rust.yml`: language-specific test and quality gates.
+- `.github/workflows/ci-python.yml`, `ci-typescript.yml`, `ci-go.yml`,
+  `ci-rust.yml`, and `ci-csharp.yml`: language-specific test and quality gates.
+  `ci-go-fuzz.yml` runs the Go fuzz targets; `codeql.yml` runs CodeQL.
 - `.github/workflows/ci-spec.yml`, `ci-contracts.yml`, and `ci-surface.yml`:
   parity, contract, and release-surface gates.
 - `.github/workflows/ci-shared.yml`: docs-quality, release-readiness, and
   optional OpenObserve end-to-end validation.
-- `.github/workflows/ci-mutation.yml`: mutation gate and resilience/runtime
-  stress coverage.
+- `.github/workflows/ci-mutation.yml`: mutation gates for all five languages
+  (`python-mutation`, `typescript-mutation`, `rust-mutation`, `go-mutation`,
+  `csharp-mutation`).
 - `.github/workflows/release.yml`: publishes each language independently — see
   "Publish Path" below.
 
@@ -87,7 +89,7 @@ both pushes emit `warn : Readme missing`; neither package embeds a README, so
 their nuget.org pages render without one.
 
 > This section previously claimed there was no `dotnet nuget push` step and no publish
-> job at all. That was wrong — the job exists at `release.yml:325` — and the error it
+> job at all. That was wrong — the job exists (`publish-nuget` in `release.yml`) — and the error it
 > actually hit was an unconfirmed org email, not a missing implementation.
 
 Cutting a release for one language never touches the others — pushing
@@ -246,9 +248,11 @@ Prerequisites (one-time setup, completed 2026-08-13):
   blocks third-party `Provide.*` uploads.
 
 Release steps:
-1. Bump `<Version>` in both `csharp/src/*/*.csproj` files to share root
-   `VERSION`'s major.minor — `scripts/check_version_sync.py` verifies both
-   packages and the assembly identity.
+1. Bump `csharp/VERSION` and `<Version>` (with the matching
+   `<AssemblyVersion>` / `<FileVersion>`) in both `csharp/src/*/*.csproj`
+   files to share root `VERSION`'s major.minor —
+   `scripts/check_version_sync.py` verifies both packages and the assembly
+   identity.
 2. Push tag `csharp/vX.Y.Z`.
 3. `build-csharp` builds `-warnaserror`, tests, packs both packages, and fails
    unless exactly two `.nupkg`s were produced.
@@ -292,7 +296,7 @@ GOWORK=off govulncheck ./...
 # unleash` directly — its --threshold-* flags do not gate (v0.6.0 exits 0 even
 # at an impossible 101%). scripts/run_gremlins_gate.sh is what fails the run,
 # on a survivor, an uncovered mutant, a timeout, or a missing summary.
-GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="mutation_constants.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="otel/" --exclude-files="scripts/stress/" .
+GOWORK=off ../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --coverpkg="github.com/provide-io/provide-telemetry/go" --exclude-files="sampling_cmp.go" --exclude-files="resilience_cmp.go" --exclude-files="mutation_constants.go" --exclude-files="logger_console_windows.go" --exclude-files="cmd/e2e_cross_language_client/" --exclude-files="examples/" --exclude-files="internal/" --exclude-files="otel/" --exclude-files="scripts/stress/" .
 
 # The four internal/ packages. The root step excludes "internal/", so without
 # these they are mutated by nothing.
@@ -308,7 +312,7 @@ GOWORK=off go test -race -coverprofile=coverage.out .
 go tool cover -func=coverage.out | grep total   # must be 100.0%
 # Locally this module needs GOTOOLCHAIN=go1.26.1: gremlins copies it to a temp
 # dir where its `replace => ../` and Go's toolchain auto-switching disagree.
-GOWORK=off ../../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="cmd/flush_collector_probe/" --exclude-files="examples/" .
+GOWORK=off ../../scripts/run_gremlins_gate.sh --workers=1 --test-cpu=1 --timeout-coefficient=100 --threshold-efficacy=100 --threshold-mcover=100 --exclude-files="mutation_constants.go" --exclude-files="cmd/flush_collector_probe/" --exclude-files="cmd/prometheus_push_probe/" --exclude-files="cmd/prometheus_scrape_probe/" --exclude-files="examples/" .
 ```
 
 Run these one at a time. Each saturates every core by default, and gremlins is
