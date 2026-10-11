@@ -20,11 +20,13 @@ each SDK joins the parametrization as it ships Tier 3.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -85,7 +87,7 @@ def _value(base: str, promql: str) -> float | None:
 
 
 @pytest.fixture()
-def probe(request: pytest.FixtureRequest) -> Iterator[str]:
+def probe(request: pytest.FixtureRequest) -> Iterator[tuple[str, str]]:
     language, mode = request.param
     command, cwd, runtime = _PROBES[language]
     if shutil.which(runtime) is None:
@@ -93,6 +95,7 @@ def probe(request: pytest.FixtureRequest) -> Iterator[str]:
             pytest.fail(f"{runtime} is required for the {language} probe")
         pytest.skip(f"{runtime} is not installed")
     port, job = _MODES[mode]
+    service = f"prometheus-scrape-probe-{language}"
     env = {k: v for k, v in os.environ.items() if k not in _AMBIENT_CA_VARS}
     env.update(
         {
@@ -100,33 +103,38 @@ def probe(request: pytest.FixtureRequest) -> Iterator[str]:
             "PROVIDE_METRICS_PROMETHEUS_LISTEN": "true",
             "OTEL_EXPORTER_PROMETHEUS_HOST": "127.0.0.1",
             "OTEL_EXPORTER_PROMETHEUS_PORT": port,
-            "PROVIDE_TELEMETRY_SERVICE_NAME": f"prometheus-scrape-probe-{language}",
+            "PROVIDE_TELEMETRY_SERVICE_NAME": service,
         }
     )
     if mode == "secured":
         env["PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG"] = str(
             Path(_require("PROMETHEUS_TLS_CA")).parent / "web-config.yml"
         )
-    proc = subprocess.Popen(  # nosec B603 — fixed probe command
-        command, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
-    try:
-        deadline = time.monotonic() + _READY_TIMEOUT_S
-        assert proc.stdout is not None
-        line = proc.stdout.readline()
-        while line.strip() != "ready":
-            assert proc.poll() is None and time.monotonic() < deadline, (
-                f"probe never became ready: {proc.stderr.read() if proc.stderr else ''}"
-            )
-            line = proc.stdout.readline()
-        yield job
-    finally:
-        assert proc.stdin is not None
-        proc.stdin.close()
+    # Every language's probe binds the same port for a mode, and the pytest gate
+    # runs workers in parallel, so hold the port exclusively for the probe's life.
+    lock_path = Path(tempfile.gettempdir()) / f"provide-prometheus-scrape-{port}.lock"
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        proc = subprocess.Popen(  # nosec B603 — fixed probe command
+            command, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        )
         try:
-            proc.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+            deadline = time.monotonic() + _READY_TIMEOUT_S
+            assert proc.stdout is not None
+            line = proc.stdout.readline()
+            while line.strip() != "ready":
+                assert proc.poll() is None and time.monotonic() < deadline, (
+                    f"probe never became ready: {proc.stderr.read() if proc.stderr else ''}"
+                )
+                line = proc.stdout.readline()
+            yield job, service
+        finally:
+            assert proc.stdin is not None
+            proc.stdin.close()
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
 
 @pytest.mark.parametrize(
@@ -135,10 +143,13 @@ def probe(request: pytest.FixtureRequest) -> Iterator[str]:
     ids=[f"{lang}-{mode}" for lang in _PROBES for mode in _MODES],
     indirect=True,
 )
-def test_prometheus_scrapes_the_sdk_listener(probe: str) -> None:
+def test_prometheus_scrapes_the_sdk_listener(probe: tuple[str, str]) -> None:
     base = _require("PROMETHEUS_SCRAPE_URL").rstrip("/")
-    job = probe
+    job, service = probe
+    # target_info names this probe, so samples left by the previous language's
+    # probe on the same port cannot satisfy the checks.
     checks = {
+        f'target_info{{job="{job}",service_name="{service}"}}': 1.0,
         f'up{{job="{job}"}}': 1.0,
         f'e2e_scrape_requests_total{{job="{job}"}}': 3.0,
         f'e2e_scrape_temperature_celsius{{job="{job}"}}': 41.5,
