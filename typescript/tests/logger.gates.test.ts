@@ -112,6 +112,8 @@ describe('makeWriteHook — consent gate', () => {
     const hook = makeWriteHook();
     hook({ level: 30, message: 'should.be.dropped' });
     expect(getHealthSnapshot().logsEmitted).toBe(before);
+    // A consent refusal is a drop, as the health snapshot spec names it.
+    expect(getHealthSnapshot().logsDropped).toBe(1);
   });
 });
 

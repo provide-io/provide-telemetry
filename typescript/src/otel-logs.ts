@@ -37,6 +37,8 @@ import type { TelemetryConfig } from './config.js';
 import { getConfig } from './config.js';
 import { validateOtlpEndpoint } from './endpoint.js';
 import { hardenRecord } from './harden.js';
+import { _exportFailuresField, _incrementHealth } from './health.js';
+import { pipelineStage } from './pipeline-stages.js';
 import { buildOtelResource } from './otel-resource.js';
 import { dynImportOtel } from './otel-dynimport.js';
 import { wrapResilientExporter } from './resilient-exporter.js';
@@ -142,6 +144,7 @@ export async function setupOtelLogProvider(cfg: TelemetryConfig): Promise<Shutdo
  */
 export function emitLogRecord(o: Record<string, unknown>, callsite?: Callsite): void {
   if (!_otelLogger) return;
+  pipelineStage('backend');
 
   const severity = parseLevel(String(o['level'] ?? ''));
   const body = String(o['message'] ?? o['event'] ?? '');
@@ -181,13 +184,20 @@ export function emitLogRecord(o: Record<string, unknown>, callsite?: Callsite): 
     }
   }
 
-  _otelLogger.emit({
-    body,
-    severityNumber,
-    severityText,
-    attributes,
-    timestamp: typeof o['time'] === 'number' ? o['time'] : Date.now(),
-  });
+  // Delivery is best-effort: a logger that throws degrades telemetry, it does
+  // not fault the application's log call, and the health stage after it must
+  // still run. The failure is counted where the C# and Go bridges count it.
+  try {
+    _otelLogger.emit({
+      body,
+      severityNumber,
+      severityText,
+      attributes,
+      timestamp: typeof o['time'] === 'number' ? o['time'] : Date.now(),
+    });
+  } catch {
+    _incrementHealth(_exportFailuresField('logs'));
+  }
 }
 
 /** Exposed for tests and resetTelemetryState(). */
