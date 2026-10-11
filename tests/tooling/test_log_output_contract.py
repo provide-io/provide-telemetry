@@ -173,3 +173,32 @@ def test_colour_is_decided_from_the_destination(language: str, guard: tuple[str,
         f"{language}: {relative_path} no longer consults {token!r}, so console output can carry "
         "ANSI into a writer that is not known to render it"
     )
+
+
+# The re-entrance rule is a guard in each sink, not a prohibition in its docs.
+# Each token is the guard itself: the stack check Go runs once its lock is
+# found taken, the thread-local flag Python and Rust set around the writer call.
+_REENTRANCE_GUARDS = {
+    "go": ("go/logger_sink.go", "_insideHostWriter"),
+    "rust": ("rust/src/logger/sink.rs", "INSIDE_WRITER"),
+    "python": ("src/provide/telemetry/logger/handlers.py", "WRITER_FRAME"),
+}
+
+
+def test_reentrance_describes_every_language_with_a_sink() -> None:
+    """Each sink says what its unit of re-entrance is; one left out has no guard on record."""
+    reentrance = _log_output()["reentrance"]
+    assert reentrance["rule"], "log_output.reentrance lost its rule"
+    applicability = set(_log_output()["applicability"])
+    assert applicability <= set(reentrance), f"reentrance does not describe {applicability - set(reentrance)}"
+    assert set(_REENTRANCE_GUARDS) == applicability
+
+
+@pytest.mark.parametrize(("language", "guard"), sorted(_REENTRANCE_GUARDS.items()))
+def test_each_sink_guards_against_a_writer_that_logs_back(language: str, guard: tuple[str, str]) -> None:
+    """A writer logging from inside itself is refused, not deadlocked on or recursed into."""
+    relative_path, token = guard
+    assert token in _source(relative_path), (
+        f"{language}: {token!r} is gone from {relative_path}, so a writer that logs from inside "
+        "itself deadlocks or recurses instead of having its record refused"
+    )

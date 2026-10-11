@@ -946,6 +946,51 @@ log_output:
     the writer's own isatty, which every file object carries. Rust would have to
     charge every host a trait implementation for the same answer, so it assumes
     not-a-terminal.
+
+    The writer is the host's code running inside a log call, and two things it
+    can do there cost only the record in hand. A writer that fails -- returns an
+    error, raises or panics -- loses the record it was writing, which counts as
+    a log export failure; the log call does not fail with it. And a record
+    logged from inside the log output writer, on the call stack already writing
+    to it, is not written and counts as an export failure; concurrent writers
+    are never dropped. Without the second rule a writer that reports its own
+    trouble through the SDK deadlocks on the sink's lock or recurses into
+    itself, so the rule is a guard, not a documented prohibition. Both counts
+    land in the logs export_failures health counter. The record is still
+    emitted, health being the stage after the sinks: it passed every admission
+    gate, and a sink that failed still ran.
+  reentrance:
+    rule: >
+      A record logged from inside the log output writer, on the call stack
+      already writing to it, is not written and counts as an export failure;
+      concurrent writers are never dropped.
+    call_stack: >
+      What "the call stack already writing" means is each runtime's own unit of
+      execution, because that is the unit that can come back to the sink while
+      it holds it. A writer is synchronous, so nothing else runs on that unit
+      until the writer returns; any record from another unit is a concurrent
+      writer and waits for the sink as it always has. None of the three can say
+      which sink a writer frame belongs to, so a writer that logs into a
+      replacement sink installed meanwhile is refused too.
+    go: >
+      the goroutine. Go does not expose goroutine identity, so the sink checks,
+      only once TryLock has failed, whether the caller's own stack holds the
+      frame that calls the host's writer.
+    python: >
+      the thread. A thread-local flag is set around the writer call; the stdlib
+      handler lock is an RLock, so without it a same-thread record recursed
+      rather than deadlocked. Records reaching the root through stdlib logging
+      are caught the same way, and, never having been admitted by the
+      pipeline, count as an export failure without counting as emitted.
+    rust: >
+      the thread. A thread_local flag is set around the writer call, checked
+      before the sink's std::sync::Mutex, which deadlocks when one thread
+      locks it twice.
+    portability: >
+      Not a behavioural fixture. The writer is a host handle, so no
+      cross-language probe can install one; each SDK holds the rule in its own
+      tests, and tests/tooling/test_log_output_contract.py asserts each guard
+      is present in the source.
   applicability: [go, rust, python]
   host_control:
     go: none after setup — the SDK owns the slog handler chain
