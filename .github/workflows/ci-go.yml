@@ -206,7 +206,7 @@ jobs:
           # still topped out at 1.26.5, so check-latest alone cannot reach the
           # patched stdlib. GOTOOLCHAIN fetches the pinned toolchain straight
           # from go.dev. Bump it whenever a stdlib vuln fix lands.
-          GOTOOLCHAIN: go1.26.6
+          GOTOOLCHAIN: go1.26.9
         run: govulncheck .
       # go/otel is its own module and was never scanned: the root `./...` stops
       # at the module boundary. Its examples and probe are small enough to scan whole.
@@ -218,7 +218,7 @@ jobs:
       - name: Run govulncheck (go/otel)
         working-directory: go/otel
         env:
-          GOTOOLCHAIN: go1.26.6
+          GOTOOLCHAIN: go1.26.9
         run: govulncheck ./...
 
   vet:
