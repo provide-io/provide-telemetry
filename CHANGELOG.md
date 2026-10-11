@@ -257,8 +257,9 @@ keys render to the same name (`1` and `"1"`), now canonicalizes to `null`.
     failure.
   - A writer that panics in `Flush` no longer aborts `ShutdownTelemetry`
     partway.
-  - A writer that logs back through the SDK still deadlocks. `WithLogOutput`
-    now documents this.
+  - A writer that logs back through the SDK from inside `Write` or `Flush` no
+    longer deadlocks. The nested record is dropped and counted as an export
+    failure. Writes from other goroutines still wait and are never dropped.
 - **TypeScript: an OTel logger that throws now counts an export failure.**
   Before this, the exception failed the log call and the record skipped
   health.

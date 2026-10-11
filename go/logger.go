@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"regexp"
@@ -520,13 +521,21 @@ func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 		},
 	}
 	out := _logOutput()
-	if cfg.Logging.Format == LogFormatJSON {
-		return slog.NewJSONHandler(out, opts)
+	render := func(w io.Writer) slog.Handler {
+		if cfg.Logging.Format == LogFormatJSON {
+			return slog.NewJSONHandler(w, opts)
+		}
+		if cfg.Logging.Format == LogFormatPretty {
+			return newPrettyHandlerWithColors(w, cfg, _prettyColors(out))
+		}
+		return slog.NewTextHandler(w, opts)
 	}
-	if cfg.Logging.Format == LogFormatPretty {
-		return newPrettyHandler(out, cfg)
+	// A host's writer is rendered into and written separately, so no renderer
+	// lock is held while it runs (see _sinkHandler).
+	if sink, ok := out.(*_logSink); ok {
+		return _newSinkHandler(sink, render)
 	}
-	return slog.NewTextHandler(out, opts)
+	return render(out)
 }
 
 // _attachTraceContext adds trace.id / span.id from ctx to logger when present.

@@ -157,9 +157,13 @@ What the option guarantees, and what it asks of your writer:
   somewhere you did not ask for.
 - **A panicking writer costs only the record it was writing.** The panic is
   recovered and counted as a log export failure.
-- **Your writer must not log through this SDK from inside `Write` or `Flush`.**
-  That call re-enters the serialized sink on the same goroutine and deadlocks;
-  report the writer's own trouble somewhere else, such as `os.Stderr` directly.
+- **A record your writer logs from inside its own `Write` or `Flush` is
+  dropped, not deadlocked on.** Logging through this SDK there re-enters the
+  serialized sink on the goroutine that holds it. That nested record never
+  reaches your writer and counts as a log export failure; the record being
+  written is unaffected. Writes from other goroutines still wait their turn and
+  are never dropped. To see the writer's own trouble, report it somewhere else,
+  such as `os.Stderr` directly.
 
 Pretty-format colors need a terminal. An `*os.File` is probed directly; any
 other writer is asked, and gets colors only if it implements

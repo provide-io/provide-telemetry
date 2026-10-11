@@ -80,10 +80,12 @@ func WithLoggerProvider(lp any) SetupOption {
 // and any other writer is asked, if it implements IsTerminal() bool.
 //
 // A writer that panics costs only the record it was writing: the panic is
-// recovered and counted as a log export failure. A writer must not log through
-// this SDK from inside Write or Flush — that call re-enters the serialized sink
-// on the same goroutine and deadlocks. Report a writer's own trouble somewhere
-// else, such as os.Stderr directly.
+// recovered and counted as a log export failure. A writer that logs through
+// this SDK from inside Write or Flush — through slog.Default, Logger or
+// GetLogger alike — does not deadlock: that nested record is dropped rather
+// than written to w, and counted as a log export failure. Writes from other
+// goroutines still wait their turn and are never dropped. A writer that needs
+// its own trouble seen should report it somewhere else, such as os.Stderr.
 //
 // ShutdownTelemetry flushes w when it implements Flush() error, so a bufio.Writer
 // does not lose its tail. A nil writer — including a nil pointer in a non-nil
