@@ -1,7 +1,7 @@
 {
   "name": "@provide-io/telemetry",
   "version": "0.11.0",
-  "description": "Structured logging, OTEL traces/metrics for TypeScript frontends — parity with provide.telemetry Python package",
+  "description": "Structured logging, OTEL traces/metrics for TypeScript (Node.js and browsers) — parity with provide.telemetry Python package",
   "license": "Apache-2.0",
   "author": "provide.io llc",
   "homepage": "https://github.com/provide-io/provide-telemetry#readme",

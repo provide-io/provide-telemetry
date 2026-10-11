@@ -91,6 +91,11 @@ log.error({ event: 'db.query.error', error: err.message });
 
 Event names follow the DA(R)S pattern: 3 segments (`domain.action.status`) or 4 segments (`domain.action.resource.status`).
 
+The SDK stamps `service`, `env` and `version` from config and, while a span is
+live, `trace_id` and `span_id` on every record. A field you log or bind under
+one of those names is replaced by the stamped value; to name a remote service,
+use `peer.service`.
+
 ### Callsite capture
 
 Two independent knobs select two different outputs from one stack walk. Enabling
@@ -144,6 +149,9 @@ requests.add(1, { method: 'GET', status: '200' });
 const latency = histogram('http.duration', { unit: 'ms' });
 latency.record(42, { route: '/api/users' });
 
+const cpu = gauge('cpu.utilization', { unit: '%' }); // an OTel Gauge: last value wins
+cpu.set(72.5);
+
 // Values computed at collection time (each scrape or export interval).
 const depth = observableGauge('queue.depth', () => [{ value: queue.length }]);
 depth.unregister();
@@ -165,8 +173,12 @@ const { body, contentType } = await renderPrometheus(req.headers.accept);
 
 TLS and basic auth for the listener come from a Prometheus web config file
 named by `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`, which needs the optional
-`yaml` and `bcryptjs` packages. See the configuration guide's "Serving Metrics
-for Prometheus to Scrape". The browser build has no pull support.
+`yaml` and `bcryptjs` packages (`npm install yaml bcryptjs`). Every scrape also
+carries the SDK's own health as `provide_telemetry_*` series;
+`PROVIDE_METRICS_HEALTH_OTLP=true` exports them over OTLP as well. See
+"Serving Metrics for Prometheus to Scrape" in
+[docs/guide/configuration.md](../docs/guide/configuration.md). The browser
+build has no pull support.
 
 ### Context binding
 
@@ -211,8 +223,9 @@ try {
 ```typescript
 import { extractW3cContext, bindPropagationContext } from '@provide-io/telemetry';
 
-// In an HTTP handler — extract incoming traceparent/tracestate.
-const ctx = extractW3cContext(req.headers);
+// In an HTTP handler — extract incoming traceparent/tracestate/baggage.
+// Takes a Record<string, string>; node:http's IncomingHttpHeaders needs narrowing.
+const ctx = extractW3cContext(req.headers as Record<string, string>);
 bindPropagationContext(ctx);
 ```
 
@@ -241,6 +254,10 @@ import { getHealthSnapshot } from '@provide-io/telemetry';
 const snap = getHealthSnapshot();
 // snap.exportFailuresLogs, snap.tracesDropped, ...
 ```
+
+A log record counts in `logsEmitted` once it has passed the sinks. One refused
+before export — by consent, sampling or backpressure — counts in
+`logsDropped` instead, never in both.
 
 ### Runtime inspection
 
@@ -419,6 +436,14 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | `""` | Per-signal OTLP endpoint for metrics |
 | `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | `""` | Per-signal OTLP headers for metrics |
 <!-- END GENERATED CONFIG: typescript_summary -->
+
+`OTEL_METRICS_EXPORTER` (`otlp`, `prometheus`, `otlp,prometheus` or `none`)
+and the Prometheus variables are covered under [Prometheus](#prometheus-node-only).
+OTLP over TLS reads `OTEL_EXPORTER_OTLP_CERTIFICATE`, `_CLIENT_CERTIFICATE`
+and `_CLIENT_KEY`, each with per-signal forms that win; a file that cannot be
+read or loaded leaves that signal's exporter unbuilt, logs
+`otlp.tls_file_unreadable` and sets `getHealthSnapshot().setupError`. The full
+list is in [docs/guide/configuration.md](../docs/guide/configuration.md).
 
 ### Pretty renderer
 
