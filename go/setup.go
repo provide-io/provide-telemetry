@@ -77,6 +77,12 @@ func WithLoggerProvider(lp any) SetupOption {
 // pretty renderer emits ANSI only when w is a terminal: an *os.File is probed,
 // and any other writer is asked, if it implements IsTerminal() bool.
 //
+// A writer that panics costs only the record it was writing: the panic is
+// recovered and counted as a log export failure. A writer must not log through
+// this SDK from inside Write or Flush — that call re-enters the serialized sink
+// on the same goroutine and deadlocks. Report a writer's own trouble somewhere
+// else, such as os.Stderr directly.
+//
 // ShutdownTelemetry flushes w when it implements Flush() error, so a bufio.Writer
 // does not lose its tail. A nil writer — including a nil pointer in a non-nil
 // interface — is a configuration error rather than a silent fall back to

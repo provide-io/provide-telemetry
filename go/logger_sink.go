@@ -4,6 +4,7 @@
 package telemetry
 
 import (
+	"errors"
 	"io"
 	"os"
 	"reflect"
@@ -33,11 +34,31 @@ var _activeLogSink atomic.Pointer[_logSink] //nolint:gochecknoglobals
 // every logger in the process would write to the one shared writer unsynchronized.
 // os.Stderr needs no such wrapper: it is a single descriptor whose small writes
 // the kernel already serializes.
+//
+// The writer is the host's code, run inside a log call, so the sink puts a
+// panic boundary around it: a Write or Flush that panics becomes
+// errLogWriterPanicked, which the telemetry handler counts as an export
+// failure, and the lock is released on the way out so the next record is
+// still delivered.
+//
+// Re-entrance is the one thing the sink cannot absorb, and it is a documented
+// contract rather than a guard (see WithLogOutput): a writer that logs through
+// this SDK from inside Write re-enters the same lock on the same goroutine and
+// deadlocks. Telling that apart from an ordinary concurrent writer — which must
+// wait its turn — needs the identity of the calling goroutine, which Go
+// deliberately does not expose. The ways around that either parse
+// runtime.Stack on every record or hand writes to a queue drained by whichever
+// caller holds the lock, which turns a blocked writer into dropped records
+// under load. Neither is a trade a log sink should make silently.
 type _logSink struct {
 	mu     sync.Mutex
 	w      io.Writer
 	colors bool
 }
+
+// errLogWriterPanicked is what a write or flush reports when the host's writer
+// panicked rather than returning.
+var errLogWriterPanicked = errors.New("telemetry: log output writer panicked")
 
 // _newLogSink wraps w, deciding once whether the destination can render ANSI.
 // The decision is made here because the pretty renderer sees only the wrapper.
@@ -45,21 +66,32 @@ func _newLogSink(w io.Writer) *_logSink {
 	return &_logSink{w: w, colors: _isTerminalWriter(w)}
 }
 
-func (s *_logSink) Write(p []byte) (int, error) {
+func (s *_logSink) Write(p []byte) (n int, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer func() {
+		if recover() != nil {
+			n, err = 0, errLogWriterPanicked
+		}
+	}()
 	return s.w.Write(p)
 }
 
 // Flush drains a buffered writer. Held under the same lock as Write so a flush
-// cannot interleave with a record being written.
-func (s *_logSink) Flush() error {
+// cannot interleave with a record being written. Shutdown calls it, so a
+// panicking Flush is recovered here too rather than aborting the teardown.
+func (s *_logSink) Flush() (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	f, ok := s.w.(interface{ Flush() error })
 	if !ok {
 		return nil
 	}
+	defer func() {
+		if recover() != nil {
+			err = errLogWriterPanicked
+		}
+	}()
 	return f.Flush()
 }
 
