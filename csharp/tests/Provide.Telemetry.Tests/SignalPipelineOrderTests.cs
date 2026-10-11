@@ -4,6 +4,7 @@
 
 using Provide.Telemetry;
 using Xunit;
+using YamlDotNet.RepresentationModel;
 
 namespace Provide.Telemetry.Tests;
 
@@ -11,6 +12,10 @@ namespace Provide.Telemetry.Tests;
 /// Pins the pipeline against <c>spec/pipeline_fixtures.yaml</c>: one order, and
 /// exactly one ticket release on every exit path including rejections.
 /// </summary>
+/// <remarks>
+/// Each case is read from the fixture and compared whole, so the fixture the
+/// Go, Rust and TypeScript suites are held to is the one this suite is held to.
+/// </remarks>
 [Collection("Telemetry")]
 public class SignalPipelineOrderTests
 {
@@ -38,105 +43,89 @@ public class SignalPipelineOrderTests
         Backend = backend,
     };
 
-    [Fact]
-    public void PipelineUsesCanonicalOrderAndReleasesTicketOnce()
-    {
-        var observer = new RecordingPipelineObserver();
-        Assert.True(SignalPipeline.Process(Dispatch(backend: _ => { }), observer));
+    private static readonly IReadOnlyDictionary<string, string[]> FixtureCases = PipelineFixture.Cases();
 
-        Assert.Equal(
-            new[]
-            {
-                "consent", "sampling", "backpressure", "hardening", "pii",
-                "receipt", "local", "backend", "health", "release",
-            },
-            observer.Events);
-        Assert.Equal(1, observer.ReleaseCount);
+    public static TheoryData<string> CaseIds()
+    {
+        var data = new TheoryData<string>();
+        foreach (var id in FixtureCases.Keys) data.Add(id);
+        return data;
     }
 
-    [Fact]
-    public void LocalOnlySuccessSkipsTheBackendStage()
+    /// <summary>Run one fixture case and return the stages observed.</summary>
+    private static List<string> Run(string id)
     {
         var observer = new RecordingPipelineObserver();
-        Assert.True(SignalPipeline.Process(Dispatch(), observer));
-
-        Assert.Equal(
-            new[] { "consent", "sampling", "backpressure", "hardening", "pii", "receipt", "local", "health", "release" },
-            observer.Events);
+        switch (id)
+        {
+            case "consent_rejection":
+                ProvideTelemetry.SetConsentLevel(ConsentLevel.None);
+                Assert.False(SignalPipeline.Process(Dispatch(), observer));
+                break;
+            case "sampling_rejection":
+                ProvideTelemetry.SetSamplingPolicy("logs", new SamplingPolicy { DefaultRate = 0.0 });
+                Assert.False(SignalPipeline.Process(Dispatch(), observer));
+                break;
+            case "queue_rejection":
+                ProvideTelemetry.SetQueuePolicy(new QueuePolicy { LogsMaxSize = 1 });
+                var held = Backpressure.TryAcquire("logs");
+                Assert.False(SignalPipeline.Process(Dispatch(), observer));
+                // The refused record must not have freed a slot it never held.
+                Assert.Null(Backpressure.TryAcquire("logs"));
+                Backpressure.Release(held);
+                break;
+            case "local_only_success":
+                Assert.True(SignalPipeline.Process(Dispatch(), observer));
+                break;
+            case "backend_success":
+                Assert.True(SignalPipeline.Process(Dispatch(backend: _ => { }), observer));
+                break;
+            case "backend_failure":
+                // The fault reaches the caller — a backend that throws is a bug,
+                // not a dropped record — but health runs and the ticket comes back.
+                var dispatch = Dispatch(backend: _ => throw new InvalidOperationException("exporter down"));
+                Assert.Throws<InvalidOperationException>(() => SignalPipeline.Process(dispatch, observer));
+                break;
+            default:
+                Assert.Fail($"fixture case {id} has no run in this suite");
+                break;
+        }
         Assert.Equal(1, observer.ReleaseCount);
+        return observer.Events;
     }
 
-    [Fact]
-    public void ConsentRejectionStillRecordsHealthAndReleases()
-    {
-        ProvideTelemetry.SetConsentLevel(ConsentLevel.None);
-        var observer = new RecordingPipelineObserver();
-
-        Assert.False(SignalPipeline.Process(Dispatch(), observer));
-
-        Assert.Equal(new[] { "consent", "health", "release" }, observer.Events);
-        Assert.Equal(1, observer.ReleaseCount);
-        Assert.Equal(1, ProvideTelemetry.GetHealthSnapshot().LogsDropped);
-    }
-
-    [Fact]
-    public void SamplingRejectionDoesNoPayloadWork()
-    {
-        ProvideTelemetry.SetSamplingPolicy("logs", new SamplingPolicy { DefaultRate = 0.0 });
-        var observer = new RecordingPipelineObserver();
-
-        Assert.False(SignalPipeline.Process(Dispatch(), observer));
-
-        Assert.Equal(new[] { "consent", "sampling", "health", "release" }, observer.Events);
-        Assert.Equal(1, observer.ReleaseCount);
-    }
-
-    [Fact]
-    public void QueueRejectionSkipsHardeningAndExport()
+    [Theory]
+    [MemberData(nameof(CaseIds))]
+    public void EveryFixtureCaseRunsExactlyItsSequence(string id)
     {
         ProvideTelemetry.SetQueuePolicy(new QueuePolicy { LogsMaxSize = 1 });
-        var held = Backpressure.TryAcquire("logs");
-        try
-        {
-            var observer = new RecordingPipelineObserver();
-            Assert.False(SignalPipeline.Process(Dispatch(), observer));
 
-            Assert.Equal(new[] { "consent", "sampling", "backpressure", "health", "release" }, observer.Events);
-            Assert.Equal(1, observer.ReleaseCount);
-            Assert.Equal(1, ProvideTelemetry.GetHealthSnapshot().LogsDropped);
-        }
-        finally
-        {
-            Backpressure.Release(held);
-        }
+        Assert.Equal(FixtureCases[id], Run(id));
+
+        // Whatever the path, the one slot is free again afterwards.
+        var ticket = Backpressure.TryAcquire("logs");
+        Assert.NotNull(ticket);
+        Backpressure.Release(ticket);
     }
 
-    [Fact]
-    public void BackendFailureStillRunsHealthAndReleases()
+    [Theory]
+    [InlineData("consent_rejection", 0, 1, 0)]
+    [InlineData("sampling_rejection", 0, 1, 0)]
+    [InlineData("queue_rejection", 0, 1, 0)]
+    [InlineData("backend_success", 1, 0, 0)]
+    [InlineData("backend_failure", 1, 0, 1)]
+    public void HealthCountsEachPathOnce(string id, long emitted, long dropped, long failures)
     {
-        var observer = new RecordingPipelineObserver();
-        var dispatch = Dispatch(backend: _ => throw new InvalidOperationException("exporter down"));
+        Run(id);
 
-        // The fault reaches the caller — a backend that throws is a bug, not a
-        // dropped record — but the ticket comes back regardless.
-        Assert.Throws<InvalidOperationException>(() => SignalPipeline.Process(dispatch, observer));
-
-        Assert.Equal(
-            new[] { "consent", "sampling", "backpressure", "hardening", "pii", "receipt", "local", "backend", "release" },
-            observer.Events);
-        Assert.Equal(1, observer.ReleaseCount);
+        var health = ProvideTelemetry.GetHealthSnapshot();
+        Assert.Equal((emitted, dropped, failures), (health.LogsEmitted, health.LogsDropped, health.LogsExportFailures));
     }
 
     [Fact]
     public void EveryStageAppearsInTheCanonicalOrderList()
     {
-        Assert.Equal(
-            new[]
-            {
-                "consent", "sampling", "backpressure", "hardening", "pii",
-                "receipt", "local", "backend", "health", "release",
-            },
-            PipelineStages.CanonicalOrder);
+        Assert.Equal(PipelineFixture.Events(), PipelineStages.CanonicalOrder);
     }
 
     [Fact]
@@ -163,5 +152,40 @@ public class SignalPipelineOrderTests
         // The renderer receives the redacted payload, not the caller's value.
         Assert.NotNull(seen);
         Assert.Equal(Pii.Redacted, seen!.Attributes["password"]);
+    }
+}
+
+/// <summary>Reads <c>spec/pipeline_fixtures.yaml</c>.</summary>
+internal static class PipelineFixture
+{
+    public static IReadOnlyList<string> Events() =>
+        ((YamlSequenceNode)Root()["events"]).Cast<YamlScalarNode>().Select(s => s.Value!).ToList();
+
+    public static IReadOnlyDictionary<string, string[]> Cases() =>
+        ((YamlSequenceNode)Root()["cases"]).Cast<YamlMappingNode>().ToDictionary(
+            c => ((YamlScalarNode)c["id"]).Value!,
+            c => ((YamlSequenceNode)c["expected"]).Cast<YamlScalarNode>().Select(s => s.Value!).ToArray(),
+            StringComparer.Ordinal);
+
+    private static YamlMappingNode Root()
+    {
+        var yaml = new YamlStream();
+        using (var reader = new StreamReader(Find()))
+        {
+            yaml.Load(reader);
+        }
+        return (YamlMappingNode)yaml.Documents[0].RootNode;
+    }
+
+    private static string Find()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "spec", "pipeline_fixtures.yaml");
+            if (File.Exists(candidate)) return candidate;
+            directory = directory.Parent;
+        }
+        throw new FileNotFoundException("spec/pipeline_fixtures.yaml not found from " + AppContext.BaseDirectory);
     }
 }
