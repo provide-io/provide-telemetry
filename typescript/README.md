@@ -461,7 +461,7 @@ setupTelemetry({ logFormat: 'pretty' });
 
 ## Requirements
 
-- Node.js ≥ 18
+- Node.js ≥ 22
 - TypeScript ≥ 5 (built with TypeScript 6)
 
 ## License

@@ -53,6 +53,11 @@ whose `emit` property raises. Before this, such a sink was accepted and every
 later redaction failed. A mapping whose keys cannot be read, or two of whose
 keys render to the same name (`1` and `"1"`), now canonicalizes to `null`.
 
+**TypeScript: Node.js 22 or newer is required.** `engines.node` is now
+`>=22`, so installing on Node 18 or 20 prints an npm `EBADENGINE` warning, and
+fails outright with `engine-strict=true`. Node 18 reached end-of-life on
+2025-04-30 and Node 20 on 2026-04-30; CI has only tested Node 22 and newer.
+
 ### Added
 
 - **Prometheus scrape support in all five languages.** Add `prometheus` to
