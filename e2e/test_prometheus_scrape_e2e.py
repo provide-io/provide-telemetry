@@ -113,7 +113,7 @@ def probe(request: pytest.FixtureRequest) -> Iterator[tuple[str, str]]:
     # Every language's probe binds the same port for a mode, and the pytest gate
     # runs workers in parallel, so hold the port exclusively for the probe's life.
     lock_path = Path(tempfile.gettempdir()) / f"provide-prometheus-scrape-{port}.lock"
-    with lock_path.open("w") as lock:
+    with lock_path.open("w", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         proc = subprocess.Popen(  # nosec B603 — fixed probe command
             command, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
