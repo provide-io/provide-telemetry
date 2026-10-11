@@ -109,9 +109,13 @@ export function beginTlsChecks(readSetupError: () => string | null, clear: () =>
   lastReported = null;
 }
 
-/** The problems recorded since beginTlsChecks(), joined, or null. */
-export function takeTlsProblems(): string | null {
-  const joined = problems.join(SEPARATOR);
+/**
+ * The problems recorded since beginTlsChecks(), joined after `ahead` (the
+ * ignored OTEL_METRICS_EXPORTER entries, which setup_error lists first), or
+ * null when there were none.
+ */
+export function takeTlsProblems(ahead: readonly string[] = []): string | null {
+  const joined = problems.length > 0 ? [...ahead, ...problems].join(SEPARATOR) : '';
   problems.length = 0;
   lastReported = joined || null;
   return lastReported;

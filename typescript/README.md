@@ -413,6 +413,7 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment tag (e.g. dev, staging, prod) |
 | `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Application version tag |
 | `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Master switch: when true, overrides event name strictness to on |
+| `PROVIDE_TELEMETRY_STRICT_CONFIG` | `false` | When true, a configuration value the SDK would otherwise warn about and ignore fails config parsing with ConfigurationError instead. Today that covers OTEL_METRICS_EXPORTER only (prometheus_metrics.metrics_exporter_warnings); it does not touch event-name strictness (PROVIDE_TELEMETRY_STRICT_SCHEMA) or values that are already errors. |
 | `PROVIDE_LOG_LEVEL` | `INFO` | Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | `PROVIDE_LOG_FORMAT` | `console` | Renderer: console, json, or pretty |
 | `PROVIDE_LOG_INCLUDE_TIMESTAMP` | `true` | Add ISO-8601 timestamp to each log event |
@@ -439,6 +440,11 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 
 `OTEL_METRICS_EXPORTER` (`otlp`, `prometheus`, `otlp,prometheus` or `none`)
 and the Prometheus variables are covered under [Prometheus](#prometheus-node-only).
+Any other entry (`console`, a typo, `none` mixed with another) does not fail
+setup: it is dropped, logged as `config.metrics_exporter.value_ignored` and
+reported in `getHealthSnapshot().setupError`, falling back to `otlp` when
+nothing usable is left. `PROVIDE_TELEMETRY_STRICT_CONFIG=true` makes it a
+`ConfigurationError` instead.
 OTLP over TLS reads `OTEL_EXPORTER_OTLP_CERTIFICATE`, `_CLIENT_CERTIFICATE`
 and `_CLIENT_KEY`, each with per-signal forms that win; a file that cannot be
 read or loaded leaves that signal's exporter unbuilt, logs

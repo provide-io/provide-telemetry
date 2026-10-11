@@ -139,6 +139,7 @@ function normalizeConfiguredLevel(raw: string | undefined): string {
 function prometheusFromEnv(): Pick<
   TelemetryConfig,
   | 'metricsExporters'
+  | 'metricsExporterWarnings'
   | 'metricsHealthOtlp'
   | 'prometheusListen'
   | 'prometheusHost'
@@ -158,8 +159,13 @@ function prometheusFromEnv(): Pick<
     DEFAULT_TRANSLATION,
   );
   validateTranslation(translation);
+  const exporters = parseMetricsExporters(
+    nodeEnv('OTEL_METRICS_EXPORTER'),
+    envBool('PROVIDE_TELEMETRY_STRICT_CONFIG', DEFAULTS.strictConfig),
+  );
   return {
-    metricsExporters: parseMetricsExporters(nodeEnv('OTEL_METRICS_EXPORTER')),
+    metricsExporters: exporters.exporters,
+    metricsExporterWarnings: exporters.warnings,
     metricsHealthOtlp: envBool('PROVIDE_METRICS_HEALTH_OTLP', DEFAULTS.metricsHealthOtlp),
     prometheusListen: listen,
     prometheusHost: envStr(nodeEnv('OTEL_EXPORTER_PROMETHEUS_HOST'), DEFAULT_HOST),
@@ -231,6 +237,7 @@ export function configFromEnv(): TelemetryConfig {
     consoleOutput: true,
     strictSchema: envBool('PROVIDE_TELEMETRY_STRICT_SCHEMA', DEFAULTS.strictSchema),
     strictEventName: envBool('PROVIDE_TELEMETRY_STRICT_EVENT_NAME', DEFAULTS.strictEventName),
+    strictConfig: envBool('PROVIDE_TELEMETRY_STRICT_CONFIG', DEFAULTS.strictConfig),
     requiredLogKeys: (() => {
       const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
       return raw

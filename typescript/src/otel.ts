@@ -43,7 +43,7 @@ import { wrapResilientExporter } from './resilient-exporter.js';
 import { prometheusReaderEnabled } from './config-prometheus.js';
 import { recordPullStatusWithoutProvider, setupOtelMeterProvider } from './otel-metrics.js';
 import { syncPrometheusListener } from './prom-setup.js';
-import { beginTlsChecks, takeTlsProblems, tlsReady } from './otlp-tls.js';
+import { beginTlsChecks, SEPARATOR, takeTlsProblems, tlsReady } from './otlp-tls.js';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
 // entirely (safe no-export path per docs/internal/architecture.md).
@@ -72,13 +72,15 @@ function appendSignalPath(endpoint: string, signalPath: string): string {
  * registered, except that the Prometheus listener is brought in line with cfg.
  */
 export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void> {
+  // Clearing the TLS problems leaves the ignored exporter entries, which
+  // setupTelemetry() reported and which still describe this config.
   beginTlsChecks(
     () => getHealthSnapshot().setupError,
-    () => setSetupError(null),
+    () => setSetupError(cfg.metricsExporterWarnings.join(SEPARATOR) || null),
   );
   await registerProviders(cfg);
   // An unreadable OTLP TLS file kept that signal's exporter unbuilt; say which.
-  const tlsProblems = takeTlsProblems();
+  const tlsProblems = takeTlsProblems(cfg.metricsExporterWarnings);
   if (tlsProblems !== null) setSetupError(tlsProblems);
   // After the providers, so the listener serves the reader just attached; on
   // every path, since a listener with nothing to serve still answers 503s.

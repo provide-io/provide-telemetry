@@ -45,6 +45,7 @@ describe('exporter_selection fixtures', () => {
         const cfg = configFromEnv();
         expect(readers(cfg)).toEqual(c['exporters']);
         expect(prometheusListenerEnabled(cfg)).toBe(c['listener']);
+        expect(cfg.metricsExporterWarnings).toEqual(c['warnings'] ?? []);
       });
     });
   }
@@ -140,12 +141,18 @@ describe('Prometheus env parsing', () => {
   });
 
   it('names the variable in each error', () => {
-    expect(() => parseMetricsExporters('otlp,statsd')).toThrow(
-      'OTEL_METRICS_EXPORTER: unknown exporter "statsd"',
+    expect(() => parseMetricsExporters('otlp,statsd', true)).toThrow(
+      'PROVIDE_TELEMETRY_STRICT_CONFIG: OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored',
     );
-    expect(() => parseMetricsExporters('none,otlp')).toThrow(
-      'OTEL_METRICS_EXPORTER: none cannot be combined with other exporters',
+    expect(() => parseMetricsExporters('none,console', true)).toThrow(
+      'PROVIDE_TELEMETRY_STRICT_CONFIG: ' +
+        'OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored; ' +
+        'OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored; ' +
+        'OTEL_METRICS_EXPORTER: no supported exporter left, using otlp',
     );
+    expect(() =>
+      withEnv({ PROVIDE_TELEMETRY_STRICT_CONFIG: 'maybe' }, () => configFromEnv()),
+    ).toThrow('PROVIDE_TELEMETRY_STRICT_CONFIG');
     expect(() => parsePort('http')).toThrow(
       'OTEL_EXPORTER_PROMETHEUS_PORT: want an integer in 0-65535, got "http"',
     );
@@ -178,10 +185,36 @@ describe('Prometheus env parsing', () => {
   });
 
   it('parses exporters from undefined, blanks and mixed case', () => {
-    expect(parseMetricsExporters(undefined)).toEqual(['otlp']);
-    expect(parseMetricsExporters(' , ')).toEqual(['otlp']);
-    expect(parseMetricsExporters('NONE')).toEqual([]);
-    expect(parseMetricsExporters('none,none')).toEqual([]);
+    const none = { exporters: [], warnings: [] };
+    expect(parseMetricsExporters(undefined)).toEqual({ exporters: ['otlp'], warnings: [] });
+    expect(parseMetricsExporters(' , ')).toEqual({ exporters: ['otlp'], warnings: [] });
+    expect(parseMetricsExporters('NONE')).toEqual(none);
+    expect(parseMetricsExporters('none,none', true)).toEqual(none);
+  });
+
+  it('warns about and ignores what it cannot export to, unless strict', () => {
+    expect(parseMetricsExporters('statsd')).toEqual({
+      exporters: ['otlp'],
+      warnings: [
+        'OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored',
+        'OTEL_METRICS_EXPORTER: no supported exporter left, using otlp',
+      ],
+    });
+    expect(parseMetricsExporters('prometheus,otlp', true)).toEqual({
+      exporters: ['prometheus', 'otlp'],
+      warnings: [],
+    });
+    expect(() => parseMetricsExporters('statsd', true)).toThrow(ConfigurationError);
+    expect(() => parseMetricsExporters('statsd', false)).not.toThrow();
+  });
+
+  it('reads PROVIDE_TELEMETRY_STRICT_CONFIG, default off', () => {
+    expect(withEnv({}, () => configFromEnv()).strictConfig).toBe(false);
+    expect(DEFAULTS.strictConfig).toBe(false);
+    expect(DEFAULTS.metricsExporterWarnings).toEqual([]);
+    expect(
+      withEnv({ PROVIDE_TELEMETRY_STRICT_CONFIG: 'true' }, () => configFromEnv()).strictConfig,
+    ).toBe(true);
   });
 
   it('validates path characters one at a time', () => {

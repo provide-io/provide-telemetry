@@ -5,11 +5,13 @@
  * Parsing and validation for the Prometheus metrics settings.
  *
  * See the prometheus_metrics section of spec/telemetry-api.yaml. Invalid values
- * throw ConfigurationError, as invalid booleans and rates already do. Mirrors
+ * throw ConfigurationError, as invalid booleans and rates already do, except in
+ * OTEL_METRICS_EXPORTER, whose unusable entries are warned about and ignored. Mirrors
  * Python provide.telemetry._config_prometheus.
  */
 
 import { ConfigurationError } from './exceptions.js';
+import { getHealthSnapshot, setSetupError } from './health.js';
 
 // The exporter names are spelled inline below rather than as constants: a
 // mutated module-level constant is evaluated once at load, before Stryker
@@ -43,34 +45,66 @@ export interface PrometheusSettings {
   prometheusWebConfig: string;
 }
 
+/** The exporters OTEL_METRICS_EXPORTER selected, and the entries it ignored, described. */
+export interface ParsedExporters {
+  exporters: string[];
+  warnings: string[];
+}
+
 /**
  * Parse OTEL_METRICS_EXPORTER.
  *
  * Entries are split on commas, trimmed and lowercased; empty ones are dropped.
- * Empty input means ['otlp']. 'none' alone means no exporters and may not be
- * combined with another.
+ * Empty input means ['otlp'] and 'none' alone means no exporters. Anything else
+ * this SDK cannot export to is dropped with a warning, as the OTel
+ * environment-variable spec asks of an unrecognised enum value; see
+ * prometheus_metrics.metrics_exporter_warnings. strict turns any warning into a
+ * ConfigurationError.
  */
-export function parseMetricsExporters(raw: string | undefined): string[] {
+export function parseMetricsExporters(raw: string | undefined, strict = false): ParsedExporters {
   const names = (raw ?? '')
     .split(',')
     .map((part) => part.trim().toLowerCase())
     .filter((part) => part !== '');
-  const unknown = names.find((n) => n !== 'otlp' && n !== 'prometheus' && n !== 'none');
-  if (unknown !== undefined) {
-    throw new ConfigurationError(
-      `OTEL_METRICS_EXPORTER: unknown exporter ${JSON.stringify(unknown)}`,
-    );
-  }
-  const exporters = names.filter((n) => n !== 'none');
-  if (names.includes('none')) {
-    if (exporters.length > 0) {
-      throw new ConfigurationError(
-        'OTEL_METRICS_EXPORTER: none cannot be combined with other exporters',
+  if (names.length > 0 && names.every((n) => n === 'none')) return { exporters: [], warnings: [] };
+  const warnings: string[] = [];
+  for (const name of new Set(names)) {
+    if (name === 'console' || name === 'logging') {
+      warnings.push(
+        `OTEL_METRICS_EXPORTER: ${name} is not supported by provide-telemetry, ignored`,
       );
+    } else if (name !== 'otlp' && name !== 'prometheus' && name !== 'none') {
+      warnings.push(`OTEL_METRICS_EXPORTER: unknown exporter ${name}, ignored`);
     }
-    return [];
   }
-  return exporters.length > 0 ? exporters : ['otlp'];
+  if (names.includes('none')) {
+    warnings.push('OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored');
+  }
+  const exporters = names.filter((n) => n === 'otlp' || n === 'prometheus');
+  if (names.length > 0 && exporters.length === 0) {
+    warnings.push('OTEL_METRICS_EXPORTER: no supported exporter left, using otlp');
+  }
+  if (strict && warnings.length > 0) {
+    throw new ConfigurationError(`PROVIDE_TELEMETRY_STRICT_CONFIG: ${warnings.join('; ')}`);
+  }
+  return { exporters: exporters.length > 0 ? exporters : ['otlp'], warnings };
+}
+
+let lastReported: string | null = null;
+
+/**
+ * Log each ignored OTEL_METRICS_EXPORTER entry once and report them, joined, as
+ * setupError; with none, clear a setupError this function set last time and
+ * leave any other alone. Called once per setupTelemetry().
+ */
+export function reportExporterWarnings(warnings: readonly string[]): void {
+  for (const warning of warnings) {
+    console.warn(`[provide/telemetry] config.metrics_exporter.value_ignored: reason=${warning}`);
+  }
+  const joined = warnings.join('; ');
+  if (joined !== '') setSetupError(joined);
+  else if (getHealthSnapshot().setupError === lastReported) setSetupError(null);
+  lastReported = joined || null;
 }
 
 /** Reject an exporter list built in code with a name the env parser would refuse. */

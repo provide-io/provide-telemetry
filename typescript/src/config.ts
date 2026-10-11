@@ -27,6 +27,7 @@ import {
   DEFAULT_PORT,
   DEFAULT_TRANSLATION,
   EXPORTER_OTLP,
+  reportExporterWarnings,
   validatePrometheusSettings,
 } from './config-prometheus.js';
 export { configFromEnv } from './config-env.js';
@@ -78,6 +79,12 @@ export interface TelemetryConfig {
   strictSchema: boolean;
   /** Enforce strict event-name validation even when strictSchema is false. */
   strictEventName: boolean;
+  /**
+   * Fail config parsing on a value that would otherwise be warned about and
+   * ignored. Today that is OTEL_METRICS_EXPORTER only; it applies when the
+   * environment is parsed. Env: `PROVIDE_TELEMETRY_STRICT_CONFIG`.
+   */
+  strictConfig: boolean;
   /** Keys required on every log record. */
   requiredLogKeys: string[];
 
@@ -108,6 +115,11 @@ export interface TelemetryConfig {
   metricsEnabled: boolean;
   /** Metric exporters: otlp and/or prometheus; empty means none. Env: `OTEL_METRICS_EXPORTER`. */
   metricsExporters: string[];
+  /**
+   * What OTEL_METRICS_EXPORTER asked for that was ignored, one message each;
+   * setupTelemetry() logs them and reports them as setupError.
+   */
+  metricsExporterWarnings: string[];
   /** Also export the health metrics over OTLP (parsed; not yet acted on). Env: `PROVIDE_METRICS_HEALTH_OTLP`. */
   metricsHealthOtlp: boolean;
   /** Start the Tier 3 listener: 'false', 'true' or 'auto'. Env: `PROVIDE_METRICS_PROMETHEUS_LISTEN`. */
@@ -255,6 +267,7 @@ export const DEFAULTS: TelemetryConfig = {
   consoleOutput: true,
   strictSchema: false,
   strictEventName: false,
+  strictConfig: false,
   requiredLogKeys: [],
   logIncludeTimestamp: true,
   logIncludeCaller: true,
@@ -268,6 +281,7 @@ export const DEFAULTS: TelemetryConfig = {
   tracingEnabled: true,
   metricsEnabled: true,
   metricsExporters: [EXPORTER_OTLP],
+  metricsExporterWarnings: [],
   metricsHealthOtlp: false,
   prometheusListen: 'false',
   prometheusHost: DEFAULT_HOST,
@@ -388,10 +402,19 @@ function _applySetupBody(overrides?: Partial<TelemetryConfig>): void {
   // caller that caught the error kept emitting under a config it had been told
   // was invalid.
   const candidate = { ...configFromEnv(), ...overrides };
+  // An exporter list given in code replaces the environment's, so the
+  // environment's complaints about it no longer apply.
+  if (
+    overrides?.metricsExporters !== undefined &&
+    overrides.metricsExporterWarnings === undefined
+  ) {
+    candidate.metricsExporterWarnings = [];
+  }
   _validateConfig(candidate);
   _config = candidate;
   _configVersion++;
   _setActiveConfig(_config);
+  reportExporterWarnings(_config.metricsExporterWarnings);
   // Consent comes from the environment at setup time, like every other SDK:
   // PROVIDE_CONSENT_LEVEL=NONE must silence a process that calls setup, and
   // an unset variable leaves a programmatic setConsentLevel() alone.
