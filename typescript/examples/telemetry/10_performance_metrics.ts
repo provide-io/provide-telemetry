@@ -27,6 +27,9 @@ import {
   shouldSample,
   shutdownTelemetry,
 } from '../../src/index.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const ITERATIONS = 10_000;
 const LIFECYCLE_ITERATIONS = 50;
@@ -35,6 +38,28 @@ function bench(fn: () => void, iterations: number = ITERATIONS): number {
   const start = performance.now();
   for (let i = 0; i < iterations; i++) fn();
   return ((performance.now() - start) * 1_000_000) / iterations; // ns per op
+}
+
+// `import … from` / `export … from` / bare `import '…'`, possibly spanning
+// lines. `import type` is erased at compile time and dynamic import() is
+// lazy, so neither counts as an eager load.
+const STATIC_IMPORT = /^\s*(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm;
+
+/** Every package the entry file reaches through static imports, following relative imports. */
+function staticPackageImports(entry: string): Set<string> {
+  const packages = new Set<string>();
+  const seen = new Set<string>();
+  const pending = [entry];
+  for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (seen.has(file) || !existsSync(file)) continue;
+    seen.add(file);
+    for (const match of readFileSync(file, 'utf8').matchAll(STATIC_IMPORT)) {
+      const spec = match[1] ?? match[2] ?? '';
+      if (spec.startsWith('.')) pending.push(resolve(dirname(file), spec.replace(/\.js$/, '.ts')));
+      else packages.add(spec);
+    }
+  }
+  return packages;
 }
 
 function fmt(ns: number): string {
@@ -87,12 +112,16 @@ async function main(): Promise<void> {
 
   // ── 🔌 Import footprint check ─────────────────────────────
   console.log('\n🔌 Import Footprint\n');
-  // ESM: use process.moduleLoadList as a proxy for loaded modules
-  const loadedMods = (process.moduleLoadList ?? []).filter((k: string) => k.includes('provide-telemetry') || k.includes('@provide-io'));
-  console.log(`    Loaded @provide-io/telemetry source files: ${loadedMods.length}`);
-  const hasOtelSdk = loadedMods.some((k: string) => k.includes('sdk-trace') || k.includes('sdk-metrics'));
-  if (hasOtelSdk) {
-    console.log('    ⚠️  OTEL SDK loaded (expected when peer deps are installed)');
+  // Walk the static import graph of the package entry point: whatever it
+  // reaches is loaded by a plain `import '@provide-io/telemetry'`.
+  // (process.moduleLoadList, used here before, lists only Node's own
+  // built-ins, so it could never see an OTEL SDK module.)
+  const entry = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/index.ts');
+  const packages = [...staticPackageImports(entry)].sort();
+  console.log(`    Packages loaded eagerly by the entry point: ${packages.join(', ')}`);
+  const eagerSdk = packages.filter((p) => p.startsWith('@opentelemetry/sdk-'));
+  if (eagerSdk.length > 0) {
+    console.log(`    ⚠️  OTEL SDK imported eagerly: ${eagerSdk.join(', ')}`);
   } else {
     console.log('    ✅ OTEL SDK not loaded at import time (lazy / noop API only)');
   }

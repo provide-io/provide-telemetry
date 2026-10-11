@@ -81,7 +81,9 @@ async function main(): Promise<void> {
 
   // ── 🛡️ Exporter resilience ─────────────────────────────
   console.log('\n🛡️  Exporter resilience: fail-open with 2 retries');
-  setExporterPolicy({ retries: 2, backoffMs: 10, failOpen: true, timeoutMs: 1000 });
+  for (const signal of ['logs', 'traces', 'metrics']) {
+    setExporterPolicy(signal, { retries: 2, backoffMs: 10, failOpen: true, timeoutMs: 1000 });
+  }
 
   // ── 📊 SLO RED/USE metrics ─────────────────────────────
   console.log('\n📊 Recording SLO metrics...');
@@ -93,12 +95,14 @@ async function main(): Promise<void> {
   console.log('  ✅ USE: cpu=55%');
 
   // ── 🔧 Runtime reconfiguration ─────────────────────────
-  console.log('\n🔧 Hot-swapping serviceName mid-flight...');
+  // Only hot policies can change mid-flight; identity fields such as
+  // serviceName are cold and need a restart (setupTelemetry with new config).
+  console.log('\n🔧 Hot-swapping the log sampling rate mid-flight...');
   const current = getRuntimeConfig();
-  console.log(`  📋 Before: serviceName=${current.serviceName}`);
-  updateRuntimeConfig({ serviceName: 'provide-telemetry-hardening-v2' });
+  console.log(`  📋 Before: samplingLogsRate=${current.samplingLogsRate}`);
+  updateRuntimeConfig({ samplingLogsRate: 0.5 });
   const updated = getRuntimeConfig();
-  console.log(`  ✅ After:  serviceName=${updated.serviceName}`);
+  console.log(`  ✅ After:  samplingLogsRate=${updated.samplingLogsRate}`);
 
   // ── 🩺 Health snapshot ──────────────────────────────────
   console.log('\n🩺 Health snapshot summary:');

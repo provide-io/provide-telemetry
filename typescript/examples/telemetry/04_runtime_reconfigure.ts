@@ -41,7 +41,8 @@ async function main(): Promise<void> {
 
   // ── 🔧 Hot-swap log level ─────────────────────────────
   console.log('\n🔧 Hot-swapping logLevel to warn...');
-  updateRuntimeConfig({ logLevel: 'warn' });
+  // Logging fields travel in the nested `logging` override (RuntimeOverrides.logging).
+  updateRuntimeConfig({ logging: { logLevel: 'warn' } });
   const cfgAfter = getRuntimeConfig();
   console.log(`  ✅ After update: logLevel=${cfgAfter.logLevel}`);
 
