@@ -203,7 +203,7 @@ New spec entries under `api.metrics`:
   required: true
 - name: observable_up_down_counter
   kind: function
-  required: false
+  required: true
 ```
 
 Each takes a name, optional description and unit, and a callback that reports
@@ -351,7 +351,8 @@ Each stage is its own PR and leaves `main` releasable.
    `prometheus` capabilities, and `spec/prometheus_fixtures.yaml`. Each
    capability's language set in `spec/validate_conformance.py` starts empty
    and gains a language in the PR that ships it, after which a missing export
-   fails conformance. New config keys sat in `prometheus_metrics.planned_config`
+   fails conformance. Both sets reached all five languages in Stage 5, and the
+   capabilities were then retired (see Stage 5). New config keys sat in `prometheus_metrics.planned_config`
    until an SDK parsed them, then moved to `config_defaults`, whose
    applicability list cannot be empty. The OTLP TLS variables that remained
    are read by the exporter builders rather than parsed as config, so the
@@ -416,8 +417,12 @@ Each stage is its own PR and leaves `main` releasable.
    capability sets and in the scrape E2E; `PROVIDE_METRICS_HEALTH_OTLP` and the
    unreadable-TLS-file rule of `push_security` behave as in Python and Go.
 5. **Rust and C#**, including the push-security gaps (private CA in both,
-   per-signal headers in C#). `metrics_handler` becomes `required: true` in the
-   spec once all five ship.
+   per-signal headers in C#). With all five shipped, the five staged symbols
+   (`observable_counter`, `observable_gauge`, `observable_up_down_counter`,
+   `metrics_handler`, `render_prometheus`) are `required: true` and carry no
+   capability, and the `observable_metrics` and `prometheus` sets are gone from
+   `spec/validate_conformance.py`; `test_shipped_prometheus_symbols_are_required_and_ungated`
+   keeps it that way.
    C# (done): config keys parsed in the core (`PrometheusSettings`); `gauge()`
    was already an OTel Gauge; a port of the otlptranslator namers and of
    Python's text renderer in `Provide.Telemetry.OpenTelemetry/Prometheus/`,

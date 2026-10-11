@@ -261,17 +261,13 @@ def _build_kind_overrides(
 # — so there is no feature-stripped build to special-case here.
 _GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust", "csharp"})
 
-
-# Languages that ship the staged Prometheus work (see the prometheus_metrics
-# section of the spec). Each set starts empty and gains a language in the PR that
-# ships it, so from then on a missing export is a conformance error.
-_OBSERVABLE_METRICS_LANGUAGES: frozenset[str] = frozenset({"go", "python", "typescript", "csharp", "rust"})
-_PROMETHEUS_LANGUAGES: frozenset[str] = frozenset({"go", "python", "typescript", "csharp", "rust"})
-
+# A capability that stages new symbols gets its own set here, starting empty and
+# gaining a language in the PR that ships them, so from then on a missing export
+# is a conformance error. Once every language has shipped, the symbols become
+# required: true in the spec and the capability is removed (observable_metrics
+# and prometheus went this way).
 _CAPABILITY_LANGUAGES: dict[str, frozenset[str]] = {
     "governance": _GOVERNANCE_LANGUAGES,
-    "observable_metrics": _OBSERVABLE_METRICS_LANGUAGES,
-    "prometheus": _PROMETHEUS_LANGUAGES,
 }
 
 

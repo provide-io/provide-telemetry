@@ -177,22 +177,26 @@ def test_every_capability_in_the_api_is_known_to_conformance(spec: dict[str, Any
     assert capabilities <= known, sorted(capabilities - known)
 
 
-def test_staged_capabilities_are_optional_symbols(spec: dict[str, Any]) -> None:
-    """Staged symbols stay required: false so an unshipped language is not an error."""
-    staged = [
-        entry
-        for entries in spec["api"].values()
-        for entry in entries
-        if isinstance(entry, dict) and entry.get("capability") in {"observable_metrics", "prometheus"}
-    ]
-    assert {e["name"] for e in staged} == {
+def test_shipped_prometheus_symbols_are_required_and_ungated(spec: dict[str, Any]) -> None:
+    """All five languages ship the formerly staged symbols, so the spec requires them outright."""
+    shipped = {
         "observable_counter",
         "observable_gauge",
         "observable_up_down_counter",
         "metrics_handler",
         "render_prometheus",
     }
-    assert all(entry["required"] is False for entry in staged)
+    entries = {
+        entry["name"]: entry
+        for group in spec["api"].values()
+        for entry in group
+        if isinstance(entry, dict) and entry.get("name") in shipped
+    }
+    assert set(entries) == shipped
+    for name, entry in entries.items():
+        assert entry["required"] is True, name
+        assert "capability" not in entry, name
+    assert not {"observable_metrics", "prometheus"} & set(_conformance_module()._CAPABILITY_LANGUAGES)
 
 
 def test_unsupported_push_modes_name_known_modes_and_languages(fixtures: dict[str, Any]) -> None:

@@ -46,7 +46,16 @@ _PROBES = {
     "typescript": (["npx", "tsx", "scripts/prometheus-scrape-probe.ts"], _REPO_ROOT / "typescript", "npx"),
     "csharp": (["dotnet", "run", "--project", "probes/PrometheusScrapeProbe"], _REPO_ROOT / "csharp", "dotnet"),
     "rust": (
-        ["cargo", "run", "--locked", "--quiet", "--features", "prometheus-listener", "--example", "prometheus_scrape_probe"],
+        [
+            "cargo",
+            "run",
+            "--locked",
+            "--quiet",
+            "--features",
+            "prometheus-listener",
+            "--example",
+            "prometheus_scrape_probe",
+        ],
         _REPO_ROOT / "rust",
         "cargo",
     ),
