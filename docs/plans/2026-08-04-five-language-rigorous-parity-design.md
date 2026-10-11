@@ -6,6 +6,14 @@
 
 **Target release:** 0.8
 
+> **Status (2026-10-11):** the signal order below is the shipped contract
+> (`spec/pipeline_fixtures.yaml`), but the health rules were refined: hardening
+> never rejects a record, a consent, sampling or backpressure refusal counts as
+> dropped, and `emitted` is counted at the health stage after the local and
+> backend sinks — still on a failed export (`health_counters` in
+> `spec/telemetry-api.yaml`). Every SDK runs this order as of the 2026-10-11
+> ports; see the status note in `2026-08-04-five-language-rigorous-parity.md`.
+
 ## Purpose
 
 Bring the Python, TypeScript, Go, Rust, and C# SDKs to one executable

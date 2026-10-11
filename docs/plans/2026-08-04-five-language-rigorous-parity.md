@@ -8,6 +8,39 @@
 
 **Tech Stack:** Python 3.11+ with pytest/uv, TypeScript ESM with Node/Vitest/npm, Go with `go test -race`, Rust with Cargo, C# on .NET 10 with xUnit/Coverlet/Stryker.NET 4.16.0, OpenTelemetry OTLP, YAML fixtures, and GitHub Actions.
 
+> **Status (2026-10-11): historical plan; several parts were completed later and
+> differently.** The task text below is the plan as written, not the shipped
+> state. Where it differs, the code and `spec/` are authoritative:
+>
+> - **Signal order.** The order in Global Constraints matches
+>   `spec/pipeline_fixtures.yaml`, but Python, Go, TypeScript and C# did not
+>   all run it until the 2026-10-11 ports. Python hardened every record before
+>   admission and counted `emitted_logs` when the ticket was taken; it now runs
+>   admission (`apply_sampling`: consent, sampling, backpressure) first and
+>   counts `emitted` at the stdlib handler boundary after the local and backend
+>   handlers. Go and TypeScript likewise moved `emitted` to the health stage,
+>   and C# now records health after a failing backend. Each SDK's pipeline-order
+>   test reads every fixture case whole rather than the
+>   `RecordingPipelineObserver` sketch in Task 8.
+> - **Health accounting.** A consent refusal counts toward `dropped_*` in every
+>   SDK (Go, Rust and TypeScript recorded nothing before 2026-10-11); `emitted_*`
+>   is counted after the sinks, still on a failed export, never on a refused
+>   path (`health_counters` in `spec/telemetry-api.yaml`). Hardening never
+>   rejects a record, so it never counts a drop.
+> - **Reserved root fields.** Not in this plan. `reserved_root_fields` in
+>   `spec/telemetry-api.yaml` (added 2026-10-11) makes the stamped `service`,
+>   `env`, `version`, `trace_id` and `span_id` replace caller-supplied values in
+>   all five SDKs.
+> - **Python stdlib records.** Task 8's "hardening before every capture or
+>   export sink" did not cover plain `logging.getLogger(...)` records, which
+>   reached the handlers without the processor chain until 2026-10-11; they are
+>   now hardened and sanitized by `logger/_foreign_records.py`.
+> - **Rollback on failure.** Task 5 publishes the Go generation only after
+>   derived state succeeds, but process-wide state installed before backend
+>   wiring (consent, policies, strict-schema flag, logger, sink) was only rolled
+>   back on a failed `SetupTelemetry` from 2026-10-11. Python's runtime policy
+>   updates gained the same rollback (`rolled_back_on_failure` in `runtime.py`).
+
 ## Global Constraints
 
 - Target release is `0.8`.
@@ -546,7 +579,7 @@ it('counts rejection without recursively logging', () => {
 })
 
 it('redacts arrays, objects, and cycles before capture', () => {
-  const value: Record<string, unknown> = { items: [{ password: 'secret' }] }
+  const value: Record<string, unknown> = { items: [{ password: 'secret' }] }  // pragma: allowlist secret
   value.self = value
   expect(harden(value)).toEqual({ items: [{ password: '***' }], self: '***' })
 })
@@ -872,7 +905,7 @@ func TestHardenTraversesTypedContainersAndCycles(t *testing.T) {
 	cycle := map[string]any{}
 	cycle["self"] = cycle
 	input := map[string]any{
-		"rows": []credentials{{Password: "secret", Public: "ok"}},
+		"rows": []credentials{{Password: "secret", Public: "ok"}},  // pragma: allowlist secret
 		"cycle": cycle,
 	}
 	got := Harden(input, DefaultLimits())
@@ -973,7 +1006,7 @@ But the OTel log bridge was wired as a **sibling** of the telemetry handler
 rather than downstream of it, so `slog` handed both the same unprocessed record.
 Every record exported to a backend bypassed consent, schema validation,
 sampling, backpressure, hardening *and* PII redaction. Verified by reverting the
-wiring, where one run prints `password:***` locally and `Password:"s3cr3t"` on
+wiring, where one run prints `password:***` locally and `Password:"s3cr3t"` on <!-- pragma: allowlist secret -->
 the bridge. This is the only reading under which "apply hardening before local
 *and* OTel handlers" is satisfiable, and it is strictly larger than the gap the
 task describes.

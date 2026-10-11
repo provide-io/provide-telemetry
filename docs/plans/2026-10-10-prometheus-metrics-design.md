@@ -2,7 +2,9 @@
 
 **Date:** 2026-10-10
 
-**Status:** Draft — no open questions; Rust renders the exposition itself (decision 2)
+**Status:** Implemented — all five delivery stages are done in every SDK (see
+[Delivery Stages](#delivery-stages)); not yet in a tagged release as of `VERSION` 0.10.1.
+Rust renders the exposition itself (decision 2).
 
 **Target release:** 0.9
 
@@ -89,7 +91,7 @@ under `config.metrics` in `spec/telemetry-api.yaml`:
 
 | Env | Default | Meaning |
 |---|---|---|
-| `OTEL_METRICS_EXPORTER` | `otlp` | Comma list of `otlp`, `prometheus`, `none`. `prometheus` attaches the pull reader; with a host/port set it also starts the Tier 3 listener. |
+| `OTEL_METRICS_EXPORTER` | `otlp` | Comma list of `otlp`, `prometheus`, `none`. `prometheus` attaches the pull reader. The Tier 3 listener starts only per `PROVIDE_METRICS_PROMETHEUS_LISTEN`. |
 | `OTEL_EXPORTER_PROMETHEUS_HOST` | `127.0.0.1` | Tier 3 bind host. The OTel spec default is `localhost`; we pin loopback so a library never exposes a port by accident. `0.0.0.0` is an explicit opt-in and logs a warning once at setup. |
 | `OTEL_EXPORTER_PROMETHEUS_PORT` | `9464` | Tier 3 bind port. |
 | `PROVIDE_METRICS_PROMETHEUS_LISTEN` | `false` | Starts the Tier 3 listener. Kept separate from `OTEL_METRICS_EXPORTER=prometheus` so a host can enable the reader for Tier 2 without the SDK opening a port. Set it to `auto` to follow the OTel convention, where `OTEL_METRICS_EXPORTER=prometheus` alone starts the listener. |
@@ -98,6 +100,7 @@ under `config.metrics` in `spec/telemetry-api.yaml`:
 | `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS` | `false` | Add `otel_scope_name` / `otel_scope_version` labels to every series. |
 | `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO` | `true` | Emit the `target_info` series carrying resource attributes. |
 | `PROVIDE_METRICS_HEALTH_OTLP` | `false` | Also export the health metrics over OTLP. See [Health metrics](#health-metrics). |
+| `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` | unset | Tier 3 TLS / basic-auth web config file. See [Securing the listener and push](#securing-the-listener-and-push). |
 
 Rules:
 
