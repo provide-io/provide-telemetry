@@ -42,6 +42,9 @@ EXCLUDED_DIRS = {
     # against this one's rules -- and any developer with a worktree open could
     # not commit at all.
     ".worktrees",
+    # Claude Code's agent worktrees (.gitignore excludes .claude/), for the same
+    # reason; a build running in one also deletes files mid-scan.
+    ".claude",
     "workenv",
     ".mypy_cache",
     ".pytest_cache",
