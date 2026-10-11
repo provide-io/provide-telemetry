@@ -113,6 +113,10 @@ jobs:
           cache: npm
           cache-dependency-path: typescript/package-lock.json
       - run: npm ci
+      # tsx strips types without checking them, so an example can drift from
+      # the public API and still run. Type-check every example first.
+      - name: Type-check examples
+        run: npm run typecheck:examples
       # Run all standalone telemetry examples (no live backend required)
       - name: Run telemetry examples
         run: |

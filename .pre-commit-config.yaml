@@ -166,7 +166,7 @@ repos:
       # ── TypeScript package (typescript/) ───────────────────────────────────
       - id: ts-typecheck
         name: typescript type check
-        entry: bash -c 'cd typescript && npm run typecheck'
+        entry: bash -c 'cd typescript && npm run typecheck && npm run typecheck:examples'
         language: system
         pass_filenames: false
         always_run: true

@@ -55,6 +55,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "typecheck:examples": "tsc --noEmit -p examples/tsconfig.json",
     "lint": "eslint src tests --max-warnings=0",
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
