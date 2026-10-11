@@ -31,7 +31,9 @@ repos:
     hooks:
       - id: codespell
         additional_dependencies: ["tomli"]
-        exclude: "package-lock\\.json"
+        # pyproject's codespell skip lists ./rust/Cargo.lock and friends, but
+        # pre-commit passes paths without the ./ so those never match here.
+        exclude: "(package-lock\\.json|Cargo\\.lock|uv\\.lock)$"
 
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
     rev: v9.18.0
