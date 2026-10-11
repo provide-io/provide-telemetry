@@ -171,6 +171,13 @@ def inject_das_fields(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, 
 
 
 def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Merge bound context, then stamp the live trace and span ids.
+
+    ``trace_id``/``span_id`` are reserved root fields: a live span's ids
+    replace whatever the caller passed, and with no live span the caller's
+    values stand -- the same rule ``add_standard_fields`` applies to
+    ``service``/``env``/``version``.
+    """
     event_dict.update(get_context())
     trace_id = get_trace_id()
     span_id = get_span_id()
@@ -326,14 +333,30 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 _HUMAN_RENDERERS = frozenset({"console", "pretty"})
 
 
+def _stamp(event_dict: dict[str, Any], key: str, value: str) -> None:
+    """Stamp a reserved root field: the SDK's value wins over the caller's.
+
+    ``service``/``env``/``version`` say which process wrote the record, and a
+    caller passing ``service="billing"`` as an ordinary keyword must not make
+    one service's records read as another's. Only a value the SDK actually
+    has replaces the caller's: with an empty config value the SDK has nothing
+    to say, so a caller-supplied value stands (and an absent one is still
+    filled with the empty string, as before).
+    """
+    if value:
+        event_dict[key] = value
+    else:
+        event_dict.setdefault(key, value)
+
+
 def add_standard_fields(config: TelemetryConfig) -> Any:
     stamp_identity = config.logging.fmt not in _HUMAN_RENDERERS
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         if stamp_identity:
-            event_dict.setdefault("service", config.service_name)
-            event_dict.setdefault("env", config.environment)
-            event_dict.setdefault("version", config.version)
+            _stamp(event_dict, "service", config.service_name)
+            _stamp(event_dict, "env", config.environment)
+            _stamp(event_dict, "version", config.version)
         live = _get_active_config()
         include_error_taxonomy = (
             live.slo.include_error_taxonomy if live is not None else config.slo.include_error_taxonomy
