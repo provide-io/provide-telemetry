@@ -304,6 +304,15 @@ jobs:
             echo "running $d"
             go run ./"$d"
           done
+      # Telemetry examples that need the go/otel module (e.g. its Prometheus
+      # MetricsHandler) live there; they are just as standalone, so run them too.
+      - name: Run go/otel telemetry examples
+        run: |
+          set -euo pipefail
+          for d in otel/examples/telemetry/*/; do
+            echo "running $d"
+            go run ./"$d"
+          done
       - name: Build go/otel OpenObserve examples
         run: |
           if [ -d ./otel/examples/openobserve ]; then

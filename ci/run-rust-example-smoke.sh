@@ -21,4 +21,12 @@ for src in examples/telemetry_*.rs; do
   cargo run --locked --quiet --example "$name"
 done
 
+# Examples whose subject lives behind the otel feature print a rerun hint
+# under the default build above; run them again with the feature so what
+# they demonstrate actually executes.
+for name in telemetry_15_prometheus_metrics; do
+  echo "=== ${name} (--features otel)"
+  cargo run --locked --quiet --features otel --example "$name"
+done
+
 echo "All Rust telemetry examples ran to completion."

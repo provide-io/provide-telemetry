@@ -12,6 +12,7 @@ Thin console apps that call only the public `Provide.Telemetry` API.
 ```bash
 dotnet run --project csharp/examples/telemetry/01_basic_telemetry
 dotnet run --project csharp/examples/telemetry/02_w3c_propagation
+dotnet run --project csharp/examples/telemetry/15_prometheus_metrics
 ```
 
 ## OpenObserve / OTLP
@@ -35,4 +36,5 @@ When `OPENOBSERVE_*` is unset, the OpenObserve example exits 0 with a `SKIP:` me
 |------|---------|
 | `telemetry/01_basic_telemetry` | Setup, logger, spans, counter/gauge/histogram, context bind |
 | `telemetry/02_w3c_propagation` | W3C extract/bind, session context |
+| `telemetry/15_prometheus_metrics` | Prometheus pull reader, `PrometheusMetrics.MetricsHandler` scrape (uses `Provide.Telemetry.OpenTelemetry`) |
 | `openobserve/01_emit_all_signals` | OTLP HTTP traces/metrics/logs to OpenObserve |
