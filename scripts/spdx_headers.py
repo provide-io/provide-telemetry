@@ -61,7 +61,9 @@ EXCLUDED_DIRS = {
 def find_python_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for path in root.rglob("*.py"):
-        if any(part in EXCLUDED_DIRS for part in path.parts):
+        # Relative, so a checkout that itself sits under an excluded part (an
+        # agent worktree in .claude/worktrees/) still scans its own files.
+        if any(part in EXCLUDED_DIRS for part in path.relative_to(root).parts):
             continue
         files.append(path)
     return sorted(files)

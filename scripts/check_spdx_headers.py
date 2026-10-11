@@ -50,7 +50,7 @@ def _find_slash_comment_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for glob in _SLASH_COMMENT_GLOBS:
         for path in root.rglob(glob):
-            if any(part in _EXCLUDED_DIRS for part in path.parts):
+            if any(part in _EXCLUDED_DIRS for part in path.relative_to(root).parts):
                 continue
             files.append(path)
     return sorted(files)
