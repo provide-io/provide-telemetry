@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 import pytest
@@ -31,8 +32,41 @@ _SPEC = _ROOT / "spec" / "telemetry-api.yaml"
 _ENV_VAR_RE = re.compile(r'"((?:PROVIDE_|OTEL_EXPORTER_OTLP_)[A-Z_]+)"')
 
 
+class _RecordingEnv(Mapping[str, str]):
+    """An empty environment that remembers every variable name looked up in it."""
+
+    def __init__(self) -> None:
+        self.read: set[str] = set()
+
+    def __getitem__(self, key: str) -> str:
+        self.read.add(key)
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
+def _otlp_tls_env_vars() -> set[str]:
+    """The OTLP TLS variables, which _otlp_tls builds from signal and kind.
+
+    No literal name appears in the source for _ENV_VAR_RE to find, so ask the
+    resolver itself: with nothing set it reads every per-signal name and then
+    every shared one.
+    """
+    from provide.telemetry._otlp_tls import unreadable
+
+    env = _RecordingEnv()
+    for signal in ("logs", "traces", "metrics"):
+        unreadable(signal, env)
+    return env.read
+
+
 def _extract_env_vars_from_config() -> set[str]:
-    return {var for path in _CONFIG_SOURCES for var in _ENV_VAR_RE.findall(path.read_text(encoding="utf-8"))}
+    literal = {var for path in _CONFIG_SOURCES for var in _ENV_VAR_RE.findall(path.read_text(encoding="utf-8"))}
+    return literal | _otlp_tls_env_vars()
 
 
 def _non_python_spec_vars() -> set[str]:

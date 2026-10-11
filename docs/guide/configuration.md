@@ -112,15 +112,14 @@ shared fallback.
 
 TLS for OTLP push is read by each signal's exporter builder rather than by
 config parsing (`push_tls_env` under `prometheus_metrics` in
-`spec/telemetry-api.yaml`), in every SDK. Each takes a PEM file path; the
-per-signal forms `OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_CERTIFICATE`,
-`..._CLIENT_CERTIFICATE` and `..._CLIENT_KEY` override the shared one:
+`spec/telemetry-api.yaml`), in every SDK. Each takes a PEM file path, and a
+per-signal variable, when set, overrides the shared one for that signal:
 
-```
-OTEL_EXPORTER_OTLP_CERTIFICATE         # CA certificates trusted for the OTLP endpoint
-OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE  # client certificate for mutual TLS
-OTEL_EXPORTER_OTLP_CLIENT_KEY          # private key for the client certificate
-```
+| Variable | Per-signal overrides | Description |
+|----------|----------------------|-------------|
+| `OTEL_EXPORTER_OTLP_CERTIFICATE` | `OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE`, `OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE`, `OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE` | CA certificates trusted for the OTLP endpoint |
+| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` | `OTEL_EXPORTER_OTLP_LOGS_CLIENT_CERTIFICATE`, `OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE`, `OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE` | Client certificate for mutual TLS |
+| `OTEL_EXPORTER_OTLP_CLIENT_KEY` | `OTEL_EXPORTER_OTLP_LOGS_CLIENT_KEY`, `OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY`, `OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY` | Private key for the client certificate |
 
 A configured file that cannot be read or loaded (a CA file with no PEM
 certificate; a client certificate and key that do not form a pair) leaves that
