@@ -6,7 +6,8 @@
 """Parsing and validation for the Prometheus metrics settings.
 
 See the prometheus_metrics section of spec/telemetry-api.yaml. Invalid values
-raise ConfigurationError, as for the other enum-valued settings.
+raise ConfigurationError, as for the other enum-valued settings, except in
+OTEL_METRICS_EXPORTER, whose unusable entries are warned about and ignored.
 """
 
 from __future__ import annotations
@@ -18,6 +19,9 @@ from provide.telemetry.exceptions import ConfigurationError
 EXPORTER_OTLP = "otlp"
 EXPORTER_PROMETHEUS = "prometheus"
 EXPORTER_NONE = "none"
+# Registered for OTEL_METRICS_EXPORTER by the OTel spec, not implemented here.
+UNSUPPORTED_EXPORTERS = ("console", "logging")
+WARNING_SEPARATOR = "; "
 LISTEN_VALUES = ("false", "true", "auto")
 MAX_PORT = 65535
 DEFAULT_HOST = "127.0.0.1"
@@ -32,23 +36,33 @@ TRANSLATION_STRATEGIES = (
 )
 
 
-def parse_metrics_exporters(raw: str | None) -> tuple[str, ...]:
-    """Parse OTEL_METRICS_EXPORTER.
+def parse_metrics_exporters(raw: str | None, strict: bool = False) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Parse OTEL_METRICS_EXPORTER into (exporters, warnings).
 
     Entries are split on commas, trimmed and lowercased; empty ones are dropped.
-    Empty input means ("otlp",). "none" alone means no exporters and may not be
-    combined with another.
+    Empty input means ("otlp",) and "none" alone means no exporters. Anything
+    else this SDK cannot export to is dropped with a warning, as the OTel
+    environment-variable spec asks of an unrecognised enum value; see
+    prometheus_metrics.metrics_exporter_warnings. strict turns any warning into
+    a ConfigurationError.
     """
     names = [part.strip().lower() for part in (raw or "").split(",") if part.strip()]
-    unknown = [n for n in names if n not in (EXPORTER_OTLP, EXPORTER_PROMETHEUS, EXPORTER_NONE)]
-    if unknown:
-        raise ConfigurationError(f"OTEL_METRICS_EXPORTER: unknown exporter {unknown[0]!r}")
-    exporters = tuple(n for n in names if n != EXPORTER_NONE)
+    if names and all(n == EXPORTER_NONE for n in names):
+        return (), ()
+    warnings: list[str] = []
+    for name in dict.fromkeys(names):
+        if name in UNSUPPORTED_EXPORTERS:
+            warnings.append(f"OTEL_METRICS_EXPORTER: {name} is not supported by provide-telemetry, ignored")
+        elif name not in (EXPORTER_OTLP, EXPORTER_PROMETHEUS, EXPORTER_NONE):
+            warnings.append(f"OTEL_METRICS_EXPORTER: unknown exporter {name}, ignored")
     if EXPORTER_NONE in names:
-        if exporters:
-            raise ConfigurationError("OTEL_METRICS_EXPORTER: none cannot be combined with other exporters")
-        return ()
-    return exporters or (EXPORTER_OTLP,)
+        warnings.append("OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored")
+    exporters = tuple(n for n in names if n in (EXPORTER_OTLP, EXPORTER_PROMETHEUS))
+    if names and not exporters:
+        warnings.append("OTEL_METRICS_EXPORTER: no supported exporter left, using otlp")
+    if strict and warnings:
+        raise ConfigurationError(f"PROVIDE_TELEMETRY_STRICT_CONFIG: {WARNING_SEPARATOR.join(warnings)}")
+    return exporters or (EXPORTER_OTLP,), tuple(warnings)
 
 
 def validate_exporters(exporters: tuple[str, ...]) -> None:

@@ -40,6 +40,7 @@ def test_exporter_selection(case: dict[str, Any]) -> None:
     metrics = TelemetryConfig.from_env(case["env"]).metrics
     assert _readers(metrics) == case["exporters"]
     assert metrics.prometheus_listener_enabled is case["listener"]
+    assert list(metrics.exporter_warnings) == case.get("warnings", [])
 
 
 @pytest.mark.parametrize(
@@ -154,8 +155,21 @@ def test_code_built_exporters_are_validated() -> None:
 @pytest.mark.parametrize(
     ("env", "message"),
     [
-        ({"OTEL_METRICS_EXPORTER": "otlp,statsd"}, "OTEL_METRICS_EXPORTER: unknown exporter 'statsd'"),
-        ({"OTEL_METRICS_EXPORTER": "none,otlp"}, "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters"),
+        (
+            {"OTEL_METRICS_EXPORTER": "otlp,statsd", "PROVIDE_TELEMETRY_STRICT_CONFIG": "true"},
+            "PROVIDE_TELEMETRY_STRICT_CONFIG: OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored",
+        ),
+        (
+            {"OTEL_METRICS_EXPORTER": "none,console", "PROVIDE_TELEMETRY_STRICT_CONFIG": "1"},
+            "PROVIDE_TELEMETRY_STRICT_CONFIG: "
+            "OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored; "
+            "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored; "
+            "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp",
+        ),
+        (
+            {"PROVIDE_TELEMETRY_STRICT_CONFIG": "maybe"},
+            "invalid boolean for PROVIDE_TELEMETRY_STRICT_CONFIG: 'maybe' (expected one of: 1,true,yes,on,0,false,no,off)",
+        ),
         (
             {"OTEL_EXPORTER_PROMETHEUS_PORT": "http"},
             "OTEL_EXPORTER_PROMETHEUS_PORT: want an integer in 0-65535, got 'http'",
@@ -177,7 +191,16 @@ def test_code_built_exporters_are_validated() -> None:
             "PROVIDE_METRICS_PROMETHEUS_TRANSLATION: unknown strategy 'Legacy'",
         ),
     ],
-    ids=["exporter-unknown", "exporter-none-mixed", "port-nan", "port-range", "listen", "path", "translation"],
+    ids=[
+        "exporter-strict-unknown",
+        "exporter-strict-many",
+        "strict-config-bool",
+        "port-nan",
+        "port-range",
+        "listen",
+        "path",
+        "translation",
+    ],
 )
 def test_error_messages_name_the_setting_and_value(env: dict[str, str], message: str) -> None:
     with pytest.raises(ConfigurationError) as excinfo:
@@ -193,3 +216,29 @@ def test_code_built_exporter_error_names_the_value() -> None:
 
 def test_none_alone_selects_no_exporter() -> None:
     assert TelemetryConfig.from_env({"OTEL_METRICS_EXPORTER": "none"}).metrics.exporters == ()
+
+
+def test_strict_config_defaults_off_and_is_read() -> None:
+    assert TelemetryConfig.from_env({}).strict_config is False
+    assert TelemetryConfig.from_env({"PROVIDE_TELEMETRY_STRICT_CONFIG": "true"}).strict_config is True
+
+
+def test_strict_config_leaves_a_clean_exporter_value_alone() -> None:
+    cfg = TelemetryConfig.from_env({"OTEL_METRICS_EXPORTER": "none", "PROVIDE_TELEMETRY_STRICT_CONFIG": "true"})
+    assert (cfg.metrics.exporters, cfg.metrics.exporter_warnings) == ((), ())
+
+
+def test_parse_is_lenient_unless_strict() -> None:
+    from provide.telemetry._config_prometheus import parse_metrics_exporters
+
+    assert parse_metrics_exporters("statsd") == (
+        ("otlp",),
+        (
+            "OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored",
+            "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp",
+        ),
+    )
+    assert parse_metrics_exporters(None) == (("otlp",), ())
+    assert parse_metrics_exporters(" , ") == (("otlp",), ())
+    with pytest.raises(ConfigurationError):
+        parse_metrics_exporters("statsd", strict=True)
