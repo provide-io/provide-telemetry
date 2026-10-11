@@ -77,7 +77,8 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 
 ## Quality Constraints
 
-- **100% branch coverage** is enforced for Python, TypeScript, and Go.
+- **100% coverage** is enforced for Python and TypeScript (branch) and Go (statement, per OS).
+  C# is gated by `ci/check_csharp_coverage.py` at 100% line / 98% branch.
 - **Rust has a coverage gate too** — `ci-rust.yml` runs `cargo llvm-cov` with
   `--fail-under-functions 100`, so every function must be exercised. `cargo test`
   passing tells you nothing about it: a new `match` arm or error path that no test
@@ -87,7 +88,8 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
     --ignore-filename-regex '/rustlib/src/rust/library/|/\.rustup/|/toolchains/' \
     --fail-uncovered-lines 0 --fail-under-functions 100
   ```
-- **100% mutation kill score** is enforced, not merely targeted, in every language:
+- **100% mutation kill score** is enforced, not merely targeted, in Python, Go and Rust;
+  TypeScript and C# gate on a score floor:
   - **Python** — `scripts/run_mutation_gate.py`. Note `_is_clean()` requires *zero*
     survivors, timeouts, suspicious and no-tests results; `--min-mutation-score` is an
     additional floor, not the bar. A run at 99% still fails.
@@ -109,8 +111,12 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
   - **Rust** — `cargo mutants` across 8 CI shards. No threshold flag is passed because
     cargo-mutants exits non-zero on any surviving mutant by default.
   - **TypeScript** — Stryker, run twice (`stryker.config.mjs` then
-    `stryker.otel.config.mjs`). This is the one surface that is *not* whole: see the
-    `mutate:` exclusion list, where each excluded file carries the reason inline.
+    `stryker.otel.config.mjs`, via `npm run test:mutation`), with `thresholds.break` at
+    95 and 80 respectively. No wrapper enforces zero survivors, so a run fails only below
+    those scores. Its surface is also *not* whole: see the `mutate:` exclusion list,
+    where each excluded file carries the reason inline.
+  - **C#** — Stryker.NET with a score floor, not 100%: `break` in
+    `csharp/stryker-config.json` (currently 85), with the reasoning recorded there.
 - `# pragma: no mutate` only takes effect on a **whole single-line statement**. mutmut
   ignores it on a continuation line and on an element inside a multi-line dict/list
   literal, and `block` pragmas cannot nest. Beware that `ruff format` can re-wrap a long
@@ -119,44 +125,68 @@ uv run python scripts/memray/memray_analysis.py            # Generate analysis r
 - **777 LOC max per file** — enforced across Python, TypeScript, Go, and Rust via `scripts/check_max_loc.py`. Pre-existing violators are tracked in `.max_loc_allowlist.yaml` with split plans; new files MUST stay under 777 lines.
 - **SPDX license headers required** in all source files (Apache-2.0 for this repo)
 - **mypy strict mode** — no `Any`, no untyped functions, full annotations required.
-- Pytest markers: `otel`, `integration`, `e2e`, `tooling`, `memray`, `slow` — tag tests appropriately.
+- Pytest markers: `otel`, `integration`, `e2e`, `mock_e2e`, `tooling`, `memray`, `slow`, `flaky` — tag tests appropriately.
 
 ## Architecture
 
 ```
 src/provide/telemetry/
 ├── __init__.py          # Public API facade — only import from here in consumers
-├── setup.py             # Idempotent setup()/teardown() with threading.Lock
+├── _lazy.py             # Lazy-import registry backing the facade
+├── setup.py             # Idempotent setup_telemetry()/flush/shutdown_telemetry() coordinator
+├── _lifecycle.py        # Immutable lifecycle generations + the one lock that publishes them
+├── _provider_drain.py   # Bounded provider flush/shutdown calls, per-signal drains
 ├── config.py            # stdlib @dataclass(slots=True), all config via env vars (PROVIDE_* / OTEL_*)
+├── _config_validation.py, _config_prometheus.py  # env parsing / Prometheus settings validation
+├── _endpoint.py, _otlp_tls.py, _masking.py       # OTLP endpoint checks, TLS file checks, credential masking
 ├── _otel.py             # OTel introspection utilities (lazy import helpers)
-├── exceptions.py        # TelemetryError, ConfigurationError
-├── health.py            # Self-observability snapshots
-├── runtime.py           # Hot-reload API
-├── pii.py               # PII rule engine with secret detection and nested traversal
-├── propagation.py       # W3C traceparent/tracestate extraction with size guards
+├── _resource.py         # OTel Resource construction shared by the providers
+├── exceptions.py        # TelemetryError, ConfigurationError, ProviderImmutableError
+├── health.py            # Self-observability counters and snapshot
+├── runtime.py           # Hot-reload API (_runtime_types.py: its value types)
+├── _runtime_policies.py # Pushes a config generation's hot policy values into the subsystems
+├── levels.py            # Canonical severity ladder and string-to-level converter
+├── consent.py           # Consent-level gating (first admission stage)
 ├── sampling.py          # Per-signal probabilistic sampling
 ├── backpressure.py      # Bounded queue ticket system
-├── resilience.py        # Retry, timeout, circuit breaker, executor pool
+├── pii.py               # PII rule engine with secret detection and nested traversal
+├── _secret_patterns_generated.py  # Generated from spec/secret_patterns.yaml — do not edit
+├── classification.py    # Data classification engine
+├── receipts.py          # Cryptographic redaction receipts
+├── _record_marker.py    # Marks a LogRecord this SDK already hardened and sanitized
+├── propagation.py       # W3C traceparent/tracestate extraction with size guards
+├── resilience.py        # Retry, timeout, circuit breaker, timeout executors
+├── resilient_exporter.py # Per-export resilience wrappers for OTel exporters
 ├── cardinality.py       # TTL-based attribute cardinality guards
 ├── slo.py               # RED/USE metric helpers
 ├── headers.py           # Safe ASGI header extraction
-├── testing.py           # pytest plugin for test isolation
+├── testing.py           # Opt-in pytest plugin for test isolation (not auto-registered)
 ├── logger/
-│   ├── core.py          # structlog pipeline: configure_logging(), build_handlers()
+│   ├── core.py          # structlog pipeline: configure_logging(), handler build, get_logger()
+│   ├── processors.py    # structlog processors: admission, harden_input, fingerprint, schema, sanitize
+│   ├── _foreign_records.py # Hardening + PII for stdlib records that bypassed the structlog chain
+│   ├── handlers.py      # Stdlib logging handlers used by the pipeline
+│   ├── _otel_logs.py    # OTel log-provider wiring
+│   ├── sink.py, console.py, _windows_console.py  # Log destination and what it can render
 │   ├── context.py       # contextvars: bind_context(), bind_session_context()
-│   ├── processors.py    # structlog processors: harden_input, error fingerprint, sanitize
 │   └── pretty.py        # Pretty ANSI renderer with configurable colors
 ├── tracing/
 │   ├── provider.py      # OTel TracerProvider or no-op fallback
-│   ├── context.py       # contextvars: trace_id, span_id
-│   └── decorators.py    # @trace async decorator
+│   ├── context.py, context_runtime.py  # trace_id/span_id helpers, cross-context OTel context
+│   ├── span.py          # Block-level span context manager
+│   └── decorators.py    # @trace decorator (sync and async)
 ├── metrics/
-│   ├── provider.py      # OTel MeterProvider or no-op fallback
+│   ├── provider.py      # OTel MeterProvider (OTLP and/or Prometheus readers) or no-op fallback
 │   ├── api.py           # counter(), gauge(), histogram()
-│   ├── instruments.py   # Instrument wrappers
-│   └── fallback.py      # In-process fallback implementations
+│   ├── observable.py    # Observable (callback) instruments
+│   ├── instruments.py   # Compatibility re-exports
+│   ├── fallback.py      # In-process fallback implementations
+│   ├── prometheus.py    # Prometheus pull reader, status, Tier 2 handler
+│   ├── _prom_listener.py # Tier 3 standalone listener
+│   ├── _prom_render.py, _prom_names.py  # Text exposition rendering, name translation
+│   └── _health_otlp.py  # PROVIDE_METRICS_HEALTH_OTLP: health series as observable instruments
 ├── asgi/
-│   ├── middleware.py     # TelemetryMiddleware — binds request/session context, baggage extraction
+│   ├── middleware.py    # TelemetryMiddleware — binds request/session context, baggage extraction
 │   └── websocket.py     # WebSocket context helpers
 └── schema/
     └── events.py        # Event name validation, required-key enforcement
@@ -165,9 +195,9 @@ src/provide/telemetry/
 **Key design patterns:**
 
 - **Graceful degradation**: OTel is optional. When unavailable or unconfigured, no-op tracers/meters are used silently. Never raise on missing OTel.
-- **Lock-protected idempotent init**: `setup.py`, `logger/core.py`, and both providers use `threading.Lock` + a sentinel flag to allow safe repeated calls.
+- **Lock-protected idempotent init**: `setup.py` runs under the lifecycle coordinator's lock (`_lifecycle.py`); `logger/core.py` and the tracer/meter providers each use a `threading.Lock` + a sentinel flag to allow safe repeated calls.
 - **contextvars for async safety**: All per-request state (trace IDs, session, user) lives in `contextvars` — safe across `await` boundaries and isolated per task.
-- **Processor chain**: structlog processors run in order — add standard fields → merge context → enforce schema → sanitize → format (console or JSON).
+- **Processor chain** (`logger/core.py`): merge context → logger name → DAS fields → level → timestamp → per-module level filter → admission (`apply_sampling`: consent → sampling → backpressure) → harden input → standard fields → error fingerprint → enforce schema → PII sanitize + receipts → callsite → render (console, pretty or JSON). Admission before payload work follows the canonical stage order in `spec/pipeline_fixtures.yaml`: consent → sampling → backpressure → hardening → pii → receipt → local → backend → health → release.
 - **No direct OTel imports at module level** in non-`otel`-extra files — guard all OTel imports with `try/except ImportError`.
 
 ## Configuration
@@ -179,12 +209,15 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 | `PROVIDE_TELEMETRY_*` | Service name, env, version, schema strictness |
 | `PROVIDE_LOG_*` | Log level, format, caller info, sanitization |
 | `PROVIDE_TRACE_*` | Tracing enabled, sample rate |
-| `PROVIDE_METRICS_*` | Metrics enabled |
+| `PROVIDE_METRICS_*` | Metrics enabled, Prometheus pull (`PROVIDE_METRICS_PROMETHEUS_*`), `PROVIDE_METRICS_HEALTH_OTLP` |
+| `PROVIDE_SAMPLING_*`, `PROVIDE_BACKPRESSURE_*`, `PROVIDE_EXPORTER_*` | Per-signal sampling rates, queue sizes, exporter retry/timeout/fail-open |
+| `PROVIDE_SECURITY_*`, `PROVIDE_SLO_*`, `PROVIDE_CONSENT_LEVEL` | Input hardening limits, RED/USE metrics, consent level |
 | `OTEL_EXPORTER_OTLP_*` | OTLP endpoint/headers (standard OTel env vars) |
+| `OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_PROMETHEUS_*` | Metric reader selection, Prometheus listener host/port |
 
 ## Testing Conventions
 
-- Tests live in `tests/` mirroring the `src/provide/telemetry/` structure.
+- Tests live in `tests/`, grouped by subsystem (`tests/logger/`, `tests/pii/`, `tests/metrics/`, ...).
 - `asyncio_mode = "auto"` — async test functions work without decorators.
 - Use `importlib.reload()` to reset module-level singletons between tests (see existing tests for the pattern).
 - OTel-dependent tests must use `@pytest.mark.otel` and import OTel inside the test or fixture.
@@ -197,7 +230,7 @@ All runtime config comes from environment variables, parsed via `TelemetryConfig
 - `spec/telemetry-api.yaml` — canonical API surface definition; all languages validate against it.
 - `spec/validate_conformance.py` — checks language exports against spec.
 - `scripts/check_version_sync.py` — ensures all languages share major.minor from `VERSION`.
-- `VERSION` holds the canonical full version (currently `0.8.0`); only its major.minor is
+- `VERSION` holds the canonical full version (currently `0.10.1`); only its major.minor is
   compared across languages, so each language tracks its own patch and they legitimately drift.
 - `e2e/` — cross-language E2E tests.
 - Language directories: `typescript/`, `go/`, `rust/`, `csharp/` — each self-contained with own build config.

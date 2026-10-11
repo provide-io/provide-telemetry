@@ -4,9 +4,8 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.4.x   | Yes                |
-| 0.3.x   | No (end-of-life)   |
-| < 0.3   | No                 |
+| 0.10.x  | Yes                |
+| < 0.10  | No                 |
 
 ## Reporting a Vulnerability
 
@@ -27,6 +26,9 @@ You will receive an acknowledgement within 72 hours. We aim to ship a fix within
 This policy covers:
 - `provide-telemetry` (PyPI) — `src/provide/telemetry/`
 - `@provide-io/telemetry` (npm) — `typescript/src/`
+- `github.com/provide-io/provide-telemetry/go` and `.../go/otel` (Go modules) — `go/`
+- `provide-telemetry` (crates.io) — `rust/`
+- `Provide.Telemetry` and `Provide.Telemetry.OpenTelemetry` (NuGet) — `csharp/src/`
 
 Out of scope: third-party dependencies (report directly to their maintainers), example scripts, test fixtures.
 
@@ -38,7 +40,7 @@ Pin OpenTelemetry packages with **caret ranges** (e.g. `^1.27.0`). Run the full 
 
 All five language implementations include built-in sanitization, with identical
 behaviour pinned by the shared fixtures in `spec/behavioral_fixtures.yaml`:
-- Default fields (`password`, `token`, `secret`, `authorization`, `api_key`) are redacted automatically, with `***` as the sentinel in every language.
+- Default sensitive fields (e.g. `password`, `token`, `secret`, `authorization`, `api_key`) are redacted automatically, with `***` as the sentinel in every language.
 - The PII rule engine supports custom rules with nested object traversal.
 - Secret pattern scanning matches known credential shapes (AWS access keys, JWTs, GitHub tokens) plus long hex and base64 runs, in attribute values **and** in the free-form log message. Detection is shape-based, not an entropy estimate.
 - Every match is redacted, not just the first, and the redaction widens to the whole whitespace-delimited token so no tail of a credential survives. Tokens shaped like filesystem paths are exempt so ordinary log lines stay readable.
@@ -50,7 +52,7 @@ Production deployments should enable these config options:
 
 | Option | Effect |
 |--------|--------|
-| `strictSchema` | Rejects log events that do not match the registered event schema |
+| `strictSchema` | Validates event names strictly; a non-conforming event is annotated with `_schema_error` (not dropped) |
 | `logSanitize` | Enables PII redaction in the structlog/pino processor chain |
 | `securityMaxAttrValueLength` | Truncates attribute values to prevent log injection / exfiltration |
 | `securityMaxAttrCount` | Caps the number of attributes per event to limit cardinality abuse |
@@ -63,6 +65,6 @@ Production deployments should enable these config options:
 
 ## Supply Chain
 
-- An SBOM (Software Bill of Materials) is generated for each release.
-- Dependabot is enabled for all language directories and GitHub Actions workflows.
+- An SBOM (Software Bill of Materials) is generated for each Python and TypeScript release artifact.
+- Dependabot is enabled for the Python (pip) and TypeScript (npm) dependencies and for GitHub Actions workflows.
 - SPDX license headers (Apache-2.0) are enforced on every source file via CI.

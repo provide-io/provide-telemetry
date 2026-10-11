@@ -34,9 +34,10 @@ cargo test --manifest-path rust/Cargo.toml --all-features # Rust
 cd csharp && dotnet test                                  # C#
 ```
 
-Python, TypeScript, and Go enforce **100% branch coverage**; Rust enforces
-100% covered functions and zero uncovered lines via `cargo llvm-cov`; C#
-enforces ratcheted floors (99% line / 97% branch) in `ci-csharp.yml`.
+Python and TypeScript enforce **100% branch coverage** and Go 100% statement
+coverage; Rust enforces 100% covered functions and zero uncovered lines via
+`cargo llvm-cov`; C# enforces ratcheted floors (100% line / 98% branch) in
+`ci-csharp.yml`.
 
 ## Code style
 
