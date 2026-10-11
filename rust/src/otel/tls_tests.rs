@@ -130,10 +130,20 @@ fn files_that_do_not_load_are_reported() {
         certs.client_cert.display(),
         certs.key.display()
     );
-    assert!(
-        err.starts_with(&prefix) && err.len() > prefix.len(),
-        "{err}"
-    );
+    // The reason is reqwest's own, as building the identity reports it.
+    let pem = [
+        std::fs::read(&certs.key).unwrap(),
+        b"\n".to_vec(),
+        std::fs::read(&certs.client_cert).unwrap(),
+    ]
+    .concat();
+    let identity = reqwest::Identity::from_pem(&pem).unwrap();
+    let reason = reqwest::Client::builder()
+        .identity(identity)
+        .build()
+        .unwrap_err()
+        .to_string();
+    assert_eq!(err, format!("{prefix}{reason}"));
 
     env.set("OTEL_EXPORTER_OTLP_CLIENT_KEY", &junk);
     let err = client_tls("METRICS").unwrap_err();
@@ -258,5 +268,62 @@ fn an_unloadable_file_skips_the_exporter_records_setup_error_and_never_fails_set
         crate::health::get_health_snapshot().setup_error,
         Some(format!("{reason}; {reason}; {reason}"))
     );
+    reset_telemetry_state();
+}
+
+/// The client http_client builds really presents the identity and trusts only
+/// the configured CA: checked against the listener requiring a client certificate.
+#[cfg(feature = "prometheus-listener")]
+#[test]
+fn the_http_client_trusts_the_ca_and_presents_the_identity() {
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
+    let certs = TestCerts::generate();
+    let web = certs.dir.join("web.yml");
+    std::fs::write(
+        &web,
+        format!(
+            "tls_server_config:\n  cert_file: {}\n  key_file: {}\n  client_ca_file: {}\n",
+            certs.cert.display(),
+            certs.key.display(),
+            certs.ca.display()
+        ),
+    )
+    .unwrap();
+    let mut config = crate::config::TelemetryConfig::default();
+    config.metrics.exporters = vec!["prometheus".to_string()];
+    config.metrics.prometheus.listen = "true".to_string();
+    config.metrics.prometheus.port = 0;
+    config.metrics.prometheus.web_config = web.display().to_string();
+    crate::setup_telemetry(Some(config)).expect("setup");
+    let port = crate::prometheus::listener::address().unwrap().port();
+    let url = format!("https://localhost:{port}/metrics");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let status = |client: reqwest::Client| {
+        runtime.block_on(async { client.get(&url).send().await.map(|r| r.status().as_u16()) })
+    };
+
+    let mut env = EnvGuard::default();
+    env.set("OTEL_EXPORTER_OTLP_CERTIFICATE", &certs.ca);
+    let ca_only = client_tls("METRICS").unwrap().unwrap();
+    // Trusted, but the listener wants a client certificate.
+    assert!(status(http_client(&ca_only, Duration::from_secs(5)).unwrap()).is_err());
+    env.set("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", &certs.client_cert);
+    env.set("OTEL_EXPORTER_OTLP_CLIENT_KEY", &certs.client_key);
+    let full = client_tls("METRICS").unwrap().unwrap();
+    assert_eq!(
+        status(http_client(&full, Duration::from_secs(5)).unwrap()).unwrap(),
+        200
+    );
+    // The system roots alone do not trust the private CA.
+    let identity_only = ClientTls {
+        ca: None,
+        identity: full.identity.clone(),
+    };
+    assert!(status(http_client(&identity_only, Duration::from_secs(5)).unwrap()).is_err());
+    drop(env);
     reset_telemetry_state();
 }
