@@ -24,10 +24,14 @@ using Provide.Telemetry;
 // config object to diff).
 string[] probeValues =
 [
+    // First, so OTEL_METRICS_EXPORTER is settled by a value it accepts: every
+    // garbage value below only adds an ignored-entry warning to the config,
+    // which would otherwise be reported as the variable's field.
+    "prometheus",
     "DEBUG", "json", "red", "3", "1327", "0.4271", "probe-sentinel-value",
     "false", "true", "http://probe.invalid:4318", "probe-module=DEBUG", "probe-key=probe-value",
     // Valid values for the Prometheus enums, which reject everything above.
-    "prometheus", "auto", "/probe-path", "UnderscoreEscapingWithoutSuffixes",
+    "auto", "/probe-path", "UnderscoreEscapingWithoutSuffixes",
 ];
 
 string[] ownedPrefixes = ["PROVIDE_", "OTEL_"];

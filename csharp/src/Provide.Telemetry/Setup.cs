@@ -298,10 +298,29 @@ public static class Setup
     /// </remarks>
     private static void ConfigureBackend(ITelemetryBackend? backend, TelemetryConfig cfg)
     {
-        var error = backend?.Configure(cfg) ?? "";
+        var problems = new List<string>(cfg.Metrics.ExporterWarnings);
+        foreach (var message in problems)
+        {
+            Warn(ExporterValueIgnoredEvent, new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["reason"] = message,
+            });
+        }
+        var backendError = backend?.Configure(cfg) ?? "";
+        if (backendError.Length > 0) problems.Add(backendError);
+        var error = string.Join(PrometheusSettings.WarningSeparator, problems);
         _setupError = error;
         Health.SetSetupError(error);
     }
+
+    /// <summary>Logged once per setup for each ignored <c>OTEL_METRICS_EXPORTER</c> entry.</summary>
+    internal const string ExporterValueIgnoredEvent = "config.metrics_exporter.value_ignored";
+
+    /// <summary>Where setup's own warnings go: the SDK logger, or a test's capture.</summary>
+    internal static Action<string, IReadOnlyDictionary<string, object?>> Warn { get; set; } = DefaultWarn;
+
+    internal static void DefaultWarn(string message, IReadOnlyDictionary<string, object?> fields) =>
+        Logging.GetLogger("provide.telemetry.setup").Warning(message, fields);
 
     /// <summary>
     /// Facade gate matching Go TracingEnabled: true when no runtime config yet,

@@ -67,6 +67,13 @@ public sealed class MetricsConfig
     /// </summary>
     public List<string> Exporters { get; set; } = [PrometheusSettings.ExporterOtlp];
 
+    /// <summary>
+    /// What <c>OTEL_METRICS_EXPORTER</c> asked for that was ignored; setup logs these
+    /// and reports them as <c>setup_error</c>
+    /// (spec <c>prometheus_metrics.metrics_exporter_warnings</c>).
+    /// </summary>
+    public List<string> ExporterWarnings { get; set; } = [];
+
     /// <summary>Also export the health metrics over OTLP (PROVIDE_METRICS_HEALTH_OTLP).</summary>
     public bool HealthOtlp { get; set; }
 
@@ -171,6 +178,11 @@ public sealed class TelemetryConfig
     public string Version { get; set; } = "0.0.0";
     public bool StrictSchema { get; set; }
     /// <summary>
+    /// Fail config parsing on a value that would otherwise be warned about and
+    /// ignored (PROVIDE_TELEMETRY_STRICT_CONFIG). Today that is OTEL_METRICS_EXPORTER only.
+    /// </summary>
+    public bool StrictConfig { get; set; }
+    /// <summary>
     /// Extra OTel resource attributes, at the top of the precedence ladder.
     /// </summary>
     /// <remarks>
@@ -200,6 +212,7 @@ public sealed class TelemetryConfig
             Environment = Environment,
             Version = Version,
             StrictSchema = StrictSchema,
+            StrictConfig = StrictConfig,
             ResourceAttributes = new Dictionary<string, string>(ResourceAttributes, StringComparer.Ordinal),
             Logging = new LoggingConfig
             {
@@ -236,6 +249,7 @@ public sealed class TelemetryConfig
                 OtlpClientCertificate = Metrics.OtlpClientCertificate,
                 OtlpClientKey = Metrics.OtlpClientKey,
                 Exporters = new List<string>(Metrics.Exporters),
+                ExporterWarnings = new List<string>(Metrics.ExporterWarnings),
                 HealthOtlp = Metrics.HealthOtlp,
                 Prometheus = Metrics.Prometheus.Clone(),
             },

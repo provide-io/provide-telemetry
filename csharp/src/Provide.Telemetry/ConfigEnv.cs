@@ -25,6 +25,7 @@ public static class ConfigEnv
         cfg.Environment = Env("PROVIDE_TELEMETRY_ENV", cfg.Environment);
         cfg.Version = Env("PROVIDE_TELEMETRY_VERSION", cfg.Version);
         cfg.StrictSchema = EnvBool("PROVIDE_TELEMETRY_STRICT_SCHEMA", cfg.StrictSchema);
+        cfg.StrictConfig = EnvBool("PROVIDE_TELEMETRY_STRICT_CONFIG", cfg.StrictConfig);
 
         cfg.EventSchema.StrictEventName =
             EnvBool("PROVIDE_TELEMETRY_STRICT_EVENT_NAME", cfg.EventSchema.StrictEventName);
@@ -62,7 +63,7 @@ public static class ConfigEnv
         cfg.Metrics.OtlpEndpoint = Env("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", sharedEndpoint);
         cfg.Metrics.OtlpHeaders = SignalHeaders("METRICS", sharedHeaders);
         ApplyTls(cfg.Metrics, "METRICS");
-        ApplyPrometheus(cfg.Metrics);
+        ApplyPrometheus(cfg.Metrics, cfg.StrictConfig);
 
         cfg.Sampling.LogsRate = ValidateRate(
             EnvDouble("PROVIDE_SAMPLING_LOGS_RATE", cfg.Sampling.LogsRate), "PROVIDE_SAMPLING_LOGS_RATE");
@@ -216,10 +217,10 @@ public static class ConfigEnv
     private static string SignalEnv(string signal, string name) =>
         Env($"OTEL_EXPORTER_OTLP_{signal}_{name}", Env($"OTEL_EXPORTER_OTLP_{name}", ""));
 
-    private static void ApplyPrometheus(MetricsConfig m)
+    private static void ApplyPrometheus(MetricsConfig m, bool strict)
     {
         var p = m.Prometheus;
-        m.Exporters = PrometheusSettings.ParseExporters(Env("OTEL_METRICS_EXPORTER", ""));
+        (m.Exporters, m.ExporterWarnings) = PrometheusSettings.ParseExporters(Env("OTEL_METRICS_EXPORTER", ""), strict);
         m.HealthOtlp = EnvBool("PROVIDE_METRICS_HEALTH_OTLP", m.HealthOtlp);
         p.Listen = Trimmed("PROVIDE_METRICS_PROMETHEUS_LISTEN", p.Listen);
         p.Host = Trimmed("OTEL_EXPORTER_PROMETHEUS_HOST", p.Host);

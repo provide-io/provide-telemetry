@@ -34,6 +34,8 @@ public sealed class PrometheusConfigTests
         var metrics = ConfigEnv.ConfigFromEnv().Metrics;
         Assert.True(c.Strings("exporters").SequenceEqual(Readers(metrics)), id);
         Assert.Equal(c.Flag("listener"), metrics.PrometheusListenerEnabled());
+        var warnings = c.ContainsKey("warnings") ? c.Strings("warnings") : [];
+        Assert.Equal(warnings, metrics.ExporterWarnings);
     }
 
     public static IEnumerable<object[]> SingleSettings()
@@ -127,13 +129,63 @@ public sealed class PrometheusConfigTests
     }
 
     [Theory]
-    [InlineData("otlp,statsd", "OTEL_METRICS_EXPORTER: unknown exporter 'statsd'")]
-    [InlineData("none,otlp", "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters")]
-    public void BadExporters_NameTheProblem(string raw, string message)
+    [InlineData("otlp,statsd",
+        "PROVIDE_TELEMETRY_STRICT_CONFIG: OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored")]
+    [InlineData("none,console",
+        "PROVIDE_TELEMETRY_STRICT_CONFIG: "
+        + "OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored; "
+        + "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored; "
+        + "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp")]
+    public void StrictConfig_FailsParsingAndNamesEveryProblem(string raw, string message)
     {
-        using var env = new EnvScope(new Dictionary<string, string?> { ["OTEL_METRICS_EXPORTER"] = raw });
+        using var env = new EnvScope(new Dictionary<string, string?>
+        {
+            ["OTEL_METRICS_EXPORTER"] = raw,
+            ["PROVIDE_TELEMETRY_STRICT_CONFIG"] = "true",
+        });
         Assert.Equal(message, Assert.Throws<ConfigurationError>(() => ConfigEnv.ConfigFromEnv()).Message);
     }
+
+    [Fact]
+    public void StrictConfig_DefaultsOffAndIsRead()
+    {
+        using var env = new EnvScope();
+        Assert.False(ConfigEnv.ConfigFromEnv().StrictConfig);
+        env.Set("PROVIDE_TELEMETRY_STRICT_CONFIG", "true");
+        Assert.True(ConfigEnv.ConfigFromEnv().StrictConfig);
+    }
+
+    [Fact]
+    public void StrictConfig_LeavesACleanValueAlone()
+    {
+        using var env = new EnvScope(new Dictionary<string, string?>
+        {
+            ["OTEL_METRICS_EXPORTER"] = "none",
+            ["PROVIDE_TELEMETRY_STRICT_CONFIG"] = "true",
+        });
+        var m = ConfigEnv.ConfigFromEnv().Metrics;
+        Assert.Empty(m.Exporters);
+        Assert.Empty(m.ExporterWarnings);
+    }
+
+    [Fact]
+    public void ParseExporters_IsLenientUnlessStrict()
+    {
+        var (exporters, warnings) = PrometheusSettings.ParseExporters("statsd", false);
+        Assert.Equal(["otlp"], exporters);
+        Assert.Equal(
+            ["OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored",
+             "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp"],
+            warnings);
+        Assert.Throws<ConfigurationError>(() => PrometheusSettings.ParseExporters("statsd", true));
+        var (blank, none) = PrometheusSettings.ParseExporters(" , ", true);
+        Assert.Equal(["otlp"], blank);
+        Assert.Empty(none);
+    }
+
+    [Fact]
+    public void UnsupportedExporters_AreTheOtelRegisteredOnes() =>
+        Assert.Equal(["console", "logging"], PrometheusSettings.UnsupportedExporters);
 
     [Theory]
     [InlineData("PROVIDE_METRICS_PROMETHEUS_LISTEN", "yes",
@@ -199,8 +251,12 @@ public sealed class PrometheusConfigTests
         PrometheusSettings.Validate(new MetricsConfig { Exporters = ["otlp", "prometheus"] });
 
     [Fact]
-    public void ParseExporters_NullIsTheDefault() =>
-        Assert.Equal(["otlp"], PrometheusSettings.ParseExporters(null));
+    public void ParseExporters_NullIsTheDefault()
+    {
+        var (exporters, warnings) = PrometheusSettings.ParseExporters(null, false);
+        Assert.Equal(["otlp"], exporters);
+        Assert.Empty(warnings);
+    }
 
     [Fact]
     public void ParsePort_NullIsTheDefault() => Assert.Equal(9464, PrometheusSettings.ParsePort(null));
@@ -226,21 +282,26 @@ public sealed class PrometheusConfigTests
     {
         var cfg = new TelemetryConfig();
         cfg.Metrics.Exporters = ["prometheus"];
+        cfg.Metrics.ExporterWarnings = ["w"];
+        cfg.StrictConfig = true;
         cfg.Metrics.HealthOtlp = true;
         cfg.Metrics.Prometheus.Path = "/x";
         cfg.Metrics.OtlpCertificate = "ca";
         cfg.Metrics.OtlpClientCertificate = "cert";
-        cfg.Metrics.OtlpClientKey = "key";
+        cfg.Metrics.OtlpClientKey = "key"; // pragma: allowlist secret
         cfg.Logging.OtlpCertificate = "lca";
         cfg.Logging.OtlpClientCertificate = "lcert";
-        cfg.Logging.OtlpClientKey = "lkey";
+        cfg.Logging.OtlpClientKey = "lkey"; // pragma: allowlist secret
         cfg.Tracing.OtlpCertificate = "tca";
         cfg.Tracing.OtlpClientCertificate = "tcert";
-        cfg.Tracing.OtlpClientKey = "tkey";
+        cfg.Tracing.OtlpClientKey = "tkey"; // pragma: allowlist secret
         var copy = cfg.Clone();
         cfg.Metrics.Exporters.Add("otlp");
         cfg.Metrics.Prometheus.Path = "/y";
+        cfg.Metrics.ExporterWarnings.Add("x");
         Assert.Equal(["prometheus"], copy.Metrics.Exporters);
+        Assert.Equal(["w"], copy.Metrics.ExporterWarnings);
+        Assert.True(copy.StrictConfig);
         Assert.True(copy.Metrics.HealthOtlp);
         Assert.Equal("/x", copy.Metrics.Prometheus.Path);
         Assert.Equal(("ca", "cert", "key"),
