@@ -43,9 +43,28 @@ _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CONTROL_CHAR_KEY_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
-def _clean_key(key: object) -> str:
-    """Strip every control character from an attribute key."""
-    return _CONTROL_CHAR_KEY_RE.sub("", str(key))
+def _key_text(key: object) -> str | None:
+    """``str(key)``, or None when the key's own ``__str__`` raises.
+
+    Keys reach here from caller data -- a nested dict, a ``**payload`` -- and
+    a key object whose ``__str__`` raises (or returns something that is not a
+    string, which ``str()`` turns into a TypeError) must not take the log call
+    down with it.
+    """
+    try:
+        return str(key)
+    except Exception:
+        return None
+
+
+def _clean_key(text: str | None) -> str:
+    """Strip every control character from an attribute key's text.
+
+    A key with no usable text becomes the placeholder.
+    """
+    if text is None:
+        return _HARDENED_PLACEHOLDER
+    return _CONTROL_CHAR_KEY_RE.sub("", text)
 
 
 def _harden_keys(event_dict: dict[str, Any]) -> dict[str, Any]:
@@ -67,9 +86,14 @@ def _harden_keys(event_dict: dict[str, Any]) -> dict[str, Any]:
     resolved: dict[str, Any] = {}
     verbatim: set[str] = set()
     for key, value in event_dict.items():
-        text = str(key)
+        text = _key_text(key)
         name = _clean_key(text)
         untouched = name == text
+        if text is None:
+            # Its name is the placeholder and its value is masked with it: a
+            # value whose key cannot be named is not one to export under
+            # another name.
+            value = _HARDENED_PLACEHOLDER
         if name in resolved and not (untouched and name not in verbatim):
             continue
         # Re-assigning an existing name keeps its original insertion position,

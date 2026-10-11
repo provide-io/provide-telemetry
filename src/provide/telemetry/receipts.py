@@ -274,13 +274,35 @@ def _canonical_mapping(value: Mapping[Any, Any], seen: set[int]) -> str:
         return "null"
     seen.add(id(value))
     try:
-        # Rendered names are paired with their values up front: a non-string key
-        # canonicalizes under str(key), which is no longer a key of the mapping.
-        pairs = sorted(((str(key), item) for key, item in value.items()), key=lambda pair: _sort_key(pair[0]))
+        pairs = _named_pairs(value)
+        if pairs is None:
+            return "null"
         body = ",".join(f"{_json_string(name)}:{_canonical(item, seen)}" for name, item in pairs)
         return "{" + body + "}"
     finally:
         seen.discard(id(value))
+
+
+def _named_pairs(value: Mapping[Any, Any]) -> list[tuple[str, Any]] | None:
+    """The mapping's entries under their rendered names, sorted, or None.
+
+    Names are paired with their values up front: a non-string key canonicalizes
+    under str(key), which is no longer a key of the mapping. None -- rendered
+    as ``null``, like anything else JSON cannot represent -- when the mapping
+    cannot be read, a key's ``__str__`` raises, or two keys render to one name
+    (``1`` and ``"1"``): a JSON object with a duplicated member has no single
+    canonical form, so it gets no digest that pretends otherwise.
+    """
+    named: dict[str, Any] = {}
+    try:
+        for key, item in value.items():
+            name = str(key)
+            if name in named:
+                return None
+            named[name] = item
+    except Exception:
+        return None
+    return sorted(named.items(), key=lambda pair: _sort_key(pair[0]))
 
 
 def _canonical_sequence(value: Sequence[Any], seen: set[int]) -> str:
@@ -370,7 +392,10 @@ def emit_receipt(receipt: RedactionReceipt, sink: ReceiptSink) -> None:
         # not take the caller's log call down with it. `accepted` is only read
         # for truth below, so the falsy-mutant (None) counts the same failure.
         accepted = False  # pragma: no mutate — read for truth only; the falsy mutant None counts the same failure
-    if not accepted:
+    # Only a literal True is acceptance. The protocol says bool, and a sink
+    # that returns a truthy stand-in -- a status object, a count, the receipt
+    # itself -- has not said it delivered anything.
+    if accepted is not True:
         increment_receipt_failures()
 
 
@@ -397,6 +422,21 @@ def _resolve_sink(sink: ReceiptSink | None, *, enabled: bool) -> ReceiptSink | N
     return get_runtime_config().receipt_sink
 
 
+def _has_callable_emit(sink: object) -> bool:
+    """Whether *sink* can be handed a receipt at all.
+
+    Checked when receipts are switched on, so a sink without ``emit`` is a
+    configuration error at enable time rather than a ``receipt_failures`` tick
+    on every redaction afterwards. The lookup is contained: an ``emit``
+    property that raises is as unusable as a missing one.
+    """
+    try:
+        emitter = getattr(sink, "emit", None)
+    except Exception:
+        return False
+    return callable(emitter)
+
+
 def enable_receipts(
     enabled: bool = True,  # pragma: no mutate — all callers pass explicitly
     signing_key: str | None = None,
@@ -416,6 +456,8 @@ def enable_receipts(
     resolved = _resolve_sink(sink, enabled=enabled)
     if enabled and not _test_mode and resolved is None:
         raise MissingReceiptSinkError
+    if enabled and resolved is not None and not _has_callable_emit(resolved):
+        raise ConfigurationError("receipt sink has no callable emit(receipt) method")
     with _lock:
         _enabled = enabled  # pragma: no mutate — direct assignment; read-back asserted by enable_receipts tests
         _signing_key = signing_key
