@@ -1471,8 +1471,8 @@ behavioral_parity:
     description: >
       Health counter increment semantics — when emitted/dropped counters fire.
     rules:
-      - emitted_* incremented once per signal event that passes sampling (in shouldSample or equivalent gate)
-      - dropped_* incremented once per signal event rejected by sampling (rate drop) OR by backpressure (queue full)
+      - emitted_* incremented once per signal event at the health stage of spec/pipeline_fixtures.yaml, after the local and backend sinks; still incremented when the backend export fails (export_failures_* records that), never on a refused path
+      - dropped_* incremented once per signal event refused by consent, by sampling (rate drop) OR by backpressure (queue full); a level-filtered event is not a drop
       - a single event MUST NOT increment both emitted and dropped
       - a single event MUST NOT increment emitted more than once (no double-counting across gates)
       - retries_* incremented once per retry attempt in the resilience/export path
