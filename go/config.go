@@ -306,7 +306,7 @@ func RedactConfig(c *TelemetryConfig) map[string]interface{} {
 	return map[string]interface{}{
 		"service_name": c.ServiceName,
 		"environment":  c.Environment,
-		"version":      c.Version,
+		_wireVersion:   c.Version,
 		_cfgKeySignalLogging: map[string]interface{}{
 			_cfgKeyOTLPEndpoint: maskEndpointURL(c.Logging.OTLPEndpoint),
 			_cfgKeyOTLPHeaders:  maskHeaders(c.Logging.OTLPHeaders),

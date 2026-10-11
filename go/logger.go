@@ -246,22 +246,34 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 	traceID, spanID := _getTraceSpanFromContext(ctx)
 	stamped := make([]slog.Attr, 0, 2)
 	if traceID != "" {
-		stamped = append(stamped, slog.String("trace.id", traceID))
+		stamped = append(stamped, slog.String(_attrTraceID, traceID))
 	}
 	if spanID != "" {
-		stamped = append(stamped, slog.String("span.id", spanID))
+		stamped = append(stamped, slog.String(_attrSpanID, spanID))
 	}
 	return _stampRootFields(r, stamped)
 }
 
+// Root attribute names the library stamps on every record, and the
+// cross-language wire names of the fields it stamps.
+const (
+	_attrTraceID = "trace.id"
+	_attrSpanID  = "span.id"
+	_wireService = "service"
+	_wireEnv     = "env"
+	_wireVersion = "version"
+	_wireTraceID = "trace_id"
+	_wireSpanID  = "span_id"
+)
+
 // _reservedWireNames maps each root field the library stamps to the name the
 // other SDKs, and the cross-language log record, give the same field.
 var _reservedWireNames = map[string]string{
-	"service.name":    "service",
-	"service.env":     "env",
-	"service.version": "version",
-	"trace.id":        "trace_id",
-	"span.id":         "span_id",
+	"service.name":    _wireService,
+	"service.env":     _wireEnv,
+	"service.version": _wireVersion,
+	_attrTraceID:      _wireTraceID,
+	_attrSpanID:       _wireSpanID,
 }
 
 // _stampRootFields sets the library's own root fields on r, replacing any
@@ -546,10 +558,10 @@ func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger 
 	}
 	var attrs []any
 	if traceID != "" {
-		attrs = append(attrs, slog.String("trace.id", traceID))
+		attrs = append(attrs, slog.String(_attrTraceID, traceID))
 	}
 	if spanID != "" {
-		attrs = append(attrs, slog.String("span.id", spanID))
+		attrs = append(attrs, slog.String(_attrSpanID, spanID))
 	}
 	return logger.With(attrs...)
 }

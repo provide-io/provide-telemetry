@@ -13,6 +13,8 @@ const (
 	_metricsExporterOTLP       = "otlp"
 	_metricsExporterPrometheus = "prometheus"
 	_metricsExporterNone       = "none"
+	_metricsExporterConsole    = "console"
+	_metricsExporterLogging    = "logging"
 
 	// _configWarningSeparator joins config warnings in setup_error and in the
 	// strict-mode error, as the OTLP TLS problems are joined.
@@ -85,15 +87,18 @@ func parseMetricsExporters(raw string) ([]string, []string) {
 			sawNone = true
 		case name == _metricsExporterOTLP || name == _metricsExporterPrometheus:
 			exporters = append(exporters, name)
-		case seen[name]:
-		case name == "console" || name == "logging":
+		case !seen[name]:
 			seen[name] = true
-			warnings = append(warnings, "OTEL_METRICS_EXPORTER: "+name+" is not supported by provide-telemetry, ignored")
-		default:
-			seen[name] = true
-			warnings = append(warnings, "OTEL_METRICS_EXPORTER: unknown exporter "+name+", ignored")
+			warnings = append(warnings, _ignoredExporterWarning(name))
 		}
 	}
+	return _settleMetricsExporters(exporters, warnings, sawNone, sawAny)
+}
+
+// _settleMetricsExporters applies the rules that need the whole list: "none"
+// alone means no exporters, "none" beside anything is ignored, and nothing
+// usable left falls back to otlp.
+func _settleMetricsExporters(exporters, warnings []string, sawNone, sawAny bool) ([]string, []string) {
 	if sawNone && len(exporters) == 0 && warnings == nil {
 		return exporters, nil
 	}
@@ -107,6 +112,15 @@ func parseMetricsExporters(raw string) ([]string, []string) {
 		exporters = append(exporters, _metricsExporterOTLP)
 	}
 	return exporters, warnings
+}
+
+// _ignoredExporterWarning is the warning for an OTEL_METRICS_EXPORTER entry
+// this SDK drops: an OTel exporter it does not support, or an unknown name.
+func _ignoredExporterWarning(name string) string {
+	if name == _metricsExporterConsole || name == _metricsExporterLogging {
+		return "OTEL_METRICS_EXPORTER: " + name + " is not supported by provide-telemetry, ignored"
+	}
+	return "OTEL_METRICS_EXPORTER: unknown exporter " + name + ", ignored"
 }
 
 func applyPrometheusListenerEnv(p *PrometheusConfig, env func(string) string) error {

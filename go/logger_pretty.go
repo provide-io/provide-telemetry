@@ -39,6 +39,7 @@ const (
 	_colorNameGreen = "green"
 	_colorNameBlue  = "blue"
 	_colorNameCyan  = "cyan"
+	_colorNameNone  = "none"
 )
 
 // _levelColorMap returns the ANSI color for a lowercased level name.
@@ -81,7 +82,7 @@ func _resolveNamedColor(name string) string {
 		return _ansiCyan
 	case "white":
 		return _ansiWhite
-	case "", "none":
+	case "", _colorNameNone:
 		return ""
 	default:
 		return ""
