@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlsplit, urlunsplit
 
 if TYPE_CHECKING:
     from provide.telemetry.config import TelemetryConfig
@@ -50,15 +50,43 @@ def _mask_headers(headers: dict[str, str]) -> dict[str, str]:
     return {k: _mask_header_value(v) for k, v in headers.items()}
 
 
+def _mask_netloc_password(netloc: str) -> str:
+    """Replace the password in ``user:password@host`` and keep the rest verbatim.
+
+    Text surgery on the authority rather than a rebuild from the parsed parts:
+    ``.port`` raises on a malformed port, ``.hostname`` lowercases the host and
+    strips an IPv6 literal's brackets, and none of that is the masker's to
+    change. The last ``@`` ends the userinfo and the first ``:`` ends the user,
+    the same split ``urllib`` makes.
+    """
+    userinfo, at, host = netloc.rpartition("@")
+    username, colon, password = userinfo.partition(":")
+    if not at or not colon or not password:
+        return netloc
+    return f"{username}:****@{host}"
+
+
 def _mask_endpoint_url(url: str) -> str:
-    """Mask password in URL userinfo (user:password@host)."""
-    parsed = urlparse(url)
-    if parsed.password:
-        masked_netloc = f"{parsed.username}:****@{parsed.hostname}"
-        if parsed.port:
-            masked_netloc += f":{parsed.port}"
-        return urlunparse(parsed._replace(netloc=masked_netloc))
-    return url
+    """Mask the password in URL userinfo, malformed endpoints included.
+
+    ``urlsplit`` itself raises on a broken IPv6 literal, and finds no authority
+    at all in a scheme-less ``user:password@host``. Either way the authority is
+    located by hand -- after ``://`` if there is one, up to the first ``/``,
+    ``?`` or ``#`` -- so a config that cannot be parsed can still be printed
+    without its credentials.
+    """
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        parsed = None
+    if parsed is not None and parsed.netloc:
+        masked = _mask_netloc_password(parsed.netloc)
+        return url if masked == parsed.netloc else urlunsplit(parsed._replace(netloc=masked))
+    scheme_end = url.find("://")
+    start = scheme_end + 3 if scheme_end >= 0 else 0
+    rest = url[start:]
+    end = min((index for index in map(rest.find, "/?#") if index >= 0), default=len(rest))
+    return url[:start] + _mask_netloc_password(rest[:end]) + rest[end:]
 
 
 def _masked_dataclass_repr(obj: object) -> str:
