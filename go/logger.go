@@ -209,43 +209,59 @@ func (h *_telemetryHandler) applyContextFields(ctx context.Context, r slog.Recor
 // applyStandardFields adds service.name, service.env, and service.version from config.
 func (h *_telemetryHandler) applyStandardFields(r slog.Record) slog.Record {
 	cfg := h.cfg
-	if cfg.ServiceName == "" && cfg.Environment == "" && cfg.Version == "" {
-		return r
-	}
-	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
-	r.Attrs(func(a slog.Attr) bool {
-		nr.AddAttrs(a)
-		return true
-	})
+	stamped := make([]slog.Attr, 0, 3)
 	if cfg.ServiceName != "" {
-		nr.AddAttrs(slog.String("service.name", cfg.ServiceName))
+		stamped = append(stamped, slog.String("service.name", cfg.ServiceName))
 	}
 	if cfg.Environment != "" {
-		nr.AddAttrs(slog.String("service.env", cfg.Environment))
+		stamped = append(stamped, slog.String("service.env", cfg.Environment))
 	}
 	if cfg.Version != "" {
-		nr.AddAttrs(slog.String("service.version", cfg.Version))
+		stamped = append(stamped, slog.String("service.version", cfg.Version))
 	}
-	return nr
+	return _stampRootFields(r, stamped)
 }
 
 // applyTraceFields adds trace.id and span.id if available in context.
 func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record) slog.Record {
 	traceID, spanID := _getTraceSpanFromContext(ctx)
-	if traceID == "" && spanID == "" {
+	stamped := make([]slog.Attr, 0, 2)
+	if traceID != "" {
+		stamped = append(stamped, slog.String("trace.id", traceID))
+	}
+	if spanID != "" {
+		stamped = append(stamped, slog.String("span.id", spanID))
+	}
+	return _stampRootFields(r, stamped)
+}
+
+// _stampRootFields sets the library's own root fields on r, replacing any
+// root attribute the caller supplied under the same key.
+//
+// Appending alone left both: a record carried the caller's "trace.id" and the
+// real one, the PII stage deliberately keeps duplicate keys, and which of the
+// two a backend believed depended on how it resolved the collision. A request
+// payload logged as attributes could therefore correlate a record to a trace
+// of the sender's choosing. Every SDK resolves this the same way for the trace
+// fields — the live context wins, and with no live context the caller's value
+// stands, since nothing better is known — and the service identity follows the
+// same rule here: what the library stamps is authoritative, what it does not
+// stamp is left alone.
+//
+// Only root keys are compared. A "trace.id" nested inside a group is a
+// different field, and the caller's to name.
+func _stampRootFields(r slog.Record, stamped []slog.Attr) slog.Record {
+	if len(stamped) == 0 {
 		return r
 	}
 	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
-		nr.AddAttrs(a)
+		if !slices.ContainsFunc(stamped, func(s slog.Attr) bool { return s.Key == a.Key }) {
+			nr.AddAttrs(a)
+		}
 		return true
 	})
-	if traceID != "" {
-		nr.AddAttrs(slog.String("trace.id", traceID))
-	}
-	if spanID != "" {
-		nr.AddAttrs(slog.String("span.id", spanID))
-	}
+	nr.AddAttrs(stamped...)
 	return nr
 }
 
