@@ -398,7 +398,8 @@ see [`WithLogOutput`](#log-output).
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable tracing |
 | `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` applied to the OTel SDK sampler (min with `PROVIDE_SAMPLING_TRACES_RATE`) |
 | `PROVIDE_METRICS_ENABLED` | `true` | Enable metrics |
-| `OTEL_METRICS_EXPORTER` | `otlp` | Comma-separated: `otlp`, `prometheus`, `none` (see [Prometheus](#prometheus)) |
+| `OTEL_METRICS_EXPORTER` | `otlp` | Comma-separated: `otlp`, `prometheus`, `none` (see [Prometheus](#prometheus)). Any other entry, or `none` mixed with others, is ignored with a `config.metrics_exporter.value_ignored` warning and named in `SetupError`; with nothing left it falls back to `otlp` |
+| `PROVIDE_TELEMETRY_STRICT_CONFIG` | `false` | Make those ignored `OTEL_METRICS_EXPORTER` entries a `*ConfigurationError` instead |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP base endpoint (e.g. `http://localhost:4318`) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Comma-separated `key=value` auth headers |
 | `OTEL_EXPORTER_OTLP_CERTIFICATE` | — | PEM CA bundle trusted for OTLP over TLS |

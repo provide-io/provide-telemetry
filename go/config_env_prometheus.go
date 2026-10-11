@@ -14,6 +14,10 @@ const (
 	_metricsExporterPrometheus = "prometheus"
 	_metricsExporterNone       = "none"
 
+	// _configWarningSeparator joins config warnings in setup_error and in the
+	// strict-mode error, as the OTLP TLS problems are joined.
+	_configWarningSeparator = "; "
+
 	_prometheusListenFalse = "false"
 	_prometheusListenTrue  = "true"
 	_prometheusListenAuto  = "auto"
@@ -38,11 +42,12 @@ var PrometheusTranslationStrategies = []string{ //nolint:gochecknoglobals
 // applyPrometheusEnv reads OTEL_METRICS_EXPORTER, the Prometheus listener and
 // translation settings, and PROVIDE_METRICS_HEALTH_OTLP into cfg.
 func applyPrometheusEnv(cfg *TelemetryConfig, env func(string) string) error {
-	exporters, err := parseMetricsExporters(env("OTEL_METRICS_EXPORTER"))
-	if err != nil {
-		return err
+	exporters, warnings := parseMetricsExporters(env("OTEL_METRICS_EXPORTER"))
+	if cfg.StrictConfig && len(warnings) > 0 {
+		return NewConfigurationError("PROVIDE_TELEMETRY_STRICT_CONFIG: " + strings.Join(warnings, _configWarningSeparator))
 	}
 	cfg.Metrics.Exporters = exporters
+	cfg.Metrics.ExporterWarnings = warnings
 	if err := applyPrometheusListenerEnv(&cfg.Metrics.Prometheus, env); err != nil {
 		return err
 	}
@@ -58,31 +63,50 @@ func applyPrometheusEnv(cfg *TelemetryConfig, env func(string) string) error {
 }
 
 // parseMetricsExporters splits OTEL_METRICS_EXPORTER on commas, trimming and
-// lowercasing entries and dropping empty ones. Empty input means ["otlp"];
-// "none" alone means no exporters and may not be combined with others.
-func parseMetricsExporters(raw string) ([]string, error) {
+// lowercasing entries and dropping empty ones, and returns the exporters with
+// the warnings for what it ignored (nil when nothing was). Empty input means
+// ["otlp"]; "none" alone means no exporters. Anything else this SDK cannot
+// export to is dropped with a warning, as the OTel environment-variable spec
+// asks of an unrecognised enum value; see
+// prometheus_metrics.metrics_exporter_warnings in the spec.
+func parseMetricsExporters(raw string) ([]string, []string) {
 	exporters := []string{}
-	sawNone := false
+	var warnings []string
+	seen := map[string]bool{}
+	sawNone, sawAny := false, false
 	for _, part := range strings.Split(raw, ",") {
 		name := strings.ToLower(strings.TrimSpace(part))
-		switch name {
-		case "":
+		if name == "" {
 			continue
-		case _metricsExporterNone:
+		}
+		sawAny = true
+		switch {
+		case name == _metricsExporterNone:
 			sawNone = true
-		case _metricsExporterOTLP, _metricsExporterPrometheus:
+		case name == _metricsExporterOTLP || name == _metricsExporterPrometheus:
 			exporters = append(exporters, name)
+		case seen[name]:
+		case name == "console" || name == "logging":
+			seen[name] = true
+			warnings = append(warnings, "OTEL_METRICS_EXPORTER: "+name+" is not supported by provide-telemetry, ignored")
 		default:
-			return nil, NewConfigurationError(fmt.Sprintf("OTEL_METRICS_EXPORTER: unknown exporter %q", name))
+			seen[name] = true
+			warnings = append(warnings, "OTEL_METRICS_EXPORTER: unknown exporter "+name+", ignored")
 		}
 	}
-	if sawNone && len(exporters) > 0 {
-		return nil, NewConfigurationError("OTEL_METRICS_EXPORTER: none cannot be combined with other exporters")
+	if sawNone && len(exporters) == 0 && warnings == nil {
+		return exporters, nil
 	}
-	if !sawNone && len(exporters) == 0 {
-		return []string{_metricsExporterOTLP}, nil
+	if sawNone {
+		warnings = append(warnings, "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored")
 	}
-	return exporters, nil
+	if len(exporters) == 0 {
+		if sawAny {
+			warnings = append(warnings, "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp")
+		}
+		exporters = append(exporters, _metricsExporterOTLP)
+	}
+	return exporters, warnings
 }
 
 func applyPrometheusListenerEnv(p *PrometheusConfig, env func(string) string) error {

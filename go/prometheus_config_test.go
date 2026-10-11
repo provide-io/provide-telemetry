@@ -23,6 +23,7 @@ type _promFixtures struct {
 		Env       map[string]string `yaml:"env"`
 		Exporters []string          `yaml:"exporters"`
 		Listener  bool              `yaml:"listener"`
+		Warnings  []string          `yaml:"warnings"`
 		Error     bool              `yaml:"error"`
 	} `yaml:"exporter_selection"`
 	ListenerPath []struct {
@@ -64,6 +65,7 @@ var _promEnvKeys = []string{ //nolint:gochecknoglobals
 	"OTEL_EXPORTER_PROMETHEUS_HOST", "OTEL_EXPORTER_PROMETHEUS_PORT", "PROVIDE_METRICS_PROMETHEUS_PATH",
 	"PROVIDE_METRICS_PROMETHEUS_TRANSLATION", "PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS",
 	"PROVIDE_METRICS_PROMETHEUS_TARGET_INFO", "PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG", "PROVIDE_METRICS_HEALTH_OTLP",
+	"PROVIDE_TELEMETRY_STRICT_CONFIG",
 }
 
 func _promConfig(t *testing.T, env map[string]string) (*TelemetryConfig, error) {
@@ -112,6 +114,9 @@ func TestPrometheusFixtures_ExporterSelection(t *testing.T) {
 			}
 			if got := cfg.Metrics.PrometheusListenerEnabled(); got != c.Listener {
 				t.Errorf("listener = %v, want %v", got, c.Listener)
+			}
+			if got := cfg.Metrics.ExporterWarnings; !slices.Equal(got, c.Warnings) {
+				t.Errorf("warnings = %q, want %q", got, c.Warnings)
 			}
 		})
 	}
@@ -285,9 +290,14 @@ func TestPrometheusConfig_MeterFieldsChangedCoversNewFields(t *testing.T) {
 
 func TestPrometheusConfig_CloneCopiesExporters(t *testing.T) {
 	cfg := DefaultTelemetryConfig()
+	cfg.Metrics.ExporterWarnings = []string{"w"}
 	clone := cloneTelemetryConfig(cfg)
 	clone.Metrics.Exporters[0] = "prometheus"
+	clone.Metrics.ExporterWarnings[0] = "x"
 	if cfg.Metrics.Exporters[0] != "otlp" {
 		t.Fatal("clone shares the Exporters backing array with the original")
+	}
+	if cfg.Metrics.ExporterWarnings[0] != "w" {
+		t.Fatal("clone shares the ExporterWarnings backing array with the original")
 	}
 }

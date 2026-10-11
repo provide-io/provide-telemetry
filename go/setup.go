@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -115,6 +117,7 @@ func cloneTelemetryConfig(cfg *TelemetryConfig) *TelemetryConfig {
 	clone.Metrics = cfg.Metrics
 	clone.Metrics.OTLPHeaders = maps.Clone(cfg.Metrics.OTLPHeaders)
 	clone.Metrics.Exporters = append([]string(nil), cfg.Metrics.Exporters...)
+	clone.Metrics.ExporterWarnings = append([]string(nil), cfg.Metrics.ExporterWarnings...)
 	clone.EventSchema = cfg.EventSchema
 	clone.EventSchema.RequiredKeys = append([]string(nil), cfg.EventSchema.RequiredKeys...)
 	return &clone
@@ -242,6 +245,10 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	_setupDone = true
 	_publishRuntimeGatesLocked()
 
+	// Clears a stale error from an earlier setup, or names the ignored
+	// OTEL_METRICS_EXPORTER entries; a backend appends its own problems.
+	_setSetupError(strings.Join(cfg.Metrics.ExporterWarnings, _configWarningSeparator))
+
 	// Wire any registered optional backend (for example go/otel).
 	if err := _setupBackendLocked(state, cfg); err != nil {
 		_setupDone = false
@@ -249,12 +256,24 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 		prior._restoreProcessState()
 		return nil, err
 	}
+	_logIgnoredConfig(cfg)
 
 	// Publish last: backend wiring can wrap Logger with a bridge handler, and a
 	// generation must never become visible while its logger is still being
 	// assembled.
 	_publishGenerationLocked(cfg)
 	return cloneTelemetryConfig(cfg), nil
+}
+
+// _logIgnoredConfig logs each ignored OTEL_METRICS_EXPORTER entry once.
+func _logIgnoredConfig(cfg *TelemetryConfig) {
+	logger := Logger()
+	if logger == nil {
+		return
+	}
+	for _, warning := range cfg.Metrics.ExporterWarnings {
+		logger.Warn("config.metrics_exporter.value_ignored", slog.String("reason", warning))
+	}
 }
 
 // validateTelemetryConfig checks rates, log format/level and exporter retries

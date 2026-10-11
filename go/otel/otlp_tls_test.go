@@ -235,6 +235,36 @@ func TestOTLPTLS_SetupReportsTheProblem(t *testing.T) {
 	}
 }
 
+func TestOTLPTLS_IgnoredExporterWarningsComeFirst(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	missing := filepath.Join(t.TempDir(), "missing.pem")
+	t.Setenv("OTEL_METRICS_EXPORTER", "otlp,statsd")
+	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "https://127.0.0.1:1/v1/metrics")
+	t.Setenv("OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE", missing)
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		t.Fatalf("setup must not fail: %v", err)
+	}
+	want := "OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored; " +
+		"OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=" + missing + ": no such file or directory"
+	if got := telemetry.GetHealthSnapshot().SetupError; got != want {
+		t.Fatalf("setup_error %q, want %q", got, want)
+	}
+}
+
+func TestBackend_IgnoredExporterWarningsSurviveACleanBackendSetup(t *testing.T) {
+	resetSetupState(t)
+	t.Cleanup(func() { resetSetupState(t) })
+	t.Setenv("OTEL_METRICS_EXPORTER", "prometheus,console")
+	if _, err := telemetry.SetupTelemetry(); err != nil {
+		t.Fatalf("setup must not fail: %v", err)
+	}
+	want := "OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored"
+	if got := telemetry.GetHealthSnapshot().SetupError; got != want {
+		t.Fatalf("setup_error %q, want %q", got, want)
+	}
+}
+
 func TestOTLPTLS_TraceAndLogExportersGetTheConfig(t *testing.T) {
 	p := _newPKI(t)
 	t.Setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", p.caFile)

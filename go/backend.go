@@ -187,7 +187,6 @@ func _setupBackendLocked(state *_setupState, cfg *TelemetryConfig) error {
 		_wireBackendBindingsLocked(cfg)
 		return nil
 	}
-	_setSetupError("")
 	if err := backend.Setup(cfg, _backendSetupState(state)); err != nil {
 		return err
 	}

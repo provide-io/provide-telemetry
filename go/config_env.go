@@ -19,6 +19,10 @@ func applyTopLevelEnv(cfg *TelemetryConfig, env func(string) string) error {
 	if err != nil {
 		return err
 	}
+	cfg.StrictConfig, err = parseEnvBool(env("PROVIDE_TELEMETRY_STRICT_CONFIG"), false, "PROVIDE_TELEMETRY_STRICT_CONFIG")
+	if err != nil {
+		return err
+	}
 	cfg.EventSchema.StrictEventName, err = parseEnvBool(
 		env("PROVIDE_TELEMETRY_STRICT_EVENT_NAME"),
 		false,

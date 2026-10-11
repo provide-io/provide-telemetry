@@ -79,6 +79,10 @@ type MetricsConfig struct {
 	// Exporters lists the metric exporters from OTEL_METRICS_EXPORTER: any of
 	// "otlp" and "prometheus", or empty for none. Default ["otlp"].
 	Exporters []string
+	// ExporterWarnings lists what OTEL_METRICS_EXPORTER asked for that was
+	// ignored, in the spec's wording; setup logs each one and reports them as
+	// HealthSnapshot.SetupError. Nil when nothing was ignored.
+	ExporterWarnings []string
 	// HealthOTLP also exports the health metrics over OTLP.
 	HealthOTLP bool
 	Prometheus PrometheusConfig
@@ -225,6 +229,9 @@ type TelemetryConfig struct {
 	Environment  string // default "dev"
 	Version      string // default "0.0.0"
 	StrictSchema bool
+	// StrictConfig makes config parsing fail on a value it would otherwise warn
+	// about and ignore. Today that is OTEL_METRICS_EXPORTER only.
+	StrictConfig bool
 	Logging      LoggingConfig
 	Tracing      TracingConfig
 	Metrics      MetricsConfig

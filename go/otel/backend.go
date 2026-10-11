@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
@@ -49,7 +50,8 @@ func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.Backend
 	_setupMeterProvider(state, cfg)
 	_setupLoggerProvider(state, cfg)
 	if problems := _takeTLSProblems(); problems != "" {
-		state.ReportSetupError(problems)
+		// After any ignored OTEL_METRICS_EXPORTER entries, which setup recorded first.
+		state.ReportSetupError(strings.Join(append(append([]string(nil), cfg.Metrics.ExporterWarnings...), problems), "; "))
 	}
 	_syncPromListener(cfg, state.ReportSetupError)
 	return nil
