@@ -45,15 +45,6 @@ suffix strategies a gauge with unit `1` gains `_ratio`. For example, a gauge
 pushed as `cpu_utilization` is now stored as `cpu_utilization_ratio`. Update
 any query on the old name or the old metric type.
 
-**`OTEL_METRICS_EXPORTER` is now read, and an unknown value fails setup.**
-The accepted values are a comma-separated list of `otlp`, `prometheus` and
-`none`, and the default is `otlp`. Every SDK ignored this variable before.
-`none` now really turns metrics export off, and a list without `otlp` no
-longer builds the OTLP metrics reader. Any other value is a
-`ConfigurationError`, including OTel values such as `console`, so a service
-whose environment sets one must remove it. Combining `none` with another
-exporter is also a `ConfigurationError`.
-
 **Python: a receipt sink must return exactly `True`.** `emit_receipt` used to
 treat any truthy return as delivered. A sink returning a count, a status
 object or the receipt itself now adds to `receipt_failures`. `enable_receipts`
@@ -85,6 +76,23 @@ keys render to the same name (`1` and `"1"`), now canonicalizes to `null`.
   reason, never an empty 200. Python adds a `process_locked` reason:
   OpenTelemetry Python sets the global provider once per process, so a second
   setup after shutdown cannot serve.
+
+- **`OTEL_METRICS_EXPORTER` is read in all five languages.** Every SDK
+  ignored it before. It takes a comma-separated list of `otlp` and
+  `prometheus`, or `none` alone, and the default is `otlp`. `none` turns
+  metrics export off, and a list without `otlp` no longer builds the OTLP
+  metrics reader. Any other entry is ignored with a warning, as the OTel
+  spec asks of an enum value an SDK does not recognise. That covers OTel
+  values this SDK does not implement, such as `console`, as well as typos.
+  `none` next to another entry is ignored too. If nothing usable is left,
+  the default `otlp` applies. Setup does not fail: each ignored entry logs
+  `config.metrics_exporter.value_ignored`, and the health snapshot's setup
+  error lists them. Set `PROVIDE_TELEMETRY_STRICT_CONFIG=true` to make any of
+  these a `ConfigurationError` instead, for CI or tests. For now that switch
+  covers only this variable. The resolution rules are
+  `metrics_exporter_warnings` in `spec/telemetry-api.yaml`, and shared cases
+  in `spec/prometheus_fixtures.yaml` hold every SDK to the same exporters and
+  the same warning text.
 
 - **An optional standalone listener.** `PROVIDE_METRICS_PROMETHEUS_LISTEN`
   takes `false`, `true` or `auto`. `true` starts the listener. `auto` starts

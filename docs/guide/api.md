@@ -720,12 +720,14 @@ All config models are `@dataclass(slots=True)`, defined in
 `provide.telemetry.config` (only `TelemetryConfig` is re-exported from the
 top-level package), and are constructed via `TelemetryConfig.from_env()`:
 
-- **`TelemetryConfig`** — top-level container with nested sub-configs
+- **`TelemetryConfig`** — top-level container with nested sub-configs, plus
+  `strict_config` (`PROVIDE_TELEMETRY_STRICT_CONFIG`)
 - **`LoggingConfig`** — log level, format, caller info, sanitization, pretty
   renderer settings
 - **`TracingConfig`** — tracing enabled, sample rate, OTLP endpoint
 - **`MetricsConfig`** — metrics enabled, OTLP endpoint, exporters
-  (`OTEL_METRICS_EXPORTER`), health-over-OTLP, and a nested `PrometheusConfig`
+  (`OTEL_METRICS_EXPORTER`) and the `exporter_warnings` describing any entries
+  it ignored, health-over-OTLP, and a nested `PrometheusConfig`
 - **`PrometheusConfig`** — Prometheus listener mode, host, port, path, name
   translation, scope labels, `target_info`, web config
 - **`SchemaConfig`** — strict event name, required keys

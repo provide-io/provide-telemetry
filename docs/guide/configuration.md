@@ -33,6 +33,7 @@ Not every variable is read by every SDK. The tables below list the union; the
 | `PROVIDE_TELEMETRY_ENV` | str | `dev` | Deployment environment tag (e.g. dev, staging, prod) |
 | `PROVIDE_TELEMETRY_VERSION` | str | `0.0.0` | Application version tag |
 | `PROVIDE_TELEMETRY_STRICT_SCHEMA` | bool | `false` | Master switch: when true, overrides event name strictness to on |
+| `PROVIDE_TELEMETRY_STRICT_CONFIG` | bool | `false` | When true, a configuration value the SDK would otherwise warn about and ignore fails config parsing with ConfigurationError instead. Today that covers OTEL_METRICS_EXPORTER only (prometheus_metrics.metrics_exporter_warnings); it does not touch event-name strictness (PROVIDE_TELEMETRY_STRICT_SCHEMA) or values that are already errors. |
 <!-- END GENERATED CONFIG: core -->
 
 ## Event Schema
@@ -78,7 +79,7 @@ Not every variable is read by every SDK. The tables below list the union; the
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `PROVIDE_METRICS_ENABLED` | bool | `true` | Enable OTel metrics provider (falls back to in-process when false) |
-| `OTEL_METRICS_EXPORTER` | str | `otlp` | Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader. |
+| `OTEL_METRICS_EXPORTER` | str | `otlp` | Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader. Other values are warned about and ignored (see prometheus_metrics.metrics_exporter_warnings). |
 | `OTEL_EXPORTER_PROMETHEUS_HOST` | str | `127.0.0.1` | Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup. |
 | `OTEL_EXPORTER_PROMETHEUS_PORT` | int | `9464` | Tier 3 bind port. |
 | `PROVIDE_METRICS_PROMETHEUS_LISTEN` | str | `false` | Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER). |
@@ -89,6 +90,34 @@ Not every variable is read by every SDK. The tables below list the union; the
 | `PROVIDE_METRICS_HEALTH_OTLP` | bool | `false` | Also export the health metrics over OTLP as observable instruments. |
 | `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` | str | `""` | Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth. |
 <!-- END GENERATED CONFIG: metrics -->
+
+### `OTEL_METRICS_EXPORTER` values
+
+Entries are split on commas, trimmed and lowercased, and empty entries are
+dropped. `otlp` and `prometheus` can be combined in any order. `none` on its
+own turns metrics export off. An empty or unset value means `otlp`.
+
+As the OpenTelemetry spec asks for an enum value an SDK does not recognise, any
+other entry is ignored with a warning rather than failing setup:
+
+| Value | Result |
+|-------|--------|
+| `console`, `logging` | OTel values this SDK does not implement: ignored, with a warning |
+| anything else, e.g. `statsd` | ignored, with a warning |
+| `none` next to another entry, e.g. `none,prometheus` | `none` is ignored, with a warning; the other entries apply |
+| nothing usable left, e.g. `console` | the default `otlp` applies, with a warning |
+
+Every SDK reports the same messages, for example
+`OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored`. Setup logs each one
+once as `config.metrics_exporter.value_ignored`, and the health snapshot's
+setup error lists them, joined with `; `. Setup itself succeeds.
+
+Set `PROVIDE_TELEMETRY_STRICT_CONFIG=true` (see [Core](#core)) to make any of
+these cases a `ConfigurationError` from config parsing instead, for example in
+CI or tests. It currently applies only to `OTEL_METRICS_EXPORTER`; values that
+are already errors stay errors whatever it is set to, and it does not affect
+event-name strictness. The rules are `prometheus_metrics.metrics_exporter_warnings`
+in `spec/telemetry-api.yaml`.
 
 ## OTLP Endpoints and Headers
 
