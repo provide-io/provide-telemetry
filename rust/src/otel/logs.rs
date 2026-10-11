@@ -277,6 +277,7 @@ pub(crate) fn emit_log(event: &LogEvent) {
         Some(provider) => provider,
         None => return,
     };
+    crate::logger::report_pipeline_stage(crate::logger::STAGE_BACKEND);
     let logger = provider.logger(LOGGER_NAME);
     let mut record = logger.create_log_record();
 

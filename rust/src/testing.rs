@@ -26,6 +26,10 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 /// contract test and the cross-language parity gate measure the same thing.
 pub use crate::config::probe::{config_defaults_probe, ProbedConfigEntry};
 
+/// Observe the logs pipeline's gates, backend and bookkeeping stage by stage,
+/// for the `spec/pipeline_fixtures.yaml` conformance test.
+pub use crate::logger::set_pipeline_stage_hook;
+
 static TEST_STATE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().

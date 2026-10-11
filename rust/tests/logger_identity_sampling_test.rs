@@ -68,7 +68,7 @@ fn logger_test_json_emit_includes_service_identity_from_config() {
 }
 
 #[test]
-fn logger_test_context_bound_service_takes_precedence_over_config() {
+fn logger_test_config_service_replaces_a_context_bound_service() {
     let _guard = lock().lock().expect("lock poisoned");
 
     reconfigure_telemetry(Some(TelemetryConfig {
@@ -88,9 +88,11 @@ fn logger_test_context_bound_service_takes_precedence_over_config() {
 
     let parsed: serde_json::Value =
         serde_json::from_str(String::from_utf8(raw).expect("utf8").trim()).expect("valid JSON");
+    // The reserved_root_fields rule: the identity the SDK stamps replaces a
+    // bound or caller value; a caller naming another service uses peer.service.
     assert_eq!(
-        parsed["service"], "context-service",
-        "context-bound service must take precedence over config"
+        parsed["service"], "config-service",
+        "the configured service must replace a context-bound one"
     );
 }
 
