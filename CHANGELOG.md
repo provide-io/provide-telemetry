@@ -12,24 +12,6 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Breaking
 
-**Log health counters change meaning in all five languages.** `emitted_logs`
-is now counted once a record has passed through both its local and backend
-sinks, not when it is admitted. A record whose backend export fails still
-counts as emitted, and also adds to `export_failures_logs`. A refused record
-is never counted as emitted. A record refused by consent now counts toward
-`dropped_logs`, as sampling and backpressure refusals already did. Before
-this, Python, TypeScript, Go and Rust counted nothing for a consent refusal.
-Python and Go counted `emitted_logs` when the backpressure ticket was taken,
-before PII and either sink ran. TypeScript counted it before either sink ran.
-C# skipped health entirely when the backend threw. That exception still
-reaches the caller, but the emission and the export failure are now recorded
-first.
-
-Values move after upgrade. A service whose consent level refuses logs will
-now report a rising `dropped_logs`, and so will
-`provide_telemetry_dropped_total{signal="logs"}`. Recheck any alert built on
-either counter.
-
 **The fields the SDK stamps now replace caller-supplied fields of the same
 name, in all five languages.** The reserved fields are `service`, `env`,
 `version`, `trace_id` and `span_id`, plus each SDK's raw spelling of them:
@@ -54,13 +36,6 @@ live, and an identity field whose config value is empty.
 To name a remote service, use `peer.service`, which is not reserved. The rule
 is `reserved_root_fields` in `spec/telemetry-api.yaml`, and two contract cases
 hold every SDK to it.
-
-**Log pipeline stages run in the canonical order of
-`spec/pipeline_fixtures.yaml`.** Python now runs consent, sampling and
-backpressure before hardening, so a refused record does no payload work.
-TypeScript now renders the local line before it exports to OTLP. It used to
-export first. Custom processors or sinks that relied on the old order may see
-records at a different point.
 
 **Python and TypeScript: `gauge()` is backed by an OTel Gauge instead of an
 UpDownCounter.** Go, Rust and C# already worked this way. Over OTLP these
@@ -198,6 +173,31 @@ keys render to the same name (`1` and `"1"`), now canonicalizes to `null`.
   is refused, and needs a restart.
 
 ### Changed
+
+- **Log health counters change meaning in all five languages.** `emitted_logs`
+  is now counted once a record has passed through both its local and backend
+  sinks, not when it is admitted. A record whose backend export fails still
+  counts as emitted, and also adds to `export_failures_logs`. A refused record
+  is never counted as emitted. A record refused by consent now counts toward
+  `dropped_logs`, as sampling and backpressure refusals already did. Before
+  this, Python, TypeScript, Go and Rust counted nothing for a consent refusal.
+  Python and Go counted `emitted_logs` when the backpressure ticket was taken,
+  before PII and either sink ran. TypeScript counted it before either sink ran.
+  C# skipped health entirely when the backend threw. That exception still
+  reaches the caller, but the emission and the export failure are now recorded
+  first.
+
+  Values move after upgrade. A service whose consent level refuses logs will
+  now report a rising `dropped_logs`, and so will
+  `provide_telemetry_dropped_total{signal="logs"}`. Recheck any alert built on
+  either counter.
+
+- **Log pipeline stages run in the canonical order of
+  `spec/pipeline_fixtures.yaml`.** Python now runs consent, sampling and
+  backpressure before hardening, so a refused record does no payload work.
+  TypeScript now renders the local line before it exports to OTLP. It used to
+  export first. Custom processors or sinks that relied on the old order may see
+  records at a different point.
 
 - **C#: `Counter`, `Gauge` and `Histogram` take an optional description and
   unit.** `ProvideTelemetry.Counter(name, description: null, unit: null)` and
