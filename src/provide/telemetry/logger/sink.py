@@ -127,6 +127,12 @@ def set_log_output(writer: TextIO) -> None:
     ones after some later reconfiguration. Colour follows the writer, so a file
     or a pipe receives no ANSI even from a process whose stderr is a terminal.
 
+    A record the writer logs through this SDK -- or through stdlib ``logging``
+    -- from inside its own ``write`` is not written. It is counted as a log
+    export failure, and the record being written is unaffected. Records from
+    other threads wait their turn and are never dropped. A writer that raises
+    costs only the record it was writing, and that is counted the same way.
+
     Raises ``ConfigurationError`` for a writer that cannot be written to.
     """
     global _LOG_OUTPUT

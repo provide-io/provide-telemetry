@@ -262,9 +262,33 @@ fails outright with `engine-strict=true`. Node 18 reached end-of-life on
     failure.
   - A writer that panics in `Flush` no longer aborts `ShutdownTelemetry`
     partway.
-  - A writer that logs back through the SDK from inside `Write` or `Flush` no
-    longer deadlocks. The nested record is dropped and counted as an export
-    failure. Writes from other goroutines still wait and are never dropped.
+- **A log output writer that logs back through the SDK no longer deadlocks
+  or recurses.** This covers Go's `WithLogOutput` and Python's and Rust's
+  `set_log_output`. When the writer logs from inside its own write or flush,
+  on the goroutine or thread that is already writing, that nested record is
+  dropped and counted as a log export failure. The record being written is
+  not affected. Writes from other goroutines or threads still wait their turn
+  and are never dropped.
+  - Go deadlocked on the sink's lock, or on the lock slog's JSON and text
+    handlers hold while they write.
+  - Python recursed instead, because the stdlib handler lock is re-entrant.
+    About a hundred nested writes later, `RecursionError` escaped the log
+    call, and nothing was written or counted. A writer that logs through
+    stdlib `logging` is caught as well.
+  - Rust deadlocked on its sink mutex, on its render-capture mutex, and on
+    the pretty renderer's colour check. It also deadlocked when shutdown
+    flushed a writer that logged, or when a replaced writer logged from
+    `Drop`.
+  - Python and Rust now also count a writer that fails as a log export
+    failure, as Go does. Python's writer raising used to print a traceback
+    and the record to stderr. Rust's writer returning an error lost the record
+    silently, and a panic unwound out of the log call or aborted
+    `shutdown_telemetry`.
+  - TypeScript and C# have no log output sink, so this does not apply to
+    them. Their hosts redirect through the console methods and
+    `Console.SetError`.
+
+  The rule is `log_output.reentrance` in `spec/telemetry-api.yaml`.
 - **TypeScript: an OTel logger that throws now counts an export failure.**
   Before this, the exception failed the log call and the record skipped
   health.

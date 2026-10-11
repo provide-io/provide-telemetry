@@ -52,7 +52,7 @@ fn main() {
 | `setup_telemetry(Option<TelemetryConfig>) -> Result<TelemetryConfig, TelemetryError>` | Idempotent init; `None` reads the environment. |
 | `reconfigure_telemetry(Option<TelemetryConfig>)` | Apply a new config (`None` re-reads the environment); provider-changing fields are an error while OTel providers are installed. |
 | `update_runtime_config(RuntimeOverrides)` | Hot-reload sampling / backpressure / exporter policy. |
-| `set_log_output(writer)` / `clear_log_output()` | Send rendered log records to any `Write + Send` instead of stderr, and back. Colour is off while a writer is installed; reconfiguration does not touch it. |
+| `set_log_output(writer)` / `clear_log_output()` | Send rendered log records to any `Write + Send` instead of stderr, and back. Colour is off while a writer is installed; reconfiguration does not touch it. A record the writer logs from inside its own `write`/`flush` on the same thread is dropped and counted as a log export failure, and so is a write that errors or panics. Other threads' records wait and are never dropped. |
 | `flush_telemetry(Option<f64>) -> Result<(), TelemetryError>` | Drain every installed provider and leave them installed; the argument is a timeout in seconds. |
 | `adopt_global_providers(AdoptedProviders)` | Tell the facade the host installed live providers on the OTel globals, so emission routes through them. Rust cannot detect this for itself. |
 | `shutdown_telemetry(Option<f64>) -> Result<(), TelemetryError>` | Flush and shut down all providers; the argument is a timeout in seconds. |

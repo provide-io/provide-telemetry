@@ -107,6 +107,16 @@ Notes:
   is consistent across all five languages (per-series last reading); only the
   in-process `.value()` accessor differs. Cross-language comparisons of the
   aggregate accessor are not supported.
+- Log output sink: Go (`WithLogOutput`), Python and Rust (`set_log_output`)
+  let a host replace the log destination. TypeScript and C# do not, because
+  their hosts redirect through the console methods and `Console.SetError`
+  (`log_output` in `spec/telemetry-api.yaml`). In all three, a writer that
+  fails costs only the record it was writing. That record counts as a log
+  export failure. A record the writer logs back through the SDK from inside
+  itself is handled the same way: it is dropped, not deadlocked on or
+  recursed into. Re-entry is detected per goroutine in Go and per thread in
+  Python and Rust, so records from other goroutines or threads wait their
+  turn and are never dropped.
 - ASGI/HTTP middleware: only Python ships a pre-built request-lifecycle
   middleware, `provide.telemetry.asgi.TelemetryMiddleware`
   (`src/provide/telemetry/asgi/middleware.py`). TypeScript, Go, Rust and C#
