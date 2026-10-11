@@ -1057,6 +1057,30 @@ callsite_fields:
     that derives its OTel attributes from the record fields couples them by
     accident, which is a defect rather than a contract.
 
+reserved_root_fields:
+  description: >
+    Root fields of a log record that the SDK stamps: the service identity,
+    from config (PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_TELEMETRY_ENV,
+    PROVIDE_TELEMETRY_VERSION), and the live trace context. Names are the
+    wire names of log_output_format in spec/behavioral_fixtures.yaml; each
+    SDK's raw spelling of the same field is reserved with it (Go's
+    service.name, service.env, service.version, trace.id and span.id; C#'s
+    service_name and environment attributes).
+  fields: [service, env, version, trace_id, span_id]
+  collision: >
+    The SDK wins. A caller or bound-context value under a reserved name is
+    replaced by the stamped one rather than duplicated — the same rule as
+    callsite_fields. A record carrying two answers is filed under whichever
+    one a backend happens to keep, so a payload logged as attributes could
+    otherwise correlate a record to a trace, or attribute it to a service,
+    of the sender's choosing. A caller describing a remote service uses
+    peer.service, which is not reserved.
+  unstamped: >
+    A field the SDK does not stamp on a given record leaves the caller's value
+    standing, since nothing better is known: trace_id and span_id when no span
+    is live, and an identity field whose config value is empty. Only root keys
+    are reserved; a nested field of the same name is the caller's.
+
 health_snapshot:
   description: >
     Typed, canonical health surface. Every SDK serializes exactly these

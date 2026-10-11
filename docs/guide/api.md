@@ -276,6 +276,12 @@ config directly and return `True` when telemetry is unconfigured.
 Bind key-value pairs into the structlog contextvars context. Available to all
 subsequent log events in the current async task.
 
+The fields the SDK stamps — `service`, `env`, `version` from config, and
+`trace_id` / `span_id` from the live span — replace a bound or per-call value
+of the same name; one the SDK does not stamp on a record (no live span, an
+empty config value) leaves yours standing. To name a remote service, use
+`peer.service`. See `reserved_root_fields` in `spec/telemetry-api.yaml`.
+
 ### `unbind_context(*keys: str) -> None`
 
 Remove keys from the structlog contextvars context.
@@ -617,8 +623,11 @@ NamedTuple with per-signal counters:
 Canonical 26-field layout (8 per signal × 3 signals + 2 global), shared across
 Python, TypeScript, Go, Rust, and C#:
 
-- `emitted_{logs,traces,metrics}` — events accepted and forwarded
-- `dropped_{logs,traces,metrics}` — events dropped by sampling or backpressure
+- `emitted_{logs,traces,metrics}` — events accepted and forwarded; for logs,
+  counted once the record has reached its local and backend sinks (the
+  `health` stage of `spec/pipeline_fixtures.yaml`)
+- `dropped_{logs,traces,metrics}` — events refused by consent, sampling or
+  backpressure
 - `export_failures_{logs,traces,metrics}` — failed export attempts
 - `retries_{logs,traces,metrics}` — exporter retry count
 - `export_latency_ms_{logs,traces,metrics}` — latest export latency in ms

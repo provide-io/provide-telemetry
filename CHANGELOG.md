@@ -12,6 +12,24 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ### Changed
 
+- **Stamped root fields replace caller values (Go, Rust, TypeScript, C#).**
+  `service`, `env`, `version`, `trace_id` and `span_id` — and each SDK's raw
+  spelling of them — are the SDK's to state: a caller or bound value of the
+  same name is replaced, not duplicated. A field the SDK does not stamp on a
+  record (no live span, an empty config value) leaves the caller's value
+  standing. Rust previously let a caller's `service`/`env`/`version` win, and
+  C#'s wire envelope dropped a caller's unstamped `trace_id`. A caller naming
+  a remote service should use `peer.service`. Specified as
+  `reserved_root_fields` in `spec/telemetry-api.yaml`.
+- **Log health is counted at the canonical health stage (Go, Rust,
+  TypeScript, C#).** `emitted_logs` moves once a record has reached its local
+  and backend sinks rather than on admission, and a consent refusal now counts
+  toward `dropped_logs` like a sampling or backpressure refusal. TypeScript
+  now writes locally before exporting, and a throwing OTel logger counts an
+  export failure instead of faulting the log call; a C# backend that throws
+  still reaches the caller, but is first counted. Every SDK's conformance test
+  now compares each `spec/pipeline_fixtures.yaml` case whole.
+
 - **C#: `Counter`, `Gauge` and `Histogram` take an optional description and
   unit.** `ProvideTelemetry.Counter(name, description: null, unit: null)` and
   its siblings, on both the facade and `IMeter`, match the other four SDKs.
@@ -1039,7 +1057,7 @@ pin plain tracebacks or have no rich-formatter dependency to fall into.
   (`RegExp.test` advances `lastIndex`). Patterns are stored as stateless
   clones.
 - **Credentialed OTLP endpoints are accepted.** Python, Rust and TypeScript
-  each read the userinfo colon in `https://user:pw@collector.example` as an
+  each read the userinfo colon in `https://user:pw@collector.example` as an <!-- pragma: allowlist secret -->
   empty-port separator and refused the endpoint (Go and C# were correct).
   All three strip userinfo before the port scan; both URL forms are pinned in
   the shared behavioral fixtures.
