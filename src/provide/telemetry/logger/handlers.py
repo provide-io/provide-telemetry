@@ -11,7 +11,12 @@ import contextlib
 import logging
 from typing import Any
 
-from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
+from provide.telemetry.logger._foreign_records import sanitize_foreign_record
+from provide.telemetry.logger.processors import (
+    _BACKPRESSURE_TICKET_KEY,
+    _PIPELINE_RECORD_KEY,
+    _PIPELINE_RECORD_MARKER,
+)
 
 
 class _BackpressureFanoutHandler(logging.Handler):
@@ -97,6 +102,12 @@ class _BackpressureFanoutHandler(logging.Handler):
         # that reached a collector. Lifting it here keeps it alive for the
         # release below while hiding it from every child handler at once.
         ticket = record.__dict__.pop(_BACKPRESSURE_TICKET_KEY, None)
+        # A record without the pipeline's marker came from a plain stdlib
+        # logger and never ran the processor chain; the children get a
+        # hardened, sanitized copy of it instead. Popped for the same reason
+        # as the ticket: nothing of ours is exported as an attribute.
+        if record.__dict__.pop(_PIPELINE_RECORD_KEY, None) is not _PIPELINE_RECORD_MARKER:
+            record = sanitize_foreign_record(record)
         try:
             for handler in self._handlers:
                 if record.levelno >= handler.level:

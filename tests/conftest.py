@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from collections.abc import Generator
@@ -104,6 +105,15 @@ def reset_logger_state() -> None:
     """
     structlog.reset_defaults()
     _reset_logging_for_tests()
+    # The SDK's fan-out handler outlives the state reset above, and the next
+    # lazy configuration attaches another beside it. Two fan-outs on the root
+    # is not a state any process reaches, and the second one re-sanitizes what
+    # the first already passed through (a receipt line becomes a new receipt).
+    # Matched by name: a module reload makes a second class object.
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        if type(handler).__name__ == "_BackpressureFanoutHandler":
+            root.removeHandler(handler)
     _reset_setup_state_for_tests()
     reset_sampling_for_tests()
     reset_resilience_for_tests()

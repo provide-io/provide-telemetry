@@ -11,6 +11,8 @@ from typing import Any
 
 from provide.telemetry.logger.processors import (
     _BACKPRESSURE_TICKET_KEY,
+    _PIPELINE_RECORD_KEY,
+    _PIPELINE_RECORD_MARKER,
     render_with_backpressure_extra,
 )
 
@@ -37,14 +39,14 @@ def test_render_with_backpressure_forwards_real_logger_and_method_name() -> None
     assert received["logger"] is sentinel_logger, "renderer must receive the caller-supplied logger, not None"
     assert received["method_name"] == "info", "renderer must receive the caller-supplied method_name, not None"
     assert args == ("rendered",)
-    assert kwargs == {"extra": {_BACKPRESSURE_TICKET_KEY: "tok"}}
+    assert kwargs == {"extra": {_PIPELINE_RECORD_KEY: _PIPELINE_RECORD_MARKER, _BACKPRESSURE_TICKET_KEY: "tok"}}
 
 
-def test_render_with_backpressure_no_extra_when_no_ticket() -> None:
+def test_render_with_backpressure_marks_the_record_without_a_ticket() -> None:
     def _renderer(_l: Any, _m: str, _e: dict[str, Any]) -> str:
         return "x"
 
     processor = render_with_backpressure_extra(_renderer)
     args, kwargs = processor(object(), "info", {"event": "evt"})
     assert args == ("x",)
-    assert kwargs == {}
+    assert kwargs == {"extra": {_PIPELINE_RECORD_KEY: _PIPELINE_RECORD_MARKER}}

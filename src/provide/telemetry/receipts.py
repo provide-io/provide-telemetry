@@ -56,6 +56,7 @@ from decimal import Decimal
 from typing import Any, Protocol, runtime_checkable
 
 from provide.telemetry import pii as pii_mod
+from provide.telemetry._record_marker import PIPELINE_RECORD_KEY, PIPELINE_RECORD_MARKER
 from provide.telemetry.exceptions import ConfigurationError
 from provide.telemetry.health import increment_receipt_failures
 
@@ -107,7 +108,9 @@ class LoggingReceiptSink:
     An explicit choice for services whose log stream *is* their receipt
     destination. The record goes through stdlib ``logging``, never the
     structlog pipeline, so it cannot be sanitized into another redaction and
-    re-enter the receipt hook. Debug level: if the process log level is above
+    re-enter the receipt hook -- and it is marked as the SDK's own, so the
+    root handler that sanitizes plain stdlib records does not redact its
+    digest into another receipt either. Debug level: if the process log level is above
     DEBUG, receipts are dropped — pick a durable sink when that matters.
     """
 
@@ -124,6 +127,7 @@ class LoggingReceiptSink:
             receipt.action,
             receipt.original_hash,
             receipt.hmac,
+            extra={PIPELINE_RECORD_KEY: PIPELINE_RECORD_MARKER},
         )
         return True
 

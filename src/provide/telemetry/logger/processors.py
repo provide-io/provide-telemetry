@@ -18,6 +18,7 @@ from typing import Any, cast
 import structlog
 
 from provide.telemetry._lifecycle import coordinator
+from provide.telemetry._record_marker import PIPELINE_RECORD_KEY, PIPELINE_RECORD_MARKER
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, parse_level
@@ -318,6 +319,10 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
 
 _BACKPRESSURE_TICKET_KEY = "__provide_telemetry_backpressure_ticket__"
 
+# Marks the rendered record as already hardened and sanitized; see _record_marker.
+_PIPELINE_RECORD_KEY = PIPELINE_RECORD_KEY
+_PIPELINE_RECORD_MARKER = PIPELINE_RECORD_MARKER
+
 
 def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     from provide.telemetry.backpressure import try_acquire
@@ -349,9 +354,10 @@ def render_with_backpressure_extra(renderer: Any) -> Any:
     def _processor(logger: Any, method_name: str, event_dict: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
         ticket = event_dict.pop(_BACKPRESSURE_TICKET_KEY, None)
         rendered = renderer(logger, method_name, event_dict)
-        if ticket is None:
-            return (rendered,), {}
-        return (rendered,), {"extra": {_BACKPRESSURE_TICKET_KEY: ticket}}
+        extra: dict[str, Any] = {_PIPELINE_RECORD_KEY: _PIPELINE_RECORD_MARKER}
+        if ticket is not None:
+            extra[_BACKPRESSURE_TICKET_KEY] = ticket
+        return (rendered,), {"extra": extra}
 
     return _processor
 
