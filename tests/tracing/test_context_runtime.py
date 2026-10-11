@@ -39,6 +39,7 @@ from provide.telemetry.tracing.provider import _reset_tracing_for_tests, get_tra
 pytest.importorskip("opentelemetry.context.contextvars_context")
 
 from opentelemetry import context as otel_context
+from opentelemetry.context.context import _RuntimeContext
 from opentelemetry.context.contextvars_context import ContextVarsRuntimeContext
 
 from provide.telemetry.tracing.context_runtime import (
@@ -238,20 +239,26 @@ def test_install_adopts_the_live_contextvar() -> None:
     assert otel_context._RUNTIME_CONTEXT._current_context is live
 
 
-class _ForeignRuntime:
+class _ForeignRuntime(_RuntimeContext):
     """A runtime context that is not ContextVars-based: only its current value can be carried over."""
 
     def __init__(self, current: Context) -> None:
         self._current = current
 
+    def attach(self, context: Context) -> Token[Context]:
+        raise NotImplementedError
+
     def get_current(self) -> Context:
         return self._current
+
+    def detach(self, token: Token[Context]) -> None:
+        raise NotImplementedError
 
 
 @pytest.mark.usefixtures("restore_runtime_context")
 def test_install_copies_current_from_a_non_contextvars_runtime() -> None:
     foreign_current = otel_context.set_value("marker-key", "foreign-val", otel_context.Context())
-    otel_context._RUNTIME_CONTEXT = _ForeignRuntime(foreign_current)  # type: ignore[assignment]
+    otel_context._RUNTIME_CONTEXT = _ForeignRuntime(foreign_current)
     assert install_safe_runtime_context() is True
     assert otel_context.get_value("marker-key") == "foreign-val"
 
