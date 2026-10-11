@@ -178,8 +178,8 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	}
 
 	// Reject a nil writer here rather than panicking on the first log line.
-	// Installation waits until the config resolves, so a setup that fails
-	// leaves logging where it found it.
+	// Installation waits until the config resolves, and a setup that fails
+	// after it is rolled back, so either way logging is left where it was.
 	if state.logOutputSet && _writerIsNil(state.logOutput) {
 		return nil, NewConfigurationError("WithLogOutput: writer is nil")
 	}
@@ -197,6 +197,11 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 			return nil, err
 		}
 	}
+
+	// Everything from here to backend wiring writes process-wide state the
+	// backend needs in place. Remember what was there, so a failed setup hands
+	// the host back the runtime it had rather than half of the one it asked for.
+	prior := _captureProcessState()
 
 	// Ready the console before the sink is built: the sink decides once, at
 	// install, whether its destination renders ANSI, and on Windows that answer
@@ -231,6 +236,7 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	if err := _setupBackendLocked(state, cfg); err != nil {
 		_setupDone = false
 		_clearGenerationLocked()
+		prior._restoreProcessState()
 		return nil, err
 	}
 
