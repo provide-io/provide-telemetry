@@ -268,6 +268,7 @@ All options come from environment variables:
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format |
 | `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
 | `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Enforce DA(R)S event name format |
+| `PROVIDE_TELEMETRY_STRICT_CONFIG` | `false` | Fail config parsing instead of ignoring unusable `OTEL_METRICS_EXPORTER` entries |
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable tracing |
 | `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` |
 | `PROVIDE_METRICS_ENABLED` | `true` | Enable metrics |
@@ -279,7 +280,7 @@ All options come from environment variables:
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP base endpoint (e.g. `http://localhost:4318`) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Percent-encoded `key=value` auth headers |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds (`--features otel`) |
-| `OTEL_METRICS_EXPORTER` | `otlp` | Comma-separated: `otlp`, `prometheus`, `none` (see [Prometheus](#prometheus)) |
+| `OTEL_METRICS_EXPORTER` | `otlp` | Comma-separated: `otlp`, `prometheus`, `none` (see [Prometheus](#prometheus)). Other entries are warned about, ignored and reported in `setup_error`; setup still succeeds |
 
 The full list, including the Prometheus variables, is in
 [docs/guide/configuration.md](../docs/guide/configuration.md).

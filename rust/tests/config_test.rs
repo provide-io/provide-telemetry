@@ -23,6 +23,8 @@ fn config_test_defaults_match_repo_contract() {
     assert_eq!(cfg.environment, "dev");
     assert_eq!(cfg.version, "0.0.0");
     assert!(!cfg.strict_schema);
+    assert!(!cfg.strict_config);
+    assert!(cfg.metrics.exporter_warnings.is_empty());
     assert_eq!(cfg.pii_max_depth, 8);
     assert_eq!(cfg.logging.level, "INFO");
     assert_eq!(cfg.logging.fmt, "console");

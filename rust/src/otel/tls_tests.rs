@@ -271,6 +271,25 @@ fn an_unloadable_file_skips_the_exporter_records_setup_error_and_never_fails_set
     reset_telemetry_state();
 }
 
+#[test]
+fn tls_problems_follow_the_ignored_exporter_entries_in_setup_error() {
+    let _guard = acquire_test_state_lock();
+    reset_telemetry_state();
+    let mut env = EnvGuard::default();
+    env.set("OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE", MISSING);
+    let mut config = otlp_config("http/protobuf");
+    let ignored = "OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored".to_string();
+    config.metrics.exporter_warnings = vec![ignored.clone()];
+    crate::setup_telemetry(Some(config)).expect("setup");
+    let reason =
+        "OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=/nonexistent/provide.pem: No such file or directory";
+    assert_eq!(
+        crate::health::get_health_snapshot().setup_error,
+        Some(format!("{ignored}; {reason}"))
+    );
+    reset_telemetry_state();
+}
+
 /// The client http_client builds really presents the identity and trusts only
 /// the configured CA: checked against the listener requiring a client certificate.
 #[cfg(feature = "prometheus-listener")]

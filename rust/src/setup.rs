@@ -61,7 +61,15 @@ pub fn setup_telemetry(config: Option<TelemetryConfig>) -> Result<TelemetryConfi
     load_consent_from_env();
     // A stale error from an earlier attempt must not outlive this one; setup
     // records any new one below (an exporter or the Prometheus listener).
-    crate::health::set_setup_error(None);
+    // The ignored OTEL_METRICS_EXPORTER entries, if any, are this setup's error
+    // until something worse replaces it.
+    for line in ignored_exporter_lines(&config) {
+        eprintln!("{line}");
+    }
+    crate::health::set_setup_error(crate::config::prometheus::setup_problems(
+        &config.metrics.exporter_warnings,
+        None,
+    ));
     setup_otel(&config)?;
     // Without the SDK no meter provider records why the pull endpoint cannot
     // serve. A statement here rather than in the cfg'd setup_otel body, which
@@ -74,6 +82,19 @@ pub fn setup_telemetry(config: Option<TelemetryConfig>) -> Result<TelemetryConfi
     crate::prometheus::sync_listener(&config);
     state.done = true;
     Ok(config)
+}
+
+/// One warning line per `OTEL_METRICS_EXPORTER` entry config parsing ignored
+/// (spec `prometheus_metrics.metrics_exporter_warnings`).
+fn ignored_exporter_lines(config: &TelemetryConfig) -> Vec<String> {
+    config
+        .metrics
+        .exporter_warnings
+        .iter()
+        .map(|reason| {
+            format!("provide_telemetry: config.metrics_exporter.value_ignored reason={reason}")
+        })
+        .collect()
 }
 
 /// Force-flush installed providers without tearing them down.
@@ -345,6 +366,72 @@ mod tests {
         shutdown_telemetry(None).expect("shutdown should succeed");
         std::env::remove_var(crate::consent::CONSENT_LEVEL_ENV_VAR);
         reset_consent_for_tests();
+    }
+
+    const CONSOLE: &str =
+        "OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored";
+    const FALLBACK: &str = "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp";
+
+    fn exporter_config(value: &str) -> TelemetryConfig {
+        TelemetryConfig::from_map(&std::collections::HashMap::from([(
+            "OTEL_METRICS_EXPORTER".to_string(),
+            value.to_string(),
+        )]))
+        .expect("an unusable exporter is not a parse error")
+    }
+
+    #[test]
+    fn each_ignored_exporter_entry_is_one_warning_line() {
+        assert!(ignored_exporter_lines(&exporter_config("prometheus")).is_empty());
+        assert_eq!(
+            ignored_exporter_lines(&exporter_config("console")),
+            vec![
+                format!(
+                    "provide_telemetry: config.metrics_exporter.value_ignored reason={CONSOLE}"
+                ),
+                format!(
+                    "provide_telemetry: config.metrics_exporter.value_ignored reason={FALLBACK}"
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn ignored_exporter_entries_become_setup_error_and_setup_succeeds() {
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+        crate::health::set_setup_error(Some("stale".to_string()));
+
+        let cfg = setup_telemetry(Some(exporter_config("console"))).expect("setup succeeds");
+        assert_eq!(cfg.metrics.exporters, vec!["otlp"]);
+        let want = Some(format!("{CONSOLE}; {FALLBACK}"));
+        assert_eq!(crate::health::get_health_snapshot().setup_error, want);
+        // A repeated setup returns early: nothing is logged or recorded again.
+        setup_telemetry(Some(exporter_config("prometheus"))).expect("repeat");
+        assert_eq!(crate::health::get_health_snapshot().setup_error, want);
+        shutdown_telemetry(None).expect("shutdown should succeed");
+
+        // A clean value clears it.
+        setup_telemetry(Some(exporter_config("prometheus"))).expect("setup succeeds");
+        assert_eq!(crate::health::get_health_snapshot().setup_error, None);
+        shutdown_telemetry(None).expect("shutdown should succeed");
+    }
+
+    #[test]
+    fn strict_config_fails_setup_from_the_environment() {
+        let _guard = acquire_test_state_lock();
+        shutdown_telemetry(None).expect("pre-test shutdown should succeed");
+        std::env::set_var("OTEL_METRICS_EXPORTER", "console");
+        std::env::set_var("PROVIDE_TELEMETRY_STRICT_CONFIG", "true");
+
+        let err = setup_telemetry(None).expect_err("strict config must fail setup");
+        assert_eq!(
+            err.message,
+            format!("PROVIDE_TELEMETRY_STRICT_CONFIG: {CONSOLE}; {FALLBACK}")
+        );
+
+        std::env::remove_var("OTEL_METRICS_EXPORTER");
+        std::env::remove_var("PROVIDE_TELEMETRY_STRICT_CONFIG");
     }
 
     #[cfg(feature = "otel")]

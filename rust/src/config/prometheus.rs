@@ -6,7 +6,9 @@
 //!
 //! See `prometheus_metrics.config_rules` in `spec/telemetry-api.yaml`. Invalid
 //! values are a [`ConfigurationError`], as for the crate's other validated keys,
-//! whether they come from the environment or from a config built in code.
+//! whether they come from the environment or from a config built in code. The
+//! exception is `OTEL_METRICS_EXPORTER`, whose unusable entries are warned about
+//! and ignored unless `PROVIDE_TELEMETRY_STRICT_CONFIG` is set.
 
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,10 @@ use crate::errors::ConfigurationError;
 pub(crate) const EXPORTER_OTLP: &str = "otlp";
 pub(crate) const EXPORTER_PROMETHEUS: &str = "prometheus";
 const EXPORTER_NONE: &str = "none";
+/// Registered for `OTEL_METRICS_EXPORTER` by the OTel spec, not implemented here.
+const UNSUPPORTED_EXPORTERS: [&str; 2] = ["console", "logging"];
+/// Joins ignored-entry warnings, in the strict error and in `setup_error`.
+pub(crate) const WARNING_SEPARATOR: &str = "; ";
 const LISTEN_VALUES: [&str; 3] = ["false", "true", "auto"];
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 9464;
@@ -72,41 +78,74 @@ pub(crate) fn default_exporters() -> Vec<String> {
     vec![EXPORTER_OTLP.to_string()]
 }
 
-/// Parse `OTEL_METRICS_EXPORTER`: entries split on commas, trimmed and
-/// lowercased, empty ones dropped. Empty input means `otlp`; `none` alone means
-/// no exporters and may not be combined with another.
-pub(crate) fn parse_exporters(raw: Option<&str>) -> Result<Vec<String>, ConfigurationError> {
+/// Parse `OTEL_METRICS_EXPORTER` into (exporters, warnings): entries split on
+/// commas, trimmed and lowercased, empty ones dropped. Empty input means `otlp`
+/// and `none` alone means no exporters. Anything else this SDK cannot export to
+/// is dropped with a warning, as the OTel environment-variable spec asks of an
+/// unrecognised enum value; see `prometheus_metrics.metrics_exporter_warnings`.
+/// `strict` turns any warning into a [`ConfigurationError`].
+pub(crate) fn parse_exporters(
+    raw: Option<&str>,
+    strict: bool,
+) -> Result<(Vec<String>, Vec<String>), ConfigurationError> {
     let names: Vec<String> = raw
         .unwrap_or("")
         .split(',')
         .map(|part| part.trim().to_ascii_lowercase())
         .filter(|part| !part.is_empty())
         .collect();
-    if let Some(unknown) = names
-        .iter()
-        .find(|name| ![EXPORTER_OTLP, EXPORTER_PROMETHEUS, EXPORTER_NONE].contains(&name.as_str()))
-    {
-        return Err(ConfigurationError::new(format!(
-            "OTEL_METRICS_EXPORTER: unknown exporter {unknown:?}"
-        )));
+    if !names.is_empty() && names.iter().all(|name| name == EXPORTER_NONE) {
+        return Ok((Vec::new(), Vec::new()));
     }
-    let has_none = names.iter().any(|name| name == EXPORTER_NONE);
-    let exporters: Vec<String> = names
-        .into_iter()
-        .filter(|name| name != EXPORTER_NONE)
-        .collect();
-    if has_none {
-        if !exporters.is_empty() {
-            return Err(ConfigurationError::new(
-                "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters",
+    let mut warnings = Vec::new();
+    let mut seen: Vec<&str> = Vec::new();
+    for name in &names {
+        if seen.contains(&name.as_str()) {
+            continue;
+        }
+        seen.push(name);
+        if UNSUPPORTED_EXPORTERS.contains(&name.as_str()) {
+            warnings.push(format!(
+                "OTEL_METRICS_EXPORTER: {name} is not supported by provide-telemetry, ignored"
+            ));
+        } else if ![EXPORTER_OTLP, EXPORTER_PROMETHEUS, EXPORTER_NONE].contains(&name.as_str()) {
+            warnings.push(format!(
+                "OTEL_METRICS_EXPORTER: unknown exporter {name}, ignored"
             ));
         }
-        return Ok(exporters);
+    }
+    if names.iter().any(|name| name == EXPORTER_NONE) {
+        warnings.push(
+            "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored"
+                .to_string(),
+        );
+    }
+    let exporters: Vec<String> = names
+        .iter()
+        .filter(|name| [EXPORTER_OTLP, EXPORTER_PROMETHEUS].contains(&name.as_str()))
+        .cloned()
+        .collect();
+    if !names.is_empty() && exporters.is_empty() {
+        warnings.push("OTEL_METRICS_EXPORTER: no supported exporter left, using otlp".to_string());
+    }
+    if strict && !warnings.is_empty() {
+        return Err(ConfigurationError::new(format!(
+            "PROVIDE_TELEMETRY_STRICT_CONFIG: {}",
+            warnings.join(WARNING_SEPARATOR)
+        )));
     }
     if exporters.is_empty() {
-        return Ok(default_exporters());
+        return Ok((default_exporters(), warnings));
     }
-    Ok(exporters)
+    Ok((exporters, warnings))
+}
+
+/// `setup_error` for the ignored `OTEL_METRICS_EXPORTER` entries followed by
+/// any OTLP TLS problems, joined with "; ", or `None` when there are neither.
+pub(crate) fn setup_problems(warnings: &[String], tls: Option<String>) -> Option<String> {
+    let mut problems = warnings.to_vec();
+    problems.extend(tls);
+    (!problems.is_empty()).then(|| problems.join(WARNING_SEPARATOR))
 }
 
 /// Reject an exporter list built in code with a name the env parser would refuse.

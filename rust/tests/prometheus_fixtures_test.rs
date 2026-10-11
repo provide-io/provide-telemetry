@@ -41,7 +41,7 @@ fn env_with(key: &str, value: &Value) -> HashMap<String, String> {
 #[test]
 fn exporter_selection_cases() {
     let cases = cases("exporter_selection");
-    assert_eq!(cases.len(), 14);
+    assert_eq!(cases.len(), 26);
     for case in cases {
         let id = case["id"].as_str().unwrap();
         let env: HashMap<String, String> = case["env"]
@@ -80,6 +80,11 @@ fn exporter_selection_cases() {
             case["listener"].as_bool().unwrap(),
             "{id}"
         );
+        let warnings: Vec<&str> = case["warnings"]
+            .as_sequence()
+            .map(|seq| seq.iter().map(|v| v.as_str().unwrap()).collect())
+            .unwrap_or_default();
+        assert_eq!(metrics.exporter_warnings, warnings, "{id}");
     }
 }
 

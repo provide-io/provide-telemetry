@@ -46,8 +46,12 @@ pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError>
         .and_then(|_| metrics::install_meter_provider(config, resource.clone()))
         .and_then(|_| logs::install_logger_provider(config, resource));
     // After the installs, and after setup's clear of setup_error, so it stays visible.
+    // Behind the ignored OTEL_METRICS_EXPORTER entries setup already recorded.
     if let Some(problems) = tls::take_problems() {
-        crate::health::set_setup_error(Some(problems));
+        crate::health::set_setup_error(crate::config::prometheus::setup_problems(
+            &config.metrics.exporter_warnings,
+            Some(problems),
+        ));
     }
     installed.map(|_| ())
 }

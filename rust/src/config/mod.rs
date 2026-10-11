@@ -131,6 +131,10 @@ pub struct MetricsConfig {
     /// Selected metric exporters, from `OTEL_METRICS_EXPORTER`: `otlp` and/or
     /// `prometheus`. Empty means none (`OTEL_METRICS_EXPORTER=none`).
     pub exporters: Vec<String>,
+    /// What `OTEL_METRICS_EXPORTER` asked for that was ignored; setup logs these
+    /// and reports them as `setup_error` (spec
+    /// `prometheus_metrics.metrics_exporter_warnings`).
+    pub exporter_warnings: Vec<String>,
     /// Also export the health metrics over OTLP (`PROVIDE_METRICS_HEALTH_OTLP`).
     pub health_otlp: bool,
     /// Prometheus pull reader, handler and listener settings.
@@ -181,6 +185,7 @@ impl Default for MetricsConfig {
             otlp_protocol: String::new(),
             metric_export_interval_ms: default_metric_export_interval_ms(),
             exporters: prometheus::default_exporters(),
+            exporter_warnings: Vec::new(),
             health_otlp: false,
             prometheus: PrometheusConfig::default(),
         }
@@ -295,6 +300,10 @@ pub struct TelemetryConfig {
     pub environment: String,
     pub version: String,
     pub strict_schema: bool,
+    /// Fail config parsing on a value that would otherwise be warned about and
+    /// ignored (`PROVIDE_TELEMETRY_STRICT_CONFIG`). Today that is
+    /// `OTEL_METRICS_EXPORTER` only.
+    pub strict_config: bool,
     pub pii_max_depth: usize,
     pub logging: LoggingConfig,
     pub tracing: TracingConfig,
@@ -314,6 +323,7 @@ impl Default for TelemetryConfig {
             environment: "dev".to_string(),
             version: "0.0.0".to_string(),
             strict_schema: false,
+            strict_config: false,
             pii_max_depth: 8,
             logging: LoggingConfig::default(),
             tracing: TracingConfig::default(),

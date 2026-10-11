@@ -38,6 +38,14 @@ impl TelemetryConfig {
             shared_endpoint.map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
         };
 
+        let strict_config = parse_bool(
+            env_value(env, &["PROVIDE_TELEMETRY_STRICT_CONFIG"]),
+            false,
+            "PROVIDE_TELEMETRY_STRICT_CONFIG",
+        )?;
+        let (exporters, exporter_warnings) =
+            parse_exporters(env_value(env, &["OTEL_METRICS_EXPORTER"]), strict_config)?;
+
         Ok(Self {
             service_name: env_value(env, &["PROVIDE_TELEMETRY_SERVICE_NAME"])
                 .unwrap_or("provide-service")
@@ -53,6 +61,7 @@ impl TelemetryConfig {
                 false,
                 "PROVIDE_TELEMETRY_STRICT_SCHEMA",
             )?,
+            strict_config,
             pii_max_depth: parse_usize(
                 env_value(env, &["PROVIDE_LOG_PII_MAX_DEPTH"]),
                 8,
@@ -135,7 +144,8 @@ impl TelemetryConfig {
                     60_000,
                     "OTEL_METRIC_EXPORT_INTERVAL",
                 )? as u64,
-                exporters: parse_exporters(env_value(env, &["OTEL_METRICS_EXPORTER"]))?,
+                exporters,
+                exporter_warnings,
                 health_otlp: parse_bool(
                     env_value(env, &["PROVIDE_METRICS_HEALTH_OTLP"]),
                     false,

@@ -8,29 +8,97 @@
 
 use super::*;
 
-#[test]
-fn exporters_default_trim_lowercase_and_drop_empty_entries() {
-    assert_eq!(parse_exporters(None).unwrap(), vec!["otlp"]);
-    assert_eq!(parse_exporters(Some(" , ")).unwrap(), vec!["otlp"]);
-    assert_eq!(
-        parse_exporters(Some(" OTLP ,, Prometheus ")).unwrap(),
-        vec!["otlp", "prometheus"]
-    );
-    assert!(parse_exporters(Some("none")).unwrap().is_empty());
-    assert!(parse_exporters(Some("NONE,")).unwrap().is_empty());
+fn exporters(raw: Option<&str>) -> Vec<String> {
+    let (exporters, warnings) = parse_exporters(raw, false).unwrap();
+    assert!(warnings.is_empty(), "{raw:?}: {warnings:?}");
+    exporters
 }
 
 #[test]
-fn exporters_reject_unknown_names_and_none_with_another() {
-    let unknown = parse_exporters(Some("otlp,statsd")).unwrap_err();
+fn exporters_default_trim_lowercase_and_drop_empty_entries() {
+    assert_eq!(exporters(None), vec!["otlp"]);
+    assert_eq!(exporters(Some(" , ")), vec!["otlp"]);
     assert_eq!(
-        unknown.message,
-        "OTEL_METRICS_EXPORTER: unknown exporter \"statsd\""
+        exporters(Some(" OTLP ,, Prometheus ")),
+        vec!["otlp", "prometheus"]
     );
-    let mixed = parse_exporters(Some("prometheus,none")).unwrap_err();
+    assert!(exporters(Some("none")).is_empty());
+    assert!(exporters(Some("NONE,")).is_empty());
+    assert!(exporters(Some("none,none")).is_empty());
+    assert_eq!(exporters(Some("otlp,otlp")), vec!["otlp", "otlp"]);
+}
+
+const UNKNOWN: &str = "OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored";
+const CONSOLE: &str =
+    "OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored";
+const LOGGING: &str =
+    "OTEL_METRICS_EXPORTER: logging is not supported by provide-telemetry, ignored";
+const NONE_MIXED: &str =
+    "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored";
+const FALLBACK: &str = "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp";
+
+#[test]
+fn unusable_entries_are_warned_about_and_ignored() {
+    let cases: [(&str, Vec<&str>, Vec<&str>); 6] = [
+        ("otlp,statsd", vec!["otlp"], vec![UNKNOWN]),
+        (
+            "statsd,prometheus,STATSD",
+            vec!["prometheus"],
+            vec![UNKNOWN],
+        ),
+        ("console", vec!["otlp"], vec![CONSOLE, FALLBACK]),
+        ("logging,prometheus", vec!["prometheus"], vec![LOGGING]),
+        ("prometheus,none", vec!["prometheus"], vec![NONE_MIXED]),
+        (
+            "none,console,statsd",
+            vec!["otlp"],
+            vec![CONSOLE, UNKNOWN, NONE_MIXED, FALLBACK],
+        ),
+    ];
+    for (raw, want_exporters, want_warnings) in cases {
+        let (got, warnings) = parse_exporters(Some(raw), false).unwrap();
+        assert_eq!(got, want_exporters, "{raw}");
+        assert_eq!(warnings, want_warnings, "{raw}");
+    }
+}
+
+#[test]
+fn strict_turns_warnings_into_an_error() {
+    let err = parse_exporters(Some("otlp,statsd"), true).unwrap_err();
     assert_eq!(
-        mixed.message,
-        "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters"
+        err.message,
+        format!("PROVIDE_TELEMETRY_STRICT_CONFIG: {UNKNOWN}")
+    );
+    let err = parse_exporters(Some("none,console"), true).unwrap_err();
+    assert_eq!(
+        err.message,
+        format!("PROVIDE_TELEMETRY_STRICT_CONFIG: {CONSOLE}; {NONE_MIXED}; {FALLBACK}")
+    );
+    assert_eq!(
+        parse_exporters(Some("prometheus"), true).unwrap(),
+        (vec!["prometheus".to_string()], Vec::new())
+    );
+    assert_eq!(
+        parse_exporters(Some("none"), true).unwrap(),
+        (Vec::new(), Vec::new())
+    );
+}
+
+#[test]
+fn setup_problems_put_ignored_entries_before_tls() {
+    let warnings = vec![UNKNOWN.to_string(), FALLBACK.to_string()];
+    assert_eq!(setup_problems(&[], None), None);
+    assert_eq!(
+        setup_problems(&[], Some("tls".to_string())),
+        Some("tls".to_string())
+    );
+    assert_eq!(
+        setup_problems(&warnings, None),
+        Some(format!("{UNKNOWN}; {FALLBACK}"))
+    );
+    assert_eq!(
+        setup_problems(&warnings, Some("tls".to_string())),
+        Some(format!("{UNKNOWN}; {FALLBACK}; tls"))
     );
 }
 
