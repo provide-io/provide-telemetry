@@ -186,7 +186,11 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 
 	var cfg *TelemetryConfig
 	if state.config != nil {
-		if err := validateTelemetryConfig(state.config); err != nil {
+		// The full reconfigure-target check, not just rates/format/level:
+		// WithConfig is the same in-memory input ReconfigureTelemetry takes,
+		// and a NaN timeout or a negative queue size refused there must not be
+		// installable here simply by arriving first.
+		if err := validateReconfigureTarget(state.config); err != nil {
 			return nil, err
 		}
 		cfg = state.config

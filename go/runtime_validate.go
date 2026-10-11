@@ -144,19 +144,36 @@ func validateExporterPolicyOverride(policy ExporterPolicyConfig) error {
 			return err
 		}
 	}
+	// Zero or negative is the spec'd way to switch library-side shutdown
+	// bounding off, so only the non-finite values are refused: +Inf converts
+	// to a negative time.Duration — an already-expired deadline that abandons
+	// every flush — and NaN to whatever the platform makes of it.
+	return validateFinite(policy.LogsShutdownTimeoutSeconds, "RuntimeOverrides.Exporter.LogsShutdownTimeoutSeconds")
+}
+
+// validateFinite returns a ConfigurationError if v is NaN or infinite.
+func validateFinite(v float64, field string) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return NewConfigurationError(fmt.Sprintf("%s must be finite, got %g", field, v))
+	}
 	return nil
 }
 
 func validateRateFinite(v float64, field string) error {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return NewConfigurationError(fmt.Sprintf("%s must be finite, got %g", field, v))
+	if err := validateFinite(v, field); err != nil {
+		return err
 	}
 	return validateRate(v, field)
 }
 
+// validateNonNegativeFloatFinite rejects NaN, the infinities and negatives.
+// NaN is the one a bare `v < 0` lets through — every comparison with it is
+// false — and a NaN backoff or timeout then disables the very bound it set.
+// Used by the env parser and the in-memory paths alike, so a value refused
+// from PROVIDE_EXPORTER_* is refused from WithConfig too.
 func validateNonNegativeFloatFinite(v float64, field string) error {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return NewConfigurationError(fmt.Sprintf("%s must be finite, got %g", field, v))
+	if err := validateFinite(v, field); err != nil {
+		return err
 	}
 	return validateNonNegativeFloat(v, field)
 }
