@@ -10,11 +10,13 @@ package telemetry
 // backpressure ticket is accounted for on every path including rejections.
 //
 // As in the TypeScript, Rust and C# suites, the stages are observed on the
-// real logger rather than on a pipeline built for the test, so each stage is
-// detected by the mark it actually leaves. Go can do slightly better than
-// presence for the sinks: the local writer and the backend bridge are both
-// called in-line, so each records what had already happened when it ran —
-// which is an order, not just a set.
+// real logger rather than on a pipeline built for the test. The payload stages
+// are detected by the mark each actually leaves: the local writer and the
+// backend bridge are both called in-line, so each records what had already
+// happened to the record when it ran — which is an order, not just a set. The
+// gates and the bookkeeping around them leave no mark on a refused record, so
+// those report through _pipelineStageHook, and every case is compared against
+// the fixture's sequence whole, release included.
 
 import (
 	"context"
@@ -57,17 +59,6 @@ func _loadPipelineFixture(t *testing.T) _pipelineFixture {
 	return fixture
 }
 
-func (f _pipelineFixture) expected(t *testing.T, id string) []string {
-	t.Helper()
-	for _, c := range f.Cases {
-		if c.ID == id {
-			return c.Expected
-		}
-	}
-	t.Fatalf("fixture carries no case %q", id)
-	return nil
-}
-
 func TestPipelineFixture_EveryPathIsASubsequenceOfTheCanonicalOrder(t *testing.T) {
 	fixture := _loadPipelineFixture(t)
 	for _, c := range fixture.Cases {
@@ -97,8 +88,8 @@ func TestPipelineFixture_EveryPathReleasesExactlyOnce(t *testing.T) {
 	}
 }
 
-// _pipelineObserver records, in call order, each sink the record reached and
-// what was already true of the record and the runtime when it got there.
+// _pipelineObserver records, in call order, each stage the record reached:
+// the gates through the hook, the payload stages from the sinks.
 type _pipelineObserver struct {
 	mu        sync.Mutex
 	stages    []string
@@ -111,8 +102,15 @@ func (o *_pipelineObserver) push(stage string) {
 	o.stages = append(o.stages, stage)
 }
 
-// _pipelineLocal is the host's log writer: the "local" sink. Reaching it at
-// all means sampling and backpressure admitted the record, and the rendered
+// _healthNotYetCounted marks a sink that ran after the health stage had
+// already counted the record — health belongs after every sink.
+func (o *_pipelineObserver) _healthNotYetCounted(sink string) {
+	if GetHealthSnapshot().LogsEmitted != 0 || GetHealthSnapshot().LogsExportFailures != 0 {
+		o.push("health-before-" + sink)
+	}
+}
+
+// _pipelineLocal is the host's log writer: the "local" sink. The rendered
 // bytes show whether hardening and PII had run, and the receipt collector
 // whether a receipt had been issued, before the record was written.
 type _pipelineLocal struct{ obs *_pipelineObserver }
@@ -122,8 +120,6 @@ func (w _pipelineLocal) Write(p []byte) (int, error) {
 	if !strings.Contains(line, "pipeline.probe") {
 		return len(p), nil
 	}
-	w.obs.push("sampling")
-	w.obs.push("backpressure")
 	if strings.Contains(line, `"deep":{"a":"***"}`) {
 		w.obs.push("hardening")
 	}
@@ -134,6 +130,7 @@ func (w _pipelineLocal) Write(p []byte) (int, error) {
 		w.obs.push("receipt")
 	}
 	w.obs.push("local")
+	w.obs._healthNotYetCounted("local")
 	return len(p), nil
 }
 
@@ -147,11 +144,7 @@ func (h _pipelineBackendHandler) Handle(_ context.Context, r slog.Record) error 
 		return nil
 	}
 	h.obs.push("backend")
-	// Export failures are the health stage that follows the backend: none
-	// may have been counted yet for this record.
-	if GetHealthSnapshot().LogsExportFailures != 0 {
-		h.obs.push("health-before-backend")
-	}
+	h.obs._healthNotYetCounted("backend")
 	if h.obs.backendFn != nil {
 		return h.obs.backendFn()
 	}
@@ -167,24 +160,34 @@ type _pipelineBackend struct {
 
 func (b *_pipelineBackend) LoggerHandler(string) slog.Handler { return b.handler }
 
+// _pipelineRun configures one exit path through the pipeline.
+type _pipelineRun struct {
+	backend    bool
+	backendErr error
+	gates      func()
+}
+
 // _observePipeline emits one record through the real setup-installed logger
-// and returns the stages it left a mark on, in the order they happened.
-func _observePipeline(t *testing.T, backendErr error, gates func()) []string {
+// and returns the stages it passed, in the order they happened.
+func _observePipeline(t *testing.T, run _pipelineRun) []string {
 	t.Helper()
 	resetSetupState(t)
 	ResetReceiptsForTests()
 	t.Cleanup(func() {
+		_pipelineStageHook.Store(nil)
 		resetSetupState(t)
 		ResetReceiptsForTests()
 		ResetConsentForTests()
 	})
 
 	obs := &_pipelineObserver{}
-	if backendErr != nil {
-		obs.backendFn = func() error { return backendErr }
+	if run.backendErr != nil {
+		obs.backendFn = func() error { return run.backendErr }
 	}
-	RegisterBackend("pipeline-order", &_pipelineBackend{handler: _pipelineBackendHandler{obs: obs}})
-	t.Cleanup(func() { UnregisterBackend("pipeline-order") })
+	if run.backend {
+		RegisterBackend("pipeline-order", &_pipelineBackend{handler: _pipelineBackendHandler{obs: obs}})
+		t.Cleanup(func() { UnregisterBackend("pipeline-order") })
+	}
 
 	cfg := DefaultTelemetryConfig()
 	cfg.ServiceName = "pipeline-svc"
@@ -199,26 +202,23 @@ func _observePipeline(t *testing.T, backendErr error, gates func()) []string {
 		t.Fatalf("receipts: %v", err)
 	}
 	// After setup, which installs the config's policies over anything set
-	// earlier.
-	gates()
+	// earlier; and on a fresh health snapshot, so each counter read in a sink
+	// is this record's alone.
+	SetQueuePolicy(QueuePolicy{LogsMaxSize: 1})
+	run.gates()
+	_resetHealth()
 
+	hook := obs.push
+	_pipelineStageHook.Store(&hook)
 	Logger().Info("pipeline.probe",
 		"deep", map[string]any{"a": map[string]any{"b": "unreachable"}},
 		"password", "s3cr3t", // pragma: allowlist secret
 	)
+	_pipelineStageHook.Store(nil)
 
-	// Reaching the logger at all means consent was consulted.
-	observed := append([]string{"consent"}, obs.stages...)
-	if GetHealthSnapshot().LogsEmitted > 0 {
-		observed = append(observed, "health")
-	}
-	return observed
-}
-
-// _observable keeps the fixture stages this suite can see: release is checked
-// through queue capacity instead, because a ticket leaves no other mark.
-func _observable(stages []string) []string {
-	return slices.DeleteFunc(slices.Clone(stages), func(s string) bool { return s == "release" })
+	obs.mu.Lock()
+	defer obs.mu.Unlock()
+	return slices.Clone(obs.stages)
 }
 
 func _ticketAvailable() bool {
@@ -230,83 +230,67 @@ func _ticketAvailable() bool {
 	return true
 }
 
-func TestPipelineOrder_BackendSuccessRunsEveryStageInOrder(t *testing.T) {
-	fixture := _loadPipelineFixture(t)
-	observed := _observePipeline(t, nil, func() { SetQueuePolicy(QueuePolicy{LogsMaxSize: 1}) })
+func _noGates() {}
 
-	if want := _observable(fixture.expected(t, "backend_success")); !slices.Equal(observed, want) {
-		t.Fatalf("observed %v, want %v", observed, want)
+// Every fixture case, run on the real logger and compared whole. A case added
+// to the fixture without a run here fails rather than passing unexercised.
+func TestPipelineOrder_EveryFixtureCaseMatchesExactly(t *testing.T) {
+	var held *QueueTicket
+	runs := map[string]_pipelineRun{
+		"consent_rejection":  {gates: func() { SetConsentLevel(ConsentNone) }},
+		"sampling_rejection": {gates: func() { _, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0}) }},
+		"queue_rejection":    {gates: func() { held = TryAcquire(signalLogs) }},
+		"local_only_success": {gates: _noGates},
+		"backend_success":    {backend: true, gates: _noGates},
+		"backend_failure":    {backend: true, backendErr: errors.New("collector refused"), gates: _noGates},
 	}
-	if !_ticketAvailable() {
-		t.Fatal("the record's ticket was not released")
-	}
-}
-
-func TestPipelineOrder_BackendFailureStillRecordsHealthAfterBackend(t *testing.T) {
-	fixture := _loadPipelineFixture(t)
-	observed := _observePipeline(t, errors.New("collector refused"),
-		func() { SetQueuePolicy(QueuePolicy{LogsMaxSize: 1}) })
-
-	if want := _observable(fixture.expected(t, "backend_failure")); !slices.Equal(observed, want) {
-		t.Fatalf("observed %v, want %v", observed, want)
-	}
-	if got := GetHealthSnapshot().LogsExportFailures; got != 1 {
-		t.Fatalf("export failure counted %d times after the backend refused, want 1", got)
-	}
-	if !_ticketAvailable() {
-		t.Fatal("a failed export kept its ticket")
-	}
-}
-
-// Rejected at admission, nothing past the gate leaves a mark: no sink is
-// reached and nothing is counted as emitted.
-func TestPipelineOrder_RejectionsStopAtAdmissionAndKeepCapacity(t *testing.T) {
-	cases := map[string]func(){
-		"consent_rejection":  func() { SetConsentLevel(ConsentNone) },
-		"sampling_rejection": func() { _, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0}) },
-	}
-	for id, gates := range cases {
-		t.Run(id, func(t *testing.T) {
-			fixture := _loadPipelineFixture(t)
-			_ = fixture.expected(t, id)
-			observed := _observePipeline(t, nil, func() {
-				gates()
-				SetQueuePolicy(QueuePolicy{LogsMaxSize: 1})
-			})
-			if !slices.Equal(observed, []string{"consent"}) {
-				t.Fatalf("observed %v, want only consent", observed)
+	for _, c := range _loadPipelineFixture(t).Cases {
+		t.Run(c.ID, func(t *testing.T) {
+			run, ok := runs[c.ID]
+			if !ok {
+				t.Fatalf("fixture case %q has no run in this suite", c.ID)
+			}
+			held = nil
+			observed := _observePipeline(t, run)
+			if !slices.Equal(observed, c.Expected) {
+				t.Fatalf("observed %v, want %v", observed, c.Expected)
+			}
+			if held != nil {
+				// The refused record must not have taken the slot it was
+				// refused: with the only ticket held the queue stays full.
+				if _ticketAvailable() {
+					t.Fatal("the refused record freed a slot it never held")
+				}
+				Release(held)
 			}
 			if !_ticketAvailable() {
-				t.Fatal("a rejected record took queue capacity")
+				t.Fatal("the record's ticket was not returned")
 			}
 		})
 	}
 }
 
-// A record refused by backpressure must not consume the slot it was refused:
-// with the only ticket held, the queue is full and stays full.
-func TestPipelineOrder_QueueRejectionLeaksNoCapacity(t *testing.T) {
-	fixture := _loadPipelineFixture(t)
-	_ = fixture.expected(t, "queue_rejection")
-	var held *QueueTicket
-	observed := _observePipeline(t, nil, func() {
-		SetQueuePolicy(QueuePolicy{LogsMaxSize: 1})
-		held = TryAcquire(signalLogs)
-	})
-	if held == nil {
-		t.Fatal("the test must hold the only slot")
+// What the health stage counts on each path: an admitted record is emitted
+// (and, if the backend refused it, an export failure too); a refused one is a
+// drop, whichever gate refused it — consent included.
+func TestPipelineOrder_HealthCountsEachPathOnce(t *testing.T) {
+	type counts struct{ emitted, dropped, failures int64 }
+	cases := map[string]struct {
+		run  _pipelineRun
+		want counts
+	}{
+		"consent":  {_pipelineRun{gates: func() { SetConsentLevel(ConsentNone) }}, counts{0, 1, 0}},
+		"sampling": {_pipelineRun{gates: func() { _, _ = SetSamplingPolicy(signalLogs, SamplingPolicy{DefaultRate: 0}) }}, counts{0, 1, 0}},
+		"admitted": {_pipelineRun{backend: true, gates: _noGates}, counts{1, 0, 0}},
+		"failed":   {_pipelineRun{backend: true, backendErr: errors.New("refused"), gates: _noGates}, counts{1, 0, 1}},
 	}
-	if !slices.Equal(observed, []string{"consent"}) {
-		t.Fatalf("observed %v, want only consent", observed)
-	}
-	if got := GetHealthSnapshot().LogsDropped; got != 1 {
-		t.Fatalf("queue rejection counted %d drops, want 1", got)
-	}
-	if _ticketAvailable() {
-		t.Fatal("the refused record freed a slot it never held")
-	}
-	Release(held)
-	if !_ticketAvailable() {
-		t.Fatal("releasing the held ticket did not restore capacity")
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_observePipeline(t, tc.run)
+			snap := GetHealthSnapshot()
+			if got := (counts{snap.LogsEmitted, snap.LogsDropped, snap.LogsExportFailures}); got != tc.want {
+				t.Fatalf("counted %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }

@@ -84,7 +84,13 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyTraceFields(ctx, r)
 
 	// Consent gate: block before any processing when consent level forbids logs.
+	// The refusal is a drop like any other admission refusal: dropped_logs
+	// names consent alongside sampling and backpressure, and the canonical
+	// order (spec/pipeline_fixtures.yaml) records health on this path too.
+	_pipelineStage(_stageConsent)
 	if !ShouldAllow(signalLogs, levelcore.SlogName(r.Level)) {
+		_incLogsDropped()
+		_closeRefusedLog()
 		return nil
 	}
 
@@ -96,17 +102,24 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		r.AddAttrs(slog.String("_schema_error", err.Error()))
 	}
 
+	// ShouldSample and TryAcquire each count their own refusal as a drop.
+	_pipelineStage(_stageSampling)
 	if sampled := _shouldSampleFailOpen(signalLogs, r.Message); !sampled {
+		_closeRefusedLog()
 		return nil
 	}
 
 	// Backpressure gate: drop when the log queue is full.
+	_pipelineStage(_stageBackpressure)
 	ticket := TryAcquire(signalLogs)
 	if ticket == nil {
+		_closeRefusedLog()
 		return nil
 	}
-	defer Release(ticket)
-	_incLogsEmitted()
+	defer func() {
+		_pipelineStage(_stageRelease)
+		Release(ticket)
+	}()
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
@@ -118,14 +131,19 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	// log/slog discards whatever a handler returns, so a destination that
 	// refuses the write is invisible to the caller: the record is gone and
-	// LogsEmitted has already counted it. Recording the failure is what keeps
+	// LogsEmitted counts it all the same. Recording the failure is what keeps
 	// the health snapshot from asserting a delivery that never happened.
 	//
 	// export_failures is the canonical bucket for "an export attempt returned
 	// an error"; dropped is reserved for records refused before export, by
 	// consent, sampling or backpressure, and a record must never count as both
 	// emitted and dropped.
+	//
+	// Health is the stage after the sinks in the canonical order, so both
+	// counters move only once the local writer and the backend have run.
 	err := h.next.Handle(ctx, r)
+	_pipelineStage(_stageHealth)
+	_incLogsEmitted()
 	if err != nil {
 		_incLogsExportErrors()
 	}
