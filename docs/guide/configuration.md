@@ -1,10 +1,28 @@
 # Configuration Reference
 
 Runtime configuration is typically driven by environment variables, parsed via
-`TelemetryConfig.from_env()` / `ConfigFromEnv()`. Python and TypeScript also
-accept in-memory config at setup; Go accepts `WithConfig(*TelemetryConfig)` so
-hosts that re-exec or fork need not mutate process environment to configure
-telemetry.
+`TelemetryConfig.from_env()` / `ConfigFromEnv()`. Every SDK also accepts
+in-memory config at setup — Python `setup_telemetry(config)`, TypeScript
+`setupTelemetry(overrides)`, Go `WithConfig(*TelemetryConfig)`, Rust
+`setup_telemetry(Some(config))`, C# `SetupTelemetry(config)` — so hosts that
+re-exec or fork need not mutate process environment to configure telemetry.
+
+Not every variable is read by every SDK. The tables below list the union; the
+`applicability` list of each entry under `config_defaults` in
+`spec/telemetry-api.yaml` is authoritative. The variables not read by all five:
+
+| Variable | Read by |
+|----------|---------|
+| `PROVIDE_LOG_INCLUDE_CALLER`, `PROVIDE_LOG_SANITIZE` | Python, TypeScript, Go, C# |
+| `PROVIDE_LOG_CODE_ATTRIBUTES` | Python, TypeScript, Go |
+| `PROVIDE_LOG_PRETTY_KEY_COLOR`, `PROVIDE_LOG_PRETTY_VALUE_COLOR`, `PROVIDE_LOG_PRETTY_FIELDS`, `PROVIDE_LOG_MODULE_LEVELS` | Python, TypeScript, Go, Rust |
+| `PROVIDE_BACKPRESSURE_*_MAXSIZE` | Python, TypeScript, Go, Rust |
+| `PROVIDE_EXPORTER_*_BACKOFF_SECONDS`, `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS`, `PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS` | Python, TypeScript, Go, Rust |
+| `PROVIDE_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP` | Python, Go |
+| `PROVIDE_SLO_ENABLE_RED_METRICS`, `PROVIDE_SLO_ENABLE_USE_METRICS` | Python, TypeScript, Go, Rust |
+| `PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY` | Python, Go |
+| `PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH`, `PROVIDE_SECURITY_MAX_ATTR_COUNT` | Python, TypeScript, Go, Rust |
+| `PROVIDE_SECURITY_MAX_NESTING_DEPTH` | Python, Go, Rust |
 
 ## Core
 
@@ -79,8 +97,6 @@ specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/) for
 environment-based configuration. Per-signal variables take precedence over the
 shared fallback.
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
 <!-- BEGIN GENERATED CONFIG: otlp -->
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -93,6 +109,25 @@ shared fallback.
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | str | `""` | Per-signal OTLP endpoint for metrics |
 | `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | str | `""` | Per-signal OTLP headers for metrics |
 <!-- END GENERATED CONFIG: otlp -->
+
+TLS for OTLP push is read by each signal's exporter builder rather than by
+config parsing (`push_tls_env` under `prometheus_metrics` in
+`spec/telemetry-api.yaml`), in every SDK. Each takes a PEM file path; the
+per-signal forms `OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_CERTIFICATE`,
+`..._CLIENT_CERTIFICATE` and `..._CLIENT_KEY` override the shared one:
+
+```
+OTEL_EXPORTER_OTLP_CERTIFICATE         # CA certificates trusted for the OTLP endpoint
+OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE  # client certificate for mutual TLS
+OTEL_EXPORTER_OTLP_CLIENT_KEY          # private key for the client certificate
+```
+
+A configured file that cannot be read or loaded (a CA file with no PEM
+certificate; a client certificate and key that do not form a pair) leaves that
+signal's OTLP exporter unbuilt, logs `otlp.tls_file_unreadable` and records the
+health snapshot's setup error naming the variable and path. Setup itself does
+not fail, the other signals are unaffected, and the file is never silently
+replaced by the system trust store.
 
 ## Sampling
 
@@ -233,9 +268,6 @@ What to expect on the Prometheus side:
   `counter()`/`gauge()`/`histogram()` to record under a name fixes its unit and
   description until teardown; a later one with the same name and a different
   unit reuses the first instrument rather than exporting a second stream.
-  TypeScript gauges are sent as non-monotonic sums, so a gauge with unit `1`
-  does not gain `_ratio` there. This is tracked as a
-  `known_divergences` entry in `spec/telemetry-api.yaml`.
 
 For a Prometheus that requires TLS or basic auth (its `--web.config.file`),
 use the standard OTLP variables:
@@ -246,12 +278,12 @@ OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Basic%20<base64 of user:passwo
 OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=/etc/ssl/private-ca.crt   # only for a private CA
 ```
 
-Python, TypeScript, Go, C# and Rust honour all three (C# and Rust also read the
-`_CLIENT_CERTIFICATE` / `_CLIENT_KEY` variables and their per-signal forms for
-mutual TLS, and a file they cannot read or load leaves that signal's exporter
-uninstalled with the health snapshot's setup error set). Where a variable is
-ignored, export fails without an error: check
-`get_health_snapshot()`.
+Python, TypeScript, Go, C# and Rust honour all three, and the
+`_CLIENT_CERTIFICATE` / `_CLIENT_KEY` variables for mutual TLS (see
+[OTLP Endpoints and Headers](#otlp-endpoints-and-headers)). A file that cannot
+be read or loaded leaves that signal's exporter unbuilt with the health
+snapshot's setup error set, so check `get_health_snapshot()` when nothing
+arrives.
 
 The `prometheus-push` job in `.github/workflows/ci-contracts.yml` pushes from
 all five SDKs to real Prometheus instances (plain, basic auth, and TLS with a

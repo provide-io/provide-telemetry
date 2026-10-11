@@ -35,6 +35,7 @@ Legend:
 | Counter / gauge / histogram values readable from the instrument | core | core | concrete type only | core | core | core guaranteed; Go's exported `Histogram` interface declares only `Record` |
 | ASGI/HTTP request-lifecycle middleware (binds request/session context, extracts W3C baggage) | core | missing | missing | missing | missing | known gap — Python only |
 | `PROVIDE_LOG_FORMAT=pretty` renderer | core | core | core | core | core | core guaranteed — C# uses fixed colors, see notes |
+| Prometheus pull: `metrics_handler` / `render_prometheus` and the opt-in listener | core | Node only | core | feature-gated | feature-gated | core guaranteed where the OTLP path is enabled — see notes |
 | Metrics fallback export on shutdown when OTel is unavailable | no | no | no | no | no | uniform — fallback state drops on shutdown in every language; see notes |
 
 Notes:
@@ -118,9 +119,12 @@ Notes:
   `src/provide/telemetry/logger/pretty.py`, TypeScript's in
   `typescript/src/pretty.ts`, Go's in `go/logger_pretty.go`, and Rust's
   in `rust/src/logger/pretty.rs`. All four gate ANSI output on the log
-  destination being a TTY — stderr in Python, TypeScript and Rust, which
-  always render there; in Go, whichever writer `WithLogOutput` installed,
-  which is stderr unless a host says otherwise. All four honour
+  destination being a TTY. In Python and Rust that is stderr unless a host
+  installed a sink with `set_log_output` (Python asks the sink's `isatty`;
+  Rust never colours a sink); in Go, whichever writer `WithLogOutput`
+  installed, which is stderr unless a host says otherwise; in TypeScript, the
+  stream the console method writes to — stdout for trace, debug and info,
+  stderr for warn and error. All four honour
   `PROVIDE_LOG_PRETTY_KEY_COLOR` and
   `PROVIDE_LOG_PRETTY_VALUE_COLOR`, honour `PROVIDE_LOG_PRETTY_FIELDS`,
   and emit the same standard field set (timestamp, level, message, kv
@@ -137,6 +141,16 @@ Notes:
   uncolored values, all fields). The former `LoggingConfig.PrettyKeyColor` /
   `PrettyValueColor` / `PrettyFields` properties stay deleted for the same
   reason: a property the contract does not grant reads as support.
+- Prometheus pull (`prometheus_metrics` in `spec/telemetry-api.yaml`): Go
+  serves it from the `github.com/provide-io/provide-telemetry/go/otel`
+  package; TypeScript from the `@provide-io/telemetry/prometheus` entry point,
+  Node only — the browser build has no pull support; Rust's handler has a reader to serve
+  only with the `otel` cargo feature (otherwise it answers 503), and the
+  listener needs `prometheus-listener`; C#
+  needs `Provide.Telemetry.OpenTelemetry`, where `PrometheusMetrics` lives.
+  Python's web-config support for the listener needs the
+  `provide-telemetry[prometheus]` extra. Configuration and usage are in
+  [configuration.md](configuration.md#serving-metrics-for-prometheus-to-scrape-go-python-typescript-c-rust).
 - Metrics fallback export: when no OTel backend is installed, fallback
   counter/gauge/histogram state accumulates in-process and is dropped at
   shutdown — identically in all five languages. (This entry previously

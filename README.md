@@ -89,7 +89,7 @@ All runtime config is via environment variables:
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable OTel tracing |
 | `PROVIDE_METRICS_ENABLED` | `true` | Enable OTel metrics |
 
-See the [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/configuration.md) for all 60+ environment variables.
+See the [Configuration Reference](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/configuration.md) for all 60+ environment variables, including [sending metrics to Prometheus](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/configuration.md#sending-metrics-to-prometheus) and [serving them for Prometheus to scrape](https://github.com/provide-io/provide-telemetry/blob/main/docs/guide/configuration.md#serving-metrics-for-prometheus-to-scrape-go-python-typescript-c-rust).
 
 ## Event Naming
 
@@ -117,7 +117,8 @@ All implementations export equivalent APIs (signatures vary per language idiom):
 | Lifecycle | `setup_telemetry()`, `flush_telemetry()`, `shutdown_telemetry()` |
 | Logging | `get_logger()`, `bind_context()`, `clear_context()` |
 | Tracing | `get_tracer()`, `trace` (decorator/wrapper), `extract_w3c_context()` |
-| Metrics | `counter()`, `gauge()`, `histogram()` |
+| Metrics | `counter()`, `gauge()`, `histogram()`, `observable_counter()`, `observable_gauge()`, `observable_up_down_counter()` |
+| Prometheus | `metrics_handler()`, `render_prometheus()` |
 | Policies | `set_sampling_policy()`, `set_queue_policy()`, `set_exporter_policy()` |
 | Safety | `register_cardinality_limit()`, `register_pii_rule()`, `replace_pii_rules()`, `get_pii_rules()` |
 | Health | `get_health_snapshot()` |
@@ -142,7 +143,7 @@ A shared `spec/telemetry-api.yaml` defines the required API surface. CI validate
 
 ## Quality
 
-- Coverage gates: full 100% gates for Python, TypeScript, Go, and Rust, with language-appropriate threshold interpretation. C# is the one exception, and a recorded one: `ci-csharp.yml` merges every Cobertura report the run emits and enforces floors of 99% line / 97% branch (measured 99.60% / 97.94% across 685 tests), ratcheted up and never down.
+- Coverage gates: full 100% gates for Python, TypeScript, Go, and Rust, with language-appropriate threshold interpretation. C# is the one exception, and a recorded one: `ci-csharp.yml` merges every Cobertura report the run emits and enforces floors of 100% line / 98% branch (measured 100.00% / 98.20% across 831 tests), ratcheted up and never down.
 - Python runs mutmut and fails on any survivor, timeout, suspicious, or no-tests result — the 95% score floor is an extra guard, not the bar; Go requires both 100% gremlins efficacy and 100% mutant coverage; TypeScript uses Stryker with a 95% core break threshold plus an 80% OTLP transport ratchet; Rust requires a 100% cargo-mutants kill rate across eight blocking shards whenever Rust implementation or test code changes. C# runs Stryker.NET 4.16 over both packages with a break threshold of 85, against a measured 86.50% (1634 killed-or-timed-out of 1889 scored, 2026-08-16) — the honest baseline, not a target. An in-process fake OTLP collector makes the wire assertable; what still survives is characterized in `csharp/stryker-config.json`.
 - Strict type checking (mypy + ty + tsc)
 - CodeQL SAST scanning

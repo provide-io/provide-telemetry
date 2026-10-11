@@ -51,7 +51,8 @@ idempotent — safe to call concurrently. Accepts an optional config; defaults t
 > Go reads env vars by default and accepts functional `SetupOption` arguments,
 > including `WithConfig(*TelemetryConfig)` for in-memory config (preferred for
 > hosts that re-exec or fork and must not mutate process environment).
-> Rust reads env vars with no programmatic config argument.
+> Rust takes `Option<TelemetryConfig>` (`None` reads env vars) and C# an optional
+> `TelemetryConfig`.
 > Env is the common default; in-memory / override config is preferred when hosts
 > own process lifecycle.
 >
@@ -268,7 +269,8 @@ if log.is_trace_enabled():
     log.trace("payload %s", expensive_repr(obj))
 ```
 
-Standalone `is_debug_enabled()` / `is_trace_enabled()` functions read the active
+Standalone `is_debug_enabled()` / `is_trace_enabled()` functions, exported from
+`provide.telemetry.logger` rather than the top-level package, read the active
 config directly and return `True` when telemetry is unconfigured.
 
 ### `bind_context(**kwargs: Any) -> None`
@@ -333,6 +335,26 @@ Return the active OTel meter if a real meter provider is available; otherwise
 return `None`. The in-process fallback lives in the `counter()`, `gauge()`, and
 `histogram()` wrapper APIs.
 
+### `observable_counter` / `observable_gauge` / `observable_up_down_counter`
+
+`(name: str, callback: ObservableCallback, description: str | None = None, unit: str | None = None) -> ObservableInstrument`
+
+Register a callback-reported instrument. The zero-argument callback returns
+`Observation(value, attributes)` items and runs at each collection — every
+scrape for Prometheus, every export interval for OTLP. A callback that raises
+contributes nothing to that collection. The returned handle's `unregister()`
+stops the callback; calling it twice is a no-op. Create observables after
+setup: one created before setup, or with no provider, is never invoked.
+
+### `metrics_handler()` / `render_prometheus(accept: str | None = None) -> tuple[bytes, str]`
+
+The Prometheus pull surface. `metrics_handler()` returns an ASGI app serving
+`GET`/`HEAD` with one collection per request; `render_prometheus()` returns the
+body and content type for other frameworks. Both need `prometheus` in
+`OTEL_METRICS_EXPORTER` (or the listener enabled) and answer with 503 — or, for
+`render_prometheus()`, raise `TelemetryError` — before setup, after shutdown,
+with metrics disabled, or when the host owns the `MeterProvider`. See [Configuration Reference](configuration.md#serving-metrics-for-prometheus-to-scrape-go-python-typescript-c-rust).
+
 ## Session Context
 
 ### `bind_session_context(session_id: str) -> None`
@@ -366,8 +388,9 @@ Build a structured event from 3 or 4 segments following the DA(R)S pattern
 behaves as a dot-joined string and exposes typed fields.
 
 Requires exactly 3 or 4 segments. In strict mode
-(`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), also validates format (lowercase,
-alphanumeric + hyphens); in non-strict mode (the default), only the segment
+(`PROVIDE_TELEMETRY_STRICT_EVENT_NAME=true`), also validates each segment against
+`^[a-z][a-z0-9_]*$` (a lowercase letter, then lowercase letters, digits or
+underscores); in non-strict mode (the default), only the segment
 count is checked.
 
 ```python
@@ -388,7 +411,9 @@ e.status  # "success"
 
 ### `EventRecord` (TypeScript)
 
-TypeScript equivalent for structured event creation. See the [TypeScript
+The type TypeScript's `event(...segments)` returns: a plain object carrying the
+dot-joined name as `event` and the same `domain` / `action` / `resource` / `status`
+fields, rather than a string subclass. See the [TypeScript
 README](../../typescript/README.md) for usage.
 
 ## ASGI Integration
@@ -581,7 +606,10 @@ patterns cover AWS access keys, JWTs, GitHub tokens, and long hex/base64 runs;
 this hook lets callers add organization-specific token shapes (e.g. internal API
 key prefixes). Registered patterns apply to both structured payload values and
 the free-form log message string when `sanitize=true`. Re-registering an
-existing `name` replaces the previous pattern. Mirrored in TypeScript
+existing `name` replaces the previous pattern. In Python this also covers
+records from plain stdlib `logging` loggers that reach the root handlers: their
+message, arguments and extra attributes are hardened and sanitized like
+structlog events before any handler writes them. Mirrored in TypeScript
 (`registerSecretPattern`), Go (`telemetry.RegisterSecretPattern`), Rust
 (`pii::register_secret_pattern`), and C# (`Pii.RegisterSecretPattern`).
 
@@ -625,7 +653,8 @@ Python, TypeScript, Go, Rust, and C#:
 
 - `emitted_{logs,traces,metrics}` — events accepted and forwarded; for logs,
   counted once the record has reached its local and backend sinks (the
-  `health` stage of `spec/pipeline_fixtures.yaml`)
+  `health` stage of `spec/pipeline_fixtures.yaml`), and still counted when the
+  backend export then fails — `export_failures_*` records that
 - `dropped_{logs,traces,metrics}` — events refused by consent, sampling or
   backpressure
 - `export_failures_{logs,traces,metrics}` — failed export attempts
@@ -638,7 +667,9 @@ Python, TypeScript, Go, Rust, and C#:
 - `circuit_open_count_{logs,traces,metrics}` — number of times circuit has
   opened
 - `setup_error` — error message from `setup_telemetry()`, or `None`
-- `receipt_failures` — redaction receipts the sink refused or faulted on
+- `receipt_failures` — redaction receipts the sink refused or faulted on (in
+  Python, a sink's `emit` returning anything other than exactly `True` counts
+  as a refusal)
 
 C# populates every field except `async_blocking_risk_{logs,traces,metrics}`,
 which is always zero because C# ships no event-loop blocking guard — see the
@@ -685,22 +716,26 @@ both `TelemetryError` and `ValueError`.
 
 ## Config Dataclasses
 
-All config models are `@dataclass(slots=True)` and are constructed via
-`TelemetryConfig.from_env()`:
+All config models are `@dataclass(slots=True)`, defined in
+`provide.telemetry.config` (only `TelemetryConfig` is re-exported from the
+top-level package), and are constructed via `TelemetryConfig.from_env()`:
 
 - **`TelemetryConfig`** — top-level container with nested sub-configs
 - **`LoggingConfig`** — log level, format, caller info, sanitization, pretty
   renderer settings
 - **`TracingConfig`** — tracing enabled, sample rate, OTLP endpoint
-- **`MetricsConfig`** — metrics enabled, OTLP endpoint
+- **`MetricsConfig`** — metrics enabled, OTLP endpoint, exporters
+  (`OTEL_METRICS_EXPORTER`), health-over-OTLP, and a nested `PrometheusConfig`
+- **`PrometheusConfig`** — Prometheus listener mode, host, port, path, name
+  translation, scope labels, `target_info`, web config
 - **`SchemaConfig`** — strict event name, required keys
 - **`SamplingConfig`** — per-signal sampling rates
 - **`BackpressureConfig`** — per-signal queue max sizes
 - **`ExporterPolicyConfig`** — per-signal retries, backoff, timeout, fail-open,
   async blocking
 - **`SLOConfig`** — RED/USE metrics toggles, error taxonomy
-- **`SecurityConfig`** — secret detection patterns, header size guards, protocol
-  limits
+- **`SecurityConfig`** — attribute value length, attribute count, and nesting
+  depth limits
 
 See [Configuration Reference](configuration.md) for the environment variables
 that drive each field.
