@@ -49,7 +49,7 @@ import logging
 from typing import Any
 
 from provide.telemetry._lifecycle import coordinator, copy_config
-from provide.telemetry._runtime_policies import apply_policies
+from provide.telemetry._runtime_policies import apply_policies, rolled_back_on_failure
 from provide.telemetry._runtime_types import (
     FlushResult,
     ProviderMode,
@@ -222,7 +222,7 @@ def apply_runtime_config(config: TelemetryConfig) -> None:
     still being installed, so a concurrent reader could act on a config that
     was not yet in force.
     """
-    with coordinator.operations:
+    with coordinator.operations, rolled_back_on_failure():
         apply_policies(config)
         # publish() takes its own copy, so the caller keeps ownership of the
         # object it passed and cannot mutate the published generation later.
@@ -319,15 +319,18 @@ def update_runtime_config(overrides: RuntimeOverrides) -> TelemetryConfig:
                 )
         # Everything the new generation promises is installed before the
         # generation exists. A reader that sees generation N+1 can rely on
-        # N+1's policies and logging pipeline already being in force.
-        apply_policies(merged)
-        if logging_changed:
-            from provide.telemetry.logger.core import (
-                configure_logging,  # pragma: no mutate — lazy import to avoid circular dependency at module load; path is a stable public name
-            )
+        # N+1's policies and logging pipeline already being in force -- and
+        # when any step raises, the policies already written are put back, so
+        # generation N is never read alongside N+1's policies.
+        with rolled_back_on_failure():
+            apply_policies(merged)
+            if logging_changed:
+                from provide.telemetry.logger.core import (
+                    configure_logging,  # pragma: no mutate — lazy import to avoid circular dependency at module load; path is a stable public name
+                )
 
-            configure_logging(merged, force=True)
-        coordinator.publish(merged, setup_done=coordinator.peek().setup_done)
+                configure_logging(merged, force=True)
+            coordinator.publish(merged, setup_done=coordinator.peek().setup_done)
     return get_runtime_config()
 
 
