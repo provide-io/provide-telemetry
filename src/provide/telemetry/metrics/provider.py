@@ -13,8 +13,10 @@ from typing import Any
 
 from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
+from provide.telemetry._otlp_tls import tls_ready
 from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.metrics import _health_otlp
 from provide.telemetry.metrics import prometheus as _prometheus
 from provide.telemetry.resilience import run_with_resilience
 from provide.telemetry.resilient_exporter import wrap_exporter
@@ -128,7 +130,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
 
     provider_cls, resource_cls, reader_cls, exporter_cls = components
     readers: list[Any] = []
-    if config.metrics.otlp_endpoint and config.metrics.otlp_reader_enabled:
+    if config.metrics.otlp_endpoint and config.metrics.otlp_reader_enabled and tls_ready("metrics"):
         raw_exporter = run_with_resilience(
             "metrics",
             lambda: exporter_cls(
@@ -167,6 +169,8 @@ def setup_metrics(config: TelemetryConfig) -> None:
         # subsequent get_meter() calls return meters from the real provider.
         _meters.clear()
         _meters["provide.telemetry"] = otel_metrics.get_meter("provide.telemetry")
+    if config.metrics.health_otlp:
+        _health_otlp.register(provider.get_meter("provide.telemetry"), otel_metrics.Observation)
 
 
 def _prometheus_reader(config: TelemetryConfig, otel_metrics: Any) -> tuple[Any | None, str]:

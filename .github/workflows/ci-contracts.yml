@@ -22,9 +22,11 @@ on:
       - "e2e/test_prometheus_scrape_e2e.py"
       - "scripts/prometheus_push_probe.py"
       - "typescript/scripts/prometheus-push-probe.ts"
+      - "typescript/scripts/prometheus-scrape-probe.ts"
       - "rust/examples/prometheus_push_probe.rs"
       - "rust/examples/prometheus_scrape_probe.rs"
       - "csharp/probes/PrometheusPushProbe/**"
+      - "csharp/probes/PrometheusScrapeProbe/**"
   # No paths filter: this workflow owns required status contexts, so it must
   # always run. The per-area gating lives on the jobs -- see the changes job.
   pull_request:

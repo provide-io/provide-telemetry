@@ -104,9 +104,9 @@ func (c *_healthCollector) collectSignal(ch chan<- prometheus.Metric, sig _signa
 
 func _signalsOf(s telemetry.HealthSnapshot) []_signalHealth {
 	return []_signalHealth{
-		{"logs", s.LogsEmitted, s.LogsDropped, s.LogsExportFailures, s.LogsRetries, s.LogsAsyncBlockingRisk, s.LogsCircuitOpenCount, s.LogsExportLatencyMs, s.LogsCircuitState},
-		{"traces", s.TracesEmitted, s.TracesDropped, s.TracesExportFailures, s.TracesRetries, s.TracesAsyncBlockingRisk, s.TracesCircuitOpenCount, s.TracesExportLatencyMs, s.TracesCircuitState},
-		{"metrics", s.MetricsEmitted, s.MetricsDropped, s.MetricsExportFailures, s.MetricsRetries, s.MetricsAsyncBlockingRisk, s.MetricsCircuitOpenCount, s.MetricsExportLatencyMs, s.MetricsCircuitState},
+		{_signalLogs, s.LogsEmitted, s.LogsDropped, s.LogsExportFailures, s.LogsRetries, s.LogsAsyncBlockingRisk, s.LogsCircuitOpenCount, s.LogsExportLatencyMs, s.LogsCircuitState},
+		{_signalTraces, s.TracesEmitted, s.TracesDropped, s.TracesExportFailures, s.TracesRetries, s.TracesAsyncBlockingRisk, s.TracesCircuitOpenCount, s.TracesExportLatencyMs, s.TracesCircuitState},
+		{_signalMetrics, s.MetricsEmitted, s.MetricsDropped, s.MetricsExportFailures, s.MetricsRetries, s.MetricsAsyncBlockingRisk, s.MetricsCircuitOpenCount, s.MetricsExportLatencyMs, s.MetricsCircuitState},
 	}
 }
 
@@ -114,11 +114,11 @@ func _signalsOf(s telemetry.HealthSnapshot) []_signalHealth {
 // specifies: closed 0, half-open 1, open 2, anything else -1.
 func _circuitStateValue(state string) float64 {
 	switch state {
-	case "closed":
+	case _circuitClosed:
 		return 0
-	case "half-open":
+	case _circuitHalfOpen:
 		return 1
-	case "open":
+	case _circuitOpenState:
 		return 2
 	default:
 		return -1

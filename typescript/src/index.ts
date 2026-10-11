@@ -70,6 +70,13 @@ export {
   HistogramInstrument,
 } from './metrics.js';
 export type { Counter, Histogram, Meter, MetricOptions, UpDownCounter } from './metrics.js';
+export {
+  observableCounter,
+  observableGauge,
+  observableUpDownCounter,
+  ObservableInstrument,
+} from './metrics-observable.js';
+export type { Observation, ObservableCallback } from './metrics-observable.js';
 
 // Tracing (mirrors Python @trace decorator)
 export {

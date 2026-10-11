@@ -17,7 +17,7 @@
 #               Supported values: "governance", "observable_metrics", "prometheus"
 #               Capability rules by language:
 #                 python, typescript, go, rust, csharp — governance always present
-#                 observable_metrics, prometheus — go, python and rust so far; a language is added to
+#                 observable_metrics, prometheus — go, python, typescript, csharp and rust; a language is added to
 #                   the matching set in validate_conformance.py in the PR that ships
 #                   it (see docs/plans/2026-10-10-prometheus-metrics-design.md)
 #   note:       human-readable description or rationale
@@ -541,52 +541,52 @@ config_defaults:
       type: str
       default: "otlp"
       description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: OTEL_EXPORTER_PROMETHEUS_HOST
       type: str
       default: "127.0.0.1"
       description: "Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: OTEL_EXPORTER_PROMETHEUS_PORT
       type: int
       default: "9464"
       description: "Tier 3 bind port."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: PROVIDE_METRICS_PROMETHEUS_LISTEN
       type: str
       default: "false"
       description: "Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER)."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: PROVIDE_METRICS_PROMETHEUS_PATH
       type: str
       default: "/metrics"
       description: "Tier 3 path. Ignored by Tier 2, where the host picks the mount path."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: PROVIDE_METRICS_PROMETHEUS_TRANSLATION
       type: str
       default: "UnderscoreEscapingWithSuffixes"
       description: "Metric and label name translation strategy; one of translation.strategies."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS
       type: bool
       default: "false"
       description: "Add otel_scope_name / otel_scope_version labels to every series."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: PROVIDE_METRICS_PROMETHEUS_TARGET_INFO
       type: bool
       default: "true"
       description: "Emit the target_info series carrying resource attributes."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: PROVIDE_METRICS_HEALTH_OTLP
       type: bool
       default: "false"
       description: "Also export the health metrics over OTLP as observable instruments."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
     - env: PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG
       type: str
       default: ""
       description: "Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth."
-      applicability: [python, go, rust]
+      applicability: [python, typescript, go, csharp, rust]
 
   otlp:
     - env: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -608,7 +608,7 @@ config_defaults:
       type: str
       default: ""
       description: "Per-signal OTLP headers for logs"
-      applicability: [python, typescript, go, rust]
+      applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
       type: str
       default: ""
@@ -618,7 +618,7 @@ config_defaults:
       type: str
       default: ""
       description: "Per-signal OTLP headers for traces"
-      applicability: [python, typescript, go, rust]
+      applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
       type: str
       default: ""
@@ -628,7 +628,7 @@ config_defaults:
       type: str
       default: ""
       description: "Per-signal OTLP headers for metrics"
-      applicability: [python, typescript, go, rust]
+      applicability: [python, typescript, go, rust, csharp]
 
   sampling:
     - env: PROVIDE_SAMPLING_LOGS_RATE
@@ -1160,7 +1160,9 @@ prometheus_metrics:
   # PR that makes the first SDK parse them; config_defaults rejects an empty
   # applicability, so planned keys cannot live there yet. The Prometheus keys
   # moved with the Go implementation; see config_defaults.metrics.
-  planned_config:
+  # Read from the environment by each signal's OTLP exporter builder, not by
+  # config parsing (so they are not in config_defaults); push_security says how.
+  push_tls_env:
     - env: OTEL_EXPORTER_OTLP_CERTIFICATE
       type: str
       default: ""
@@ -1210,8 +1212,7 @@ prometheus_metrics:
       - "Histogram series append _bucket, _sum and _count to the translated name."
       - "An attribute whose key the reference cannot translate, or translates to a label name starting with __ (a prefix Prometheus reserves), is dropped from that sample in the Prometheus output; the metric itself is kept. A Prometheus client that refuses such a label would otherwise drop the whole metric. Go drops these keys with a provider-level attribute filter, so while its Prometheus reader is attached they are also missing from its OTLP export."
       - "The two NoUTF8/NoTranslation strategies emit UTF-8 names only to a scraper that negotiates them; any other scrape gets UnderscoreEscaping output with the same suffix choice."
-    known_divergences:
-      - "gauge: TypeScript currently backs gauge() with an OTel UpDownCounter, while the other SDKs use an OTel Gauge. The contract is gauge semantics (unit 1 becomes _ratio under the WithSuffixes strategies). TypeScript must align before it ships the prometheus capability."
+    known_divergences: []
 
   handler:
     - "GET (and HEAD) only; other methods return 405."
@@ -1233,7 +1234,7 @@ prometheus_metrics:
     client_auth_type_values: [NoClientCert, RequireAndVerifyClientCert, VerifyClientCertIfGiven]
     min_version_values: [TLS12, TLS13]
     rules:
-      - "Fail closed: if the file is unreadable, malformed, names an unsupported key, or a referenced certificate or key cannot be loaded, the listener does not start, setup_error is recorded, and strict mode raises. It never falls back to plain HTTP or to no auth."
+      - "Fail closed: if the file is unreadable, malformed, names an unsupported key, or a referenced certificate or key cannot be loaded, the listener does not start, and setup_error is recorded and logged; setup itself does not fail. It never falls back to plain HTTP or to no auth."
       - "Relative paths in the file resolve against the file's directory."
       - "min_version defaults to TLS12. client_auth_type defaults to NoClientCert, or RequireAndVerifyClientCert when client_ca_file is set."
       - "Certificate and key files are re-read when their modification time changes, checked on each new connection, so rotation needs no restart."
@@ -1244,7 +1245,7 @@ prometheus_metrics:
   push_security:
     - "Headers: OTEL_EXPORTER_OTLP_HEADERS and the per-signal OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_HEADERS, per-signal winning, in every SDK."
     - "TLS: OTEL_EXPORTER_OTLP_CERTIFICATE, _CLIENT_CERTIFICATE and _CLIENT_KEY and their per-signal forms, per-signal winning, in every SDK."
-    - "A configured certificate or key that cannot be read leaves that signal's exporter uninstalled, records setup_error, and raises in strict mode. It is never silently ignored in favour of the system trust store."
+    - "A configured certificate or key that cannot be read or loaded (a CA file with no PEM certificates; a client certificate and key, both set, that do not form a pair) leaves that signal's OTLP exporter unbuilt, logs otlp.tls_file_unreadable, and records setup_error naming the variable and path (several joined with '; '); setup itself does not fail, and the other signals and the Prometheus pull reader are unaffected. It is never silently ignored in favour of the system trust store."
     - "Current gaps are recorded in spec/prometheus_fixtures.yaml push_ingestion.unsupported_modes and asserted by e2e/test_prometheus_push_e2e.py."
 
   temporality:
@@ -1258,6 +1259,11 @@ prometheus_metrics:
       strategy and are emitted unchanged. They bypass the MeterProvider unless
       PROVIDE_METRICS_HEALTH_OTLP is true; when both are on, the pull output
       carries only the collector's copy.
+    health_otlp:
+      - "With PROVIDE_METRICS_HEALTH_OTLP=true, setup registers one observable instrument per family below on the MeterProvider it installs (never on a host's), once per installed provider: named verbatim, no unit, no description; counter entries as observable counters, gauge entries as observable gauges."
+      - "Per-signal families report one observation per signal with the signal attribute; the globals report one observation with no attributes. Values come from a fresh health snapshot at each collection."
+      - "These observations describe the SDK, not user data: they are not consent-gated and do not count toward emitted_metrics."
+      - "The pull renderer leaves out any reader metric named like a health family, so each health family appears exactly once in a scrape whether or not the flag is set."
     circuit_state_values: {closed: 0, half-open: 1, open: 2}
     circuit_state_unknown_value: -1
     per_signal:

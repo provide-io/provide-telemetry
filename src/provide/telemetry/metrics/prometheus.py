@@ -66,6 +66,12 @@ _PER_SIGNAL = (
     ("circuit_open_count", "provide_telemetry_circuit_open_total", "counter"),
 )
 _SIGNALS = ("logs", "traces", "metrics")
+_SETUP_ERROR = "provide_telemetry_setup_error"
+_RECEIPT_FAILURES = "provide_telemetry_receipt_failures_total"
+# The collector's names. Instruments of these names on the provider (from
+# PROVIDE_METRICS_HEALTH_OTLP) are left out of a scrape, which serves the
+# collector's copy instead, so each family appears once.
+HEALTH_METRIC_NAMES = frozenset({metric for _, metric, _ in _PER_SIGNAL} | {_SETUP_ERROR, _RECEIPT_FAILURES})
 _CIRCUIT_STATES = {"closed": 0.0, "half-open": 1.0, "open": 2.0}
 
 
@@ -86,7 +92,9 @@ def mark_ready(reader: Any, options: render.RenderOptions) -> None:
 def options_for(config: Any) -> render.RenderOptions:
     """The render options a config selects (scrape-time negotiation adds utf8)."""
     p = config.metrics.prometheus
-    return render.RenderOptions(p.translation, scope_labels=p.scope_labels, target_info=p.target_info)
+    return render.RenderOptions(
+        p.translation, scope_labels=p.scope_labels, target_info=p.target_info, skip=HEALTH_METRIC_NAMES
+    )
 
 
 def pull_reader_class(base: Any) -> type:
@@ -128,9 +136,9 @@ def health_families(snapshot: Any) -> list[render.Family]:
             value = _circuit_value(raw) if field == "circuit_state" else float(raw)
             family.samples.append(("", {"signal": signal}, value))
         families.append(family)
-    setup_error = render.Family("provide_telemetry_setup_error", "gauge")
+    setup_error = render.Family(_SETUP_ERROR, "gauge")
     setup_error.samples.append(("", {}, 1.0 if snapshot.setup_error else 0.0))
-    receipts = render.Family("provide_telemetry_receipt_failures_total", "counter")
+    receipts = render.Family(_RECEIPT_FAILURES, "counter")
     receipts.samples.append(("", {}, float(snapshot.receipt_failures)))
     return [*families, setup_error, receipts]
 

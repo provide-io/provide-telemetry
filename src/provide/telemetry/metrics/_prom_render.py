@@ -38,6 +38,7 @@ class RenderOptions:
     scope_labels: bool = False
     target_info: bool = True
     utf8: bool = False  # the scraper negotiated escaping=allow-utf-8
+    skip: frozenset[str] = frozenset()  # OTel instrument names left out of the output
 
 
 @dataclass(slots=True)
@@ -113,7 +114,8 @@ def families_from(metrics_data: Any, opts: RenderOptions) -> list[Family]:
         for scope_metrics in resource_metrics.scope_metrics:
             scope = _scope_labels(scope_metrics.scope) if opts.scope_labels else {}
             for metric in scope_metrics.metrics:
-                _add_metric(families, metric, scope, strategy)
+                if metric.name not in opts.skip:
+                    _add_metric(families, metric, scope, strategy)
     if info.samples:
         families.setdefault(TARGET_INFO, info)
     return sorted(families.values(), key=lambda f: f.name)

@@ -246,22 +246,22 @@ OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Basic%20<base64 of user:passwo
 OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=/etc/ssl/private-ca.crt   # only for a private CA
 ```
 
-Python, TypeScript, Go and Rust honour all three (Rust also reads the client
-certificate and client key variables for mutual TLS; a file it cannot read
-leaves that signal's exporter uninstalled and sets the health snapshot's setup
-error). C# ignores the certificate variables and the
-per-signal headers variable; use the shared `OTEL_EXPORTER_OTLP_HEADERS` there.
-In the cases it ignores, export fails without an error: check
+Python, TypeScript, Go, C# and Rust honour all three (C# and Rust also read the
+`_CLIENT_CERTIFICATE` / `_CLIENT_KEY` variables and their per-signal forms for
+mutual TLS, and a file they cannot read or load leaves that signal's exporter
+uninstalled with the health snapshot's setup error set). Where a variable is
+ignored, export fails without an error: check
 `get_health_snapshot()`.
 
 The `prometheus-push` job in `.github/workflows/ci-contracts.yml` pushes from
 all five SDKs to real Prometheus instances (plain, basic auth, and TLS with a
 private CA plus basic auth) and checks every series it reads back.
 
-## Serving Metrics for Prometheus to Scrape (Go, Python, Rust)
+## Serving Metrics for Prometheus to Scrape (Go, Python, TypeScript, C#, Rust)
 
-The Go, Python and Rust SDKs can also serve metrics for Prometheus to pull. The
-other SDKs follow; see `docs/plans/2026-10-10-prometheus-metrics-design.md`.
+The Go, Python, TypeScript (Node only; the browser build has no pull support),
+C# and Rust SDKs can also serve metrics for Prometheus to pull; see
+`docs/plans/2026-10-10-prometheus-metrics-design.md`.
 
 Add `prometheus` to `OTEL_METRICS_EXPORTER` (`prometheus` alone, or
 `otlp,prometheus` to push as well), then either mount the handler on a server
@@ -279,6 +279,29 @@ from provide.telemetry import metrics_handler
 app.mount("/metrics", metrics_handler())  # any ASGI framework; render_prometheus() for others
 ```
 
+```typescript
+import { metricsHandler } from '@provide-io/telemetry/prometheus';
+
+app.get('/metrics', metricsHandler()); // node:http, Express or Connect; renderPrometheus() for others
+```
+
+(In TypeScript the reader is attached by `registerOtelProviders()`, which also
+starts the listener described next.)
+
+```csharp
+using Provide.Telemetry.OpenTelemetry;
+
+// MetricsHandler is framework-neutral: copy its status, headers and body onto
+// your server's response. RenderPrometheus(accept) returns just body and content type.
+app.MapMethods("/metrics", ["GET", "HEAD"], (HttpContext ctx) =>
+{
+    var r = PrometheusMetrics.MetricsHandler(ctx.Request.Method, ctx.Request.Headers.Accept);
+    foreach (var (name, value) in r.Headers) ctx.Response.Headers[name] = value;
+    ctx.Response.StatusCode = r.Status;
+    return ctx.Response.Body.WriteAsync(r.Body).AsTask();
+});
+```
+
 ```rust
 // Framework-neutral: pass the request's method and Accept header, write back
 // the status, headers and body. render_prometheus(accept) returns (body, content type).
@@ -291,8 +314,9 @@ It binds `127.0.0.1:9464` and serves `/metrics` unless
 `PROVIDE_METRICS_PROMETHEUS_PATH` say otherwise. To require TLS or basic auth,
 point `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` at a file in the format
 Prometheus itself takes as `--web.config.file` (Python needs the
-`provide-telemetry[prometheus]` extra to read it; Rust needs the
-`prometheus-listener` cargo feature for the listener at all):
+`provide-telemetry[prometheus]` extra to read it, TypeScript the optional
+`yaml` and `bcryptjs` packages; Rust needs the `prometheus-listener` cargo
+feature for the listener at all):
 
 ```yaml
 tls_server_config:
@@ -307,18 +331,28 @@ basic_auth_users:
 Only those keys are accepted. If the file or a certificate it names has a
 problem, the listener does not start (it never falls back to plain HTTP); the
 reason is logged (`otel.prometheus_listener_failed` in Go,
-`metrics.prometheus_listener.failed` in Python and Rust) and appears as the
-health snapshot's setup error. Certificates are re-read when they change.
+`metrics.prometheus_listener.failed` in Python, TypeScript, C# and Rust) and
+appears as the health snapshot's setup error. Certificates are re-read when
+they change.
 
 The scrape also carries the SDK's own health as `provide_telemetry_*` series
 (`provide_telemetry_export_failures_total{signal}`,
 `provide_telemetry_circuit_state{signal}` and so on), which stay visible when
-OTLP export is failing. Callback-reported values use observable instruments,
+OTLP export is failing. Set `PROVIDE_METRICS_HEALTH_OTLP=true` to export the
+same series over OTLP as well; a scrape still carries each one once.
+Callback-reported values use observable instruments,
 whose callbacks run on each scrape: `NewObservableGauge`,
 `NewObservableCounter` and `NewObservableUpDownCounter` in Go;
 `observable_gauge`, `observable_counter` and `observable_up_down_counter` in
 Python and Rust, each taking a zero-argument callback that returns
-`Observation`s and returning a handle with `unregister()`.
+`Observation`s and returning a handle with `unregister()`; `observableGauge`, `observableCounter`
+and `observableUpDownCounter` in TypeScript, whose callback returns (or
+resolves to) `{ value, attributes }` observations; `ObservableGauge`,
+`ObservableCounter` and `ObservableUpDownCounter` on `ProvideTelemetry` in C#,
+whose `Func<IEnumerable<Observation>>` callback returns an
+`ObservableInstrument` with `Unregister()`. In C# the listener and the handler
+live in `Provide.Telemetry.OpenTelemetry`; the core package stays
+OpenTelemetry-free.
 
 ## Resource Attributes
 

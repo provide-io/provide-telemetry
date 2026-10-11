@@ -44,9 +44,13 @@ func init() {
 type _backend struct{}
 
 func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.BackendSetupState) error {
+	_takeTLSProblems() // drop anything left from an earlier attempt
 	_setupTracerProvider(state, cfg)
 	_setupMeterProvider(state, cfg)
 	_setupLoggerProvider(state, cfg)
+	if problems := _takeTLSProblems(); problems != "" {
+		state.ReportSetupError(problems)
+	}
 	_syncPromListener(cfg, state.ReportSetupError)
 	return nil
 }

@@ -26,6 +26,8 @@ string[] probeValues =
 [
     "DEBUG", "json", "red", "3", "1327", "0.4271", "probe-sentinel-value",
     "false", "true", "http://probe.invalid:4318", "probe-module=DEBUG", "probe-key=probe-value",
+    // Valid values for the Prometheus enums, which reject everything above.
+    "prometheus", "auto", "/probe-path", "UnderscoreEscapingWithoutSuffixes",
 ];
 
 string[] ownedPrefixes = ["PROVIDE_", "OTEL_"];

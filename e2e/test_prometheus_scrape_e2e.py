@@ -14,7 +14,7 @@ the scrape succeeded (up == 1), a counter and an observable gauge arrived with
 their translated names and values, and the health series are there.
 
 Requires PROMETHEUS_SCRAPE_URL and, for the secured case, PROMETHEUS_TLS_CA
-(the web config sits beside it). Python, Go and Rust implement the listener so far;
+(the web config sits beside it). Python, Go, TypeScript, C# and Rust implement the listener;
 each SDK joins the parametrization as it ships Tier 3.
 """
 
@@ -43,6 +43,8 @@ _AMBIENT_CA_VARS = ("SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL
 _PROBES = {
     "python": ([sys.executable, "scripts/prometheus_scrape_probe.py"], _REPO_ROOT, sys.executable),
     "go": (["go", "run", "./cmd/prometheus_scrape_probe"], _REPO_ROOT / "go" / "otel", "go"),
+    "typescript": (["npx", "tsx", "scripts/prometheus-scrape-probe.ts"], _REPO_ROOT / "typescript", "npx"),
+    "csharp": (["dotnet", "run", "--project", "probes/PrometheusScrapeProbe"], _REPO_ROOT / "csharp", "dotnet"),
     "rust": (
         ["cargo", "run", "--locked", "--quiet", "--features", "prometheus-listener", "--example", "prometheus_scrape_probe"],
         _REPO_ROOT / "rust",

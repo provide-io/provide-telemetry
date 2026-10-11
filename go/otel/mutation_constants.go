@@ -19,3 +19,13 @@ const (
 	_listenerIdleTimeout       = 60 * time.Second
 	_listenerShutdownTimeout   = 2 * time.Second
 )
+
+// Health snapshot vocabulary: the signal label values and circuit states.
+const (
+	_signalLogs       = "logs"
+	_signalTraces     = "traces"
+	_signalMetrics    = "metrics"
+	_circuitClosed    = "closed"
+	_circuitHalfOpen  = "half-open"
+	_circuitOpenState = "open"
+)

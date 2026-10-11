@@ -147,4 +147,29 @@ public static class Metrics
 
     public static IHistogram Histogram(string name, string? description = null, string? unit = null) =>
         GetMeter().CreateHistogram(name, description, unit);
+
+    /// <summary>Register <paramref name="callback"/> as a monotonic counter reporting cumulative totals.</summary>
+    /// <remarks>
+    /// Binds to the provider live now: created before setup, or with no
+    /// provider, the callback never runs and the handle is inert.
+    /// </remarks>
+    public static ObservableInstrument ObservableCounter(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        GetMeter() is IObservableMeter meter
+            ? meter.CreateObservableCounter(name, callback, description, unit)
+            : new ObservableInstrument(name, callback);
+
+    /// <summary>Register <paramref name="callback"/> as a gauge; a series it stops reporting disappears.</summary>
+    public static ObservableInstrument ObservableGauge(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        GetMeter() is IObservableMeter meter
+            ? meter.CreateObservableGauge(name, callback, description, unit)
+            : new ObservableInstrument(name, callback);
+
+    /// <summary>Register <paramref name="callback"/> as a non-monotonic sum.</summary>
+    public static ObservableInstrument ObservableUpDownCounter(
+        string name, Func<IEnumerable<Observation>> callback, string? description = null, string? unit = null) =>
+        GetMeter() is IObservableMeter meter
+            ? meter.CreateObservableUpDownCounter(name, callback, description, unit)
+            : new ObservableInstrument(name, callback);
 }

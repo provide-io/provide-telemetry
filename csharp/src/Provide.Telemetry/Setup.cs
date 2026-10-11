@@ -29,6 +29,7 @@ public static class Setup
             // The env path validated as it parsed; an explicit config has been
             // through no parser, so nothing has range-checked it yet.
             ValidateRetriesCeiling(cfg);
+            PrometheusSettings.Validate(cfg.Metrics);
 
             // Ready the console before anything renders to it: on Windows the
             // colour answer is "only once virtual-terminal processing is on",
@@ -38,8 +39,7 @@ public static class Setup
             ApplyRuntimePolicies(cfg);
             backend = TelemetryBackendRegistry.Create(cfg);
             _generation = Publish(cfg, backend, RuntimeState.Ready);
-            _setupError = "";
-            Health.SetSetupError("");
+            ConfigureBackend(backend, cfg);
             return cfg.Clone();
         }
     }
@@ -225,6 +225,7 @@ public static class Setup
             RejectProviderChanging(cfg, current);
             ApplyRuntimePolicies(cfg);
             _generation = Publish(cfg, current.Backend, current.State);
+            ConfigureBackend(current.Backend, cfg);
             return cfg.Clone();
         }
     }
@@ -243,9 +244,11 @@ public static class Setup
                 "telemetry not set up: call SetupTelemetry first");
             var cfg = config?.Clone() ?? ConfigEnv.ConfigFromEnv();
             ValidateRetriesCeiling(cfg);
+            PrometheusSettings.Validate(cfg.Metrics);
             RejectProviderChanging(cfg, current);
             ApplyRuntimePolicies(cfg);
             _generation = Publish(cfg, current.Backend, current.State);
+            ConfigureBackend(current.Backend, cfg);
             return cfg.Clone();
         }
     }
@@ -280,7 +283,24 @@ public static class Setup
             }
             ApplyRuntimePolicies(cfg);
             _generation = Publish(cfg, backend, RuntimeState.Ready);
+            ConfigureBackend(backend, cfg);
         }
+    }
+
+    /// <summary>
+    /// Let the backend start what follows the published config, and record
+    /// what failed as the setup error — cleared when nothing did.
+    /// </summary>
+    /// <remarks>
+    /// Runs after <see cref="Publish"/>, under the lifecycle gate: the backend
+    /// may log, and a log call before publication would start a lazy
+    /// generation of its own.
+    /// </remarks>
+    private static void ConfigureBackend(ITelemetryBackend? backend, TelemetryConfig cfg)
+    {
+        var error = backend?.Configure(cfg) ?? "";
+        _setupError = error;
+        Health.SetSetupError(error);
     }
 
     /// <summary>

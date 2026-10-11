@@ -285,19 +285,13 @@ push_ingestion:
   # Series a language is known to name differently today, as expected -> actual.
   # The E2E test asserts the actual name, so fixing the divergence fails the
   # test until the entry is removed. See prometheus_metrics.translation.known_divergences.
-  known_divergences:
-    typescript:
-      "{escaped}_cpu_utilization_ratio": "{escaped}_cpu_utilization"
+  known_divergences: {}
   # Secured push modes a language cannot complete today with the standard OTel
   # variables (OTEL_EXPORTER_OTLP_METRICS_HEADERS for basic auth,
   # OTEL_EXPORTER_OTLP_CERTIFICATE / _METRICS_CERTIFICATE for a private CA).
   # The E2E test asserts that nothing arrives, so closing a gap fails it until
   # the entry is removed.
-  unsupported_modes:
-    basic_auth:
-      csharp: "OTEL_EXPORTER_OTLP_METRICS_HEADERS is not read; only the shared OTEL_EXPORTER_OTLP_HEADERS is."
-    tls_basic_auth:
-      csharp: "OTEL_EXPORTER_OTLP_CERTIFICATE / _METRICS_CERTIFICATE are not honoured, and per-signal headers are not read."
+  unsupported_modes: {}
 
 # Edge cases for the translator, generated from the same reference
 # (otlptranslator v1.0.0) as metric_names. Every name is a valid OTel instrument
