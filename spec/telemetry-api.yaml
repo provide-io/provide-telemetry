@@ -418,6 +418,11 @@ config_defaults:
       default: "false"
       description: "Master switch: when true, overrides event name strictness to on"
       applicability: [python, typescript, go, rust, csharp]
+    - env: PROVIDE_TELEMETRY_STRICT_CONFIG
+      type: bool
+      default: "false"
+      description: "When true, a configuration value the SDK would otherwise warn about and ignore fails config parsing with ConfigurationError instead. Today that covers OTEL_METRICS_EXPORTER only (prometheus_metrics.metrics_exporter_warnings); it does not touch event-name strictness (PROVIDE_TELEMETRY_STRICT_SCHEMA) or values that are already errors."
+      applicability: [python, typescript, go, rust, csharp]
 
   event_schema:
     - env: PROVIDE_TELEMETRY_STRICT_EVENT_NAME
@@ -537,7 +542,7 @@ config_defaults:
     - env: OTEL_METRICS_EXPORTER
       type: str
       default: "otlp"
-      description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader."
+      description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader. Other values are warned about and ignored (see prometheus_metrics.metrics_exporter_warnings)."
       applicability: [python, typescript, go, csharp, rust]
     - env: OTEL_EXPORTER_PROMETHEUS_HOST
       type: str
@@ -1199,12 +1204,40 @@ prometheus_metrics:
 
   config_rules:
     - "OTEL_METRICS_EXPORTER is split on commas, entries trimmed and lowercased, empty entries dropped. An empty value means the default."
-    - "none combined with any other exporter is invalid."
-    - "An unknown exporter, LISTEN value, or translation strategy is a ConfigurationError from config parsing, as for the other enum keys (PROVIDE_LOG_FORMAT and the like)."
+    - "OTEL_METRICS_EXPORTER follows the OpenTelemetry environment-variable rule for enums: a value the SDK does not support is warned about and ignored, never a setup failure. metrics_exporter_warnings below says exactly how; PROVIDE_TELEMETRY_STRICT_CONFIG=true turns those warnings back into a ConfigurationError."
+    - "An unknown LISTEN value or translation strategy is a ConfigurationError from config parsing, as for the other enum keys (PROVIDE_LOG_FORMAT and the like)."
     - "PROVIDE_METRICS_PROMETHEUS_PATH must start with '/' and contain no '?' or '#'; anything else is a ConfigurationError. An empty value means the default."
     - "OTEL_EXPORTER_PROMETHEUS_PORT must be an integer in 0-65535; 0 asks the OS for a free port."
     - "PROVIDE_METRICS_ENABLED=false disables every metrics reader, including the Prometheus reader and the listener."
     - "LISTEN=true without prometheus in OTEL_METRICS_EXPORTER still attaches the Prometheus reader; asking for a listener implies the reader."
+
+  metrics_exporter_warnings:
+    description: >
+      How OTEL_METRICS_EXPORTER entries other than otlp and prometheus resolve.
+      Config parsing produces the exporter list and an ordered list of warning
+      messages; the messages are part of the config, so every SDK reports the
+      same text for the same value (cases: exporter_selection in
+      spec/prometheus_fixtures.yaml).
+    supported: [otlp, prometheus]
+    # Registered by the OpenTelemetry spec for OTEL_METRICS_EXPORTER but not
+    # implemented here (logging is OTel's deprecated name for console).
+    unsupported: [console, logging]
+    event: config.metrics_exporter.value_ignored
+    messages:
+      unsupported: "OTEL_METRICS_EXPORTER: {name} is not supported by provide-telemetry, ignored"
+      unknown: "OTEL_METRICS_EXPORTER: unknown exporter {name}, ignored"
+      none_combined: "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored"
+      fallback: "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp"
+    strict_error: "PROVIDE_TELEMETRY_STRICT_CONFIG: {messages}"
+    rules:
+      - "none alone (after trimming and dropping empty entries) selects no exporter, with no warning."
+      - "An entry in unsupported produces the unsupported message and is dropped; any other entry that is not otlp, prometheus or none produces the unknown message and is dropped. {name} is the trimmed, lowercased entry. Each distinct name is reported once, in order of first appearance."
+      - "none together with any other entry (valid or not) is dropped and produces the none_combined message once, after the per-entry messages. none only wins when it is alone."
+      - "If no otlp or prometheus entry remains and none was not alone, the exporters fall back to the default [otlp] and the fallback message comes last. An empty or unset value is the default with no warning."
+      - "Duplicate otlp or prometheus entries are not warned about."
+      - "Setup still succeeds. Each message is logged once per setup as a warning with event config.metrics_exporter.value_ignored (the message in a reason field), and setup_error is set to the messages joined with '; ', ahead of any OTLP TLS problems (joined with the same separator). A later successful setup without such messages clears it, as for the TLS problems."
+      - "With PROVIDE_TELEMETRY_STRICT_CONFIG=true, config parsing raises ConfigurationError instead whenever the message list is non-empty; its text is strict_error with {messages} being the messages joined with '; '."
+      - "An exporter list built in code (not from the environment) is still validated strictly: a name other than otlp or prometheus is a ConfigurationError."
 
   observable_instruments:
     - "A callback reports zero or more (value, attributes) observations per collection: each scrape for Prometheus, each export interval for OTLP."

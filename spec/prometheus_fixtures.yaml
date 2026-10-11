@@ -145,14 +145,30 @@ label_names:
   - {attribute: "signal", escaped: "signal", utf8: "signal"}
 
 exporter_selection:
+  # exporters lists the readers attached, in the order otlp, prometheus.
+  # warnings is the exact ordered message list config parsing reports (see
+  # prometheus_metrics.metrics_exporter_warnings); absent means none.
+  # error: true means config parsing fails with a ConfigurationError.
   - {id: default_is_otlp, env: {}, exporters: [otlp], listener: false}
   - {id: empty_value_is_default, env: {OTEL_METRICS_EXPORTER: ""}, exporters: [otlp], listener: false}
   - {id: prometheus_only, env: {OTEL_METRICS_EXPORTER: prometheus}, exporters: [prometheus], listener: false}
   - {id: both_trimmed_and_lowercased, env: {OTEL_METRICS_EXPORTER: " OTLP , Prometheus "}, exporters: [otlp, prometheus], listener: false}
   - {id: empty_entries_dropped, env: {OTEL_METRICS_EXPORTER: "otlp,,prometheus,"}, exporters: [otlp, prometheus], listener: false}
   - {id: none_alone, env: {OTEL_METRICS_EXPORTER: none}, exporters: [], listener: false}
-  - {id: none_with_other_is_invalid, env: {OTEL_METRICS_EXPORTER: "none,prometheus"}, error: true}
-  - {id: unknown_exporter_is_invalid, env: {OTEL_METRICS_EXPORTER: "otlp,statsd"}, error: true}
+  - {id: none_with_other_is_ignored, env: {OTEL_METRICS_EXPORTER: "none,prometheus"}, exporters: [prometheus], listener: false, warnings: ["OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored"]}
+  - {id: unknown_exporter_is_ignored, env: {OTEL_METRICS_EXPORTER: "otlp,statsd"}, exporters: [otlp], listener: false, warnings: ["OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored"]}
+  - {id: unknown_reported_once, env: {OTEL_METRICS_EXPORTER: "statsd,prometheus,STATSD"}, exporters: [prometheus], listener: false, warnings: ["OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored"]}
+  - {id: console_alone_falls_back, env: {OTEL_METRICS_EXPORTER: " Console "}, exporters: [otlp], listener: false, warnings: ["OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored", "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp"]}
+  - {id: logging_is_unsupported, env: {OTEL_METRICS_EXPORTER: "prometheus,logging"}, exporters: [prometheus], listener: false, warnings: ["OTEL_METRICS_EXPORTER: logging is not supported by provide-telemetry, ignored"]}
+  - {id: none_with_only_ignored_falls_back, env: {OTEL_METRICS_EXPORTER: "none,console,statsd"}, exporters: [otlp], listener: false, warnings: ["OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored", "OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored", "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored", "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp"]}
+  - {id: none_twice_is_alone, env: {OTEL_METRICS_EXPORTER: "none, NONE,"}, exporters: [], listener: false}
+  - {id: duplicates_are_not_warned, env: {OTEL_METRICS_EXPORTER: "otlp,otlp"}, exporters: [otlp], listener: false}
+  - {id: ignored_does_not_block_listener, env: {OTEL_METRICS_EXPORTER: "console,prometheus", PROVIDE_METRICS_PROMETHEUS_LISTEN: auto}, exporters: [prometheus], listener: true, warnings: ["OTEL_METRICS_EXPORTER: console is not supported by provide-telemetry, ignored"]}
+  - {id: strict_unknown_is_error, env: {OTEL_METRICS_EXPORTER: "otlp,statsd", PROVIDE_TELEMETRY_STRICT_CONFIG: "true"}, error: true}
+  - {id: strict_unsupported_is_error, env: {OTEL_METRICS_EXPORTER: console, PROVIDE_TELEMETRY_STRICT_CONFIG: "true"}, error: true}
+  - {id: strict_none_combined_is_error, env: {OTEL_METRICS_EXPORTER: "none,otlp", PROVIDE_TELEMETRY_STRICT_CONFIG: "true"}, error: true}
+  - {id: strict_valid_value_is_fine, env: {OTEL_METRICS_EXPORTER: "prometheus,otlp", PROVIDE_TELEMETRY_STRICT_CONFIG: "true"}, exporters: [otlp, prometheus], listener: false}
+  - {id: strict_off_still_warns, env: {OTEL_METRICS_EXPORTER: "otlp,statsd", PROVIDE_TELEMETRY_STRICT_CONFIG: "false"}, exporters: [otlp], listener: false, warnings: ["OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored"]}
   - {id: listen_true_implies_reader, env: {PROVIDE_METRICS_PROMETHEUS_LISTEN: "true"}, exporters: [otlp, prometheus], listener: true}
   - {id: listen_auto_follows_exporter, env: {OTEL_METRICS_EXPORTER: prometheus, PROVIDE_METRICS_PROMETHEUS_LISTEN: auto}, exporters: [prometheus], listener: true}
   - {id: listen_auto_without_prometheus, env: {PROVIDE_METRICS_PROMETHEUS_LISTEN: auto}, exporters: [otlp], listener: false}

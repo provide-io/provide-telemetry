@@ -21,6 +21,10 @@ import { configFromEnv } from '../../typescript/src/config-env.js';
 // validated fields (a rejected value proves the variable is read but leaves no
 // config object to diff).
 const PROBE_VALUES = [
+  // First, so OTEL_METRICS_EXPORTER is settled by a value it accepts: every
+  // garbage value below only adds an ignored-entry warning to the config,
+  // which would otherwise be reported as the variable's field.
+  'prometheus',
   'DEBUG',
   'json',
   'red',
@@ -34,7 +38,6 @@ const PROBE_VALUES = [
   'probe-module=DEBUG',
   'probe-key=probe-value',
   // Valid values for the Prometheus enums, which reject everything above.
-  'prometheus',
   'auto',
   '/probe-path',
   'UnderscoreEscapingWithoutSuffixes',

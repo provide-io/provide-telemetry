@@ -126,10 +126,45 @@ def test_translation_strategy_cases_use_known_strategies(contract: dict[str, Any
 def test_exporter_selection_cases_are_well_formed(fixtures: dict[str, Any]) -> None:
     for case in fixtures["exporter_selection"]:
         if case.get("error"):
-            assert "exporters" not in case and "listener" not in case, case["id"]
+            assert not {"exporters", "listener", "warnings"} & set(case), case["id"]
         else:
             assert set(case["exporters"]) <= _EXPORTERS, case["id"]
             assert isinstance(case["listener"], bool), case["id"]
+
+
+def _warning_patterns(contract: dict[str, Any]) -> list[re.Pattern[str]]:
+    templates = contract["metrics_exporter_warnings"]["messages"].values()
+    return [re.compile("^" + re.escape(t).replace(re.escape("{name}"), "[a-z0-9_.-]+") + "$") for t in templates]
+
+
+def test_exporter_warnings_use_the_contract_messages(contract: dict[str, Any], fixtures: dict[str, Any]) -> None:
+    patterns = _warning_patterns(contract)
+    warned = [case for case in fixtures["exporter_selection"] if case.get("warnings")]
+    assert warned, "no case exercises the warn-and-ignore path"
+    for case in warned:
+        assert (
+            "PROVIDE_TELEMETRY_STRICT_CONFIG" not in case["env"]
+            or case["env"]["PROVIDE_TELEMETRY_STRICT_CONFIG"] == "false"
+        )
+        for message in case["warnings"]:
+            assert any(p.match(message) for p in patterns), f"{case['id']}: {message}"
+
+
+def test_every_warning_kind_has_a_case_and_a_strict_twin(contract: dict[str, Any], fixtures: dict[str, Any]) -> None:
+    messages = contract["metrics_exporter_warnings"]["messages"]
+    seen = {m for case in fixtures["exporter_selection"] for m in case.get("warnings", [])}
+    for kind, template in messages.items():
+        prefix = template.split("{name}")[0]
+        assert any(m.startswith(prefix) for m in seen), kind
+    strict = [c for c in fixtures["exporter_selection"] if c["env"].get("PROVIDE_TELEMETRY_STRICT_CONFIG") == "true"]
+    assert any(c.get("error") for c in strict) and any(not c.get("error") for c in strict)
+
+
+def test_strict_config_is_a_core_setting(spec: dict[str, Any]) -> None:
+    core = {entry["env"]: entry for entry in spec["config_defaults"]["core"]}
+    entry = core["PROVIDE_TELEMETRY_STRICT_CONFIG"]
+    assert (entry["type"], entry["default"]) == ("bool", "false")
+    assert set(entry["applicability"]) == {"python", "typescript", "go", "rust", "csharp"}
 
 
 def test_listener_path_cases_resolve_to_valid_paths(fixtures: dict[str, Any]) -> None:
