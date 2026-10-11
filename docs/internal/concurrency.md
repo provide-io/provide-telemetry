@@ -31,11 +31,12 @@ The five runtimes (Python, TypeScript, Go, Rust, C#) agree on three invariants:
 
 ### Locks
 
-- `src/provide/telemetry/setup.py` — module-level `threading.Lock` guards
-  both `setup_telemetry()` and `shutdown_telemetry()`. The `_setup_done`
-  sentinel and the lock together guarantee the first caller performs work
-  and every later caller is a no-op until `shutdown_telemetry()` clears
-  the flag.
+- `src/provide/telemetry/_lifecycle.py` — the lifecycle coordinator's
+  `operations` lock (a `threading.RLock`) guards `setup_telemetry()`,
+  `shutdown_telemetry()` and every reconfiguration in `runtime.py`. It
+  publishes immutable `LifecycleGeneration`s (active config + `setup_done`),
+  so the first `setup_telemetry()` caller performs work and every later
+  caller is a no-op until `shutdown_telemetry()` publishes `setup_done=False`.
 - `src/provide/telemetry/logger/core.py` — `_lock` + `_configured` sentinel
   serialise logger configuration. `configure_logging(..., force=True)` is
   the only way to re-run the pipeline under the lock.
@@ -45,14 +46,15 @@ The five runtimes (Python, TypeScript, Go, Rust, C#) agree on three invariants:
   and "shutdown happened mid-build"; the loser discards its provider.
 - `src/provide/telemetry/metrics/provider.py` — mirror of the tracing
   provider lock, using `_meter_lock` and its own `_setup_generation`.
-- `src/provide/telemetry/runtime.py` — `_reconfigure_lock` serialises
-  reconfigure calls. Readers of the active config hold the same lock
-  (post-P0 fix): `_active_config` is never read without taking the lock,
-  which prevents torn reads under free-threaded CPython (3.13+
-  `--disable-gil`).
+- `src/provide/telemetry/runtime.py` — reconfigure calls hold
+  `coordinator.operations`. Readers of the active config take one
+  reference to the current published generation rather than reading
+  separate globals, which prevents torn reads under free-threaded CPython
+  (3.13+ `--disable-gil`).
 - `src/provide/telemetry/sampling.py`, `backpressure.py`, `pii.py`,
   `cardinality.py`, `consent.py`, `resilience.py`, `health.py`,
-  `receipts.py` — each subsystem owns a private `threading.Lock` guarding
+  `receipts.py`, `classification.py` — each subsystem owns a private
+  `threading.Lock` (`pii.py`: an `RLock`) guarding
   its policy dicts and counters. Holding two subsystem locks at once is
   forbidden; when a caller needs data from multiple subsystems, it takes
   one lock at a time and copies out primitive values before calling into
@@ -78,8 +80,9 @@ request without requiring the application itself to clean up.
 ### Hot-reload semantics
 
 `update_runtime_config()` (and `reload_runtime_from_env()`) snapshot the
-incoming config, acquire `_reconfigure_lock`, swap `_active_config`, and
-push policy values to the subsystem locks. Logging pipeline changes force
+incoming config, acquire `coordinator.operations`, publish a new
+generation, and push policy values to the subsystem locks
+(`_runtime_policies.py`). Logging pipeline changes force
 a re-run of `configure_logging`, which is itself lock-protected. The
 tracer / meter providers are *not* recreated in-place — only their policy
 envelope is updated — because OpenTelemetry's process-global providers
@@ -105,11 +108,11 @@ cannot be safely swapped after spans are in flight.
 
 ## Go
 
-- Each subsystem package owns a package-level `sync.RWMutex`:
-  `cardinality`, `consent`, `backpressure`, `sampling`, `resilience`,
-  `backend`, and the top-level `setup` coordinator. `RLock()` is used for
-  policy reads on the hot path; `Lock()` is reserved for policy updates,
-  reset, and setup/shutdown transitions.
+- Each subsystem owns a package-level `sync.RWMutex`: `cardinality`,
+  `consent`, `backpressure`, `sampling`, `resilience`, and `backend`.
+  `RLock()` is used for policy reads on the hot path; `Lock()` is reserved
+  for policy updates and reset. The top-level setup coordinator holds a
+  plain `sync.Mutex` (`_setupMu`) across setup/shutdown transitions.
 - **Lock order: setup → subsystems.** The setup coordinator acquires its
   own lock first, then delegates to subsystem calls that each take their
   own lock internally and release it before returning. State is never
@@ -207,14 +210,14 @@ cannot be safely swapped after spans are in flight.
 - No runtime uses unbounded queues. Backpressure caps are configurable but
   enforced under the owning subsystem's lock, so the "full queue" decision
   is always consistent with the ticket count.
-- Shutdown is ordered: tracing → metrics → logging → runtime reset →
-  executor shutdown. Each step is independently lock-protected. C# is the
-  exception and does it on purpose: its three provider drains are started
-  together against one shared absolute deadline (`ProviderDrains.Run`), so
-  ordering is not observable and the wall-clock cost is one budget rather
-  than a multiple of it.
+- Shutdown drains the three signal providers concurrently against one
+  deadline in every runtime (Python `run_drains_together`, Go goroutines,
+  Rust scoped threads, TypeScript `Promise.allSettled`, C#
+  `ProviderDrains.Run`), so drain ordering is not observable and the
+  wall-clock cost is one budget rather than a multiple of it. Runtime
+  policy resets run after the drains, even when a drain raised.
 - Tests that reset module-level singletons use `importlib.reload` (Python),
-  Jest module-reset hooks (TypeScript), fresh `TestMain` helpers (Go),
+  Vitest module-reset hooks (`vi.resetModules()`, TypeScript), fresh `TestMain` helpers (Go),
   `#[cfg(test)]` resetters (Rust), and `Testing.ResetForTests()` inside the
   `[CollectionDefinition("Telemetry", DisableParallelization = true)]` xUnit
   collection (C#). Never touch the locks directly; use the documented
