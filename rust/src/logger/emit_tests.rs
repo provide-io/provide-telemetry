@@ -46,7 +46,7 @@ fn emit_test_emit_json_line_includes_context_trace_span_and_logger_name() {
     reset_emit_state();
     enable_json_capture_for_tests();
 
-    emit_json_line(&test_event(), false);
+    emit_json_line(&test_event(), false).expect("the local write succeeds");
 
     let raw = String::from_utf8(take_json_capture()).expect("json capture should be utf8");
     let parsed: Value =
@@ -72,7 +72,7 @@ fn emit_test_emit_if_json_respects_format_and_timestamp_flag() {
         ..crate::config::LoggingConfig::default()
     });
 
-    emit_if_json(&test_event());
+    emit_if_json(&test_event()).expect("the local write succeeds");
 
     let raw = String::from_utf8(take_json_capture()).expect("json capture should be utf8");
     let parsed: Value =
@@ -89,7 +89,7 @@ fn emit_test_emit_if_json_respects_format_and_timestamp_flag() {
         include_timestamp: false,
         ..crate::config::LoggingConfig::default()
     });
-    emit_if_json(&test_event());
+    emit_if_json(&test_event()).expect("the local write succeeds");
     assert!(take_json_capture().is_empty());
 }
 
@@ -110,7 +110,7 @@ fn emit_test_console_format_renders_expected_line_and_respects_json_mode() {
     assert!(line.contains("emit.message"));
     assert!(line.contains("user_id=\"u-1\""));
 
-    emit_if_console(&test_event());
+    emit_if_console(&test_event()).expect("the local write succeeds");
     let captured =
         String::from_utf8(take_console_capture()).expect("console capture should be utf8");
     assert!(captured.contains("emit.message"));
@@ -122,7 +122,7 @@ fn emit_test_console_format_renders_expected_line_and_respects_json_mode() {
         include_timestamp: false,
         ..crate::config::LoggingConfig::default()
     });
-    emit_if_console(&test_event());
+    emit_if_console(&test_event()).expect("the local write succeeds");
     assert!(take_console_capture().is_empty());
 }
 
@@ -173,5 +173,5 @@ fn emit_test_emit_json_line_falls_back_to_stderr_without_capture() {
     let _guard = acquire_test_state_lock();
     reset_emit_state();
 
-    emit_json_line(&test_event(), false);
+    emit_json_line(&test_event(), false).expect("the local write succeeds");
 }

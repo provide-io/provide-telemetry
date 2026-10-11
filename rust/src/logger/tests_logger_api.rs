@@ -130,7 +130,7 @@ fn emit_event_caps_the_fallback_event_buffer() {
     enable_test_capture();
 
     for idx in 0..(MAX_FALLBACK_EVENTS + 2) {
-        emit_event(LogEvent {
+        let _ = emit_event(LogEvent {
             level: "INFO".to_string(),
             target: "tests.cap".to_string(),
             message: format!("cap.{idx}"),
