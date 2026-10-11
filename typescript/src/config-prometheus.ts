@@ -107,6 +107,11 @@ export function reportExporterWarnings(warnings: readonly string[]): void {
   lastReported = joined || null;
 }
 
+/** Forget what reportExporterWarnings() set last; for resetTelemetryState(). */
+export function _resetExporterWarningsForTests(): void {
+  lastReported = null;
+}
+
 /** Reject an exporter list built in code with a name the env parser would refuse. */
 export function validateExporters(exporters: string[]): void {
   const unknown = exporters.find((e) => e !== 'otlp' && e !== 'prometheus');

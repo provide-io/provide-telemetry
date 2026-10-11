@@ -40,7 +40,6 @@ beforeEach(() => {
 afterEach(async () => {
   delete process.env['OTEL_EXPORTER_OTLP_CERTIFICATE'];
   await shutdownTelemetry();
-  reportExporterWarnings([]);
   resetTelemetryState();
   vi.restoreAllMocks();
 });
@@ -90,6 +89,23 @@ describe('ignored OTEL_METRICS_EXPORTER entries at setup', () => {
     );
     expect(ignoredLogs()).toEqual([]);
     expect(getHealthSnapshot().setupError).toBeNull();
+  });
+});
+
+describe('resetTelemetryState and the reported warnings', () => {
+  it('a reset run reports the warning afresh and does not own the old text', () => {
+    reportExporterWarnings([UNKNOWN]);
+    expect(getHealthSnapshot().setupError).toBe(UNKNOWN);
+    resetTelemetryState();
+    expect(getHealthSnapshot().setupError).toBeNull();
+    reportExporterWarnings([UNKNOWN]);
+    expect(ignoredLogs()).toHaveLength(2);
+    expect(getHealthSnapshot().setupError).toBe(UNKNOWN);
+    resetTelemetryState();
+    // The same text set by something else after the reset is not this run's to clear.
+    setSetupError(UNKNOWN);
+    reportExporterWarnings([]);
+    expect(getHealthSnapshot().setupError).toBe(UNKNOWN);
   });
 });
 

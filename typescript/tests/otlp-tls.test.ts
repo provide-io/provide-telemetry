@@ -199,6 +199,27 @@ describe('tlsReady and the recorded problems', () => {
     }
     expect(await tlsReady('logs')).toBe(true);
   });
+
+  it('resetTelemetryState() forgets the recorded problems and the one reported last', async () => {
+    const saved = process.env['OTEL_EXPORTER_OTLP_CERTIFICATE'];
+    process.env['OTEL_EXPORTER_OTLP_CERTIFICATE'] = missing;
+    try {
+      expect(await tlsReady('logs')).toBe(false);
+      resetTelemetryState();
+      expect(takeTlsProblems()).toBeNull();
+      expect(await tlsReady('logs')).toBe(false);
+      const reported = takeTlsProblems();
+      expect(reported).not.toBeNull();
+      resetTelemetryState();
+      // The same text after a reset was not set by this run, so it is not cleared.
+      const clear = vi.fn();
+      beginTlsChecks(() => reported, clear);
+      expect(clear).not.toHaveBeenCalled();
+    } finally {
+      if (saved === undefined) delete process.env['OTEL_EXPORTER_OTLP_CERTIFICATE'];
+      else process.env['OTEL_EXPORTER_OTLP_CERTIFICATE'] = saved;
+    }
+  });
 });
 
 describe('registerOtelProviders with an unreadable TLS file', () => {

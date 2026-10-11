@@ -120,3 +120,9 @@ export function takeTlsProblems(ahead: readonly string[] = []): string | null {
   lastReported = joined || null;
   return lastReported;
 }
+
+/** Forget recorded problems and what was reported last; for resetTelemetryState(). */
+export function _resetTlsChecksForTests(): void {
+  problems.length = 0;
+  lastReported = null;
+}
