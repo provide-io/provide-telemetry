@@ -143,7 +143,7 @@ def test_a_third_party_record_is_redacted_before_the_otel_handler() -> None:
     from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
     from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 
-    exporter = InMemoryLogRecordExporter()  # type: ignore[no-untyped-call]
+    exporter = InMemoryLogRecordExporter()
     provider = LoggerProvider()
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     fanout = _BackpressureFanoutHandler([LoggingHandler(level=logging.DEBUG, logger_provider=provider)])

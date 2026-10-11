@@ -214,6 +214,17 @@ module = [
 ]
 disallow_subclassing_any = false
 
+# An otel-only test that calls InMemoryLogRecordExporter(), whose constructor the
+# OTel SDK leaves unannotated. With the `otel` extra that is an untyped call;
+# without it the class is Any and an ignore on the call would be unused, so the
+# module allows untyped calls instead of carrying an ignore that is wrong in one
+# of the two environments.
+[[tool.mypy.overrides]]
+module = [
+  "tests.logger.test_foreign_record_sanitization",
+]
+disallow_untyped_calls = false
+
 [[tool.mypy.overrides]]
 module = [
   "tests.parity.test_behavioral_fixtures",
