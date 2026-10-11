@@ -63,7 +63,7 @@ def main() -> None:
     for i in range(3):
         do_work(i)
         time.sleep(0.05)
-        print(f"  🔹 Iteration {i}: counter +1, histogram {i * 12.5}ms, gauge +1")
+        print(f"  🔹 Iteration {i}: counter +1, histogram {i * 12.5}ms, gauge set to 1")
 
     # ── 🧹 Context cleanup ─────────────────────────────────
     print("\n🧹 Unbinding 'region', then clearing all context...")

@@ -82,6 +82,7 @@ async function main(): Promise<void> {
   console.log(`  🔢 circuitOpenCount: logs=${s.circuitOpenCountLogs}  traces=${s.circuitOpenCountTraces}  metrics=${s.circuitOpenCountMetrics}`);
   console.log(`  ⏱️  exportLatencyMs: logs=${s.exportLatencyMsLogs}  traces=${s.exportLatencyMsTraces}  metrics=${s.exportLatencyMsMetrics}`);
   console.log(`  🚨 setupError:      ${s.setupError}`);
+  console.log(`  🧾 receiptFailures: ${s.receiptFailures}`);
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

@@ -7,7 +7,7 @@
 //   - RecordREDMetrics for HTTP request/error/duration (RED)
 //   - RecordUSEMetrics for resource utilization (USE)
 //   - ClassifyError for error taxonomy
-//   - GetHealthSnapshot with all counters
+//   - GetHealthSnapshot with all 26 fields
 package main
 
 import (
@@ -87,18 +87,28 @@ func main() {
 	fmt.Printf("  LogsDropped:         %d\n", s.LogsDropped)
 	fmt.Printf("  LogsExportFailures:  %d\n", s.LogsExportFailures)
 	fmt.Printf("  LogsRetries:         %d\n", s.LogsRetries)
+	fmt.Printf("  LogsExportLatencyMs:     %.2f\n", s.LogsExportLatencyMs)
+	fmt.Printf("  LogsAsyncBlockingRisk:   %d\n", s.LogsAsyncBlockingRisk)
+	fmt.Printf("  LogsCircuitOpenCount:    %d\n", s.LogsCircuitOpenCount)
 	fmt.Printf("  LogsCircuitState:    %s\n", s.LogsCircuitState)
 	fmt.Printf("  TracesEmitted:       %d\n", s.TracesEmitted)
 	fmt.Printf("  TracesDropped:       %d\n", s.TracesDropped)
 	fmt.Printf("  TracesExportFailures:%d\n", s.TracesExportFailures)
 	fmt.Printf("  TracesRetries:       %d\n", s.TracesRetries)
+	fmt.Printf("  TracesExportLatencyMs:     %.2f\n", s.TracesExportLatencyMs)
+	fmt.Printf("  TracesAsyncBlockingRisk:   %d\n", s.TracesAsyncBlockingRisk)
+	fmt.Printf("  TracesCircuitOpenCount:    %d\n", s.TracesCircuitOpenCount)
 	fmt.Printf("  TracesCircuitState:  %s\n", s.TracesCircuitState)
 	fmt.Printf("  MetricsEmitted:      %d\n", s.MetricsEmitted)
 	fmt.Printf("  MetricsDropped:      %d\n", s.MetricsDropped)
 	fmt.Printf("  MetricsExportFailures:%d\n", s.MetricsExportFailures)
 	fmt.Printf("  MetricsRetries:      %d\n", s.MetricsRetries)
+	fmt.Printf("  MetricsExportLatencyMs:     %.2f\n", s.MetricsExportLatencyMs)
+	fmt.Printf("  MetricsAsyncBlockingRisk:   %d\n", s.MetricsAsyncBlockingRisk)
+	fmt.Printf("  MetricsCircuitOpenCount:    %d\n", s.MetricsCircuitOpenCount)
 	fmt.Printf("  MetricsCircuitState: %s\n", s.MetricsCircuitState)
 	fmt.Printf("  SetupError:          %q\n", s.SetupError)
+	fmt.Printf("  ReceiptFailures:     %d\n", s.ReceiptFailures)
 
 	fmt.Println("\nDone!")
 }

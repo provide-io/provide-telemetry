@@ -10,7 +10,7 @@ Demonstrates:
 - record_red_metrics for HTTP request/error/duration (RED)
 - record_use_metrics for resource utilization (USE)
 - classify_error for error taxonomy
-- HealthSnapshot with all 24 fields
+- HealthSnapshot with all 26 fields
 - SLO config via TelemetryConfig environment overrides
 """
 
@@ -77,8 +77,9 @@ def main() -> None:
             log.error(event("example", "slo", "error"), exc_name=exc_name, status_code=code, **taxonomy)
 
     # ── 🩺 Full health snapshot ──────────────────────────────
-    print("\n🩺 Full HealthSnapshot (all 25 fields):")
+    print("\n🩺 Full HealthSnapshot (all 26 fields):")
     s = get_health_snapshot()
+    print(f"  📤 Emitted:            logs={s.emitted_logs}  traces={s.emitted_traces}  metrics={s.emitted_metrics}")
     print(f"  📉 Dropped:            logs={s.dropped_logs}  traces={s.dropped_traces}  metrics={s.dropped_metrics}")
     print(f"  🔄 Retries:            logs={s.retries_logs}  traces={s.retries_traces}  metrics={s.retries_metrics}")
     print(
@@ -93,7 +94,11 @@ def main() -> None:
     print(
         f"  🔌 Circuit state:      logs={s.circuit_state_logs}  traces={s.circuit_state_traces}  metrics={s.circuit_state_metrics}"
     )
+    print(
+        f"  🔢 Circuit opens:      logs={s.circuit_open_count_logs}  traces={s.circuit_open_count_traces}  metrics={s.circuit_open_count_metrics}"
+    )
     print(f"  🛑 Setup error:        {s.setup_error}")
+    print(f"  🧾 Receipt failures:   {s.receipt_failures}")
 
     print("\n🏁 Done!")
     shutdown_telemetry()
