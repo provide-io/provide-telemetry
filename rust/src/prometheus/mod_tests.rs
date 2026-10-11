@@ -329,3 +329,12 @@ fn without_the_sdk_the_status_says_why() {
     config.metrics.enabled = false;
     assert_eq!(status_without_sdk(&config), Status::MetricsDisabled);
 }
+
+#[test]
+fn health_metric_names_are_recognised() {
+    for family in health_families(&HealthSnapshot::default()) {
+        assert!(is_health_metric(&family.name), "{}", family.name);
+    }
+    assert!(!is_health_metric("provide_telemetry_other_total"));
+    assert!(!is_health_metric("jobs_done_total"));
+}

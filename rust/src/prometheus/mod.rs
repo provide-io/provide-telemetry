@@ -145,6 +145,19 @@ const PER_SIGNAL: [(&str, PromType); 8] = [
     ("provide_telemetry_circuit_open_total", PromType::Counter),
 ];
 
+/// The two global health families.
+const GLOBAL: [&str; 2] = [
+    "provide_telemetry_setup_error",
+    "provide_telemetry_receipt_failures_total",
+];
+
+/// Whether `name` is one of the health families the collector serves. A reader
+/// metric of that name (the PROVIDE_METRICS_HEALTH_OTLP copy) is left out of a
+/// scrape, so each family appears once whatever the flag.
+pub(crate) fn is_health_metric(name: &str) -> bool {
+    PER_SIGNAL.iter().any(|(metric, _)| *metric == name) || GLOBAL.contains(&name)
+}
+
 fn circuit_value(state: &str) -> f64 {
     match state {
         "closed" => 0.0,
@@ -217,13 +230,9 @@ pub(crate) fn health_families(snapshot: &HealthSnapshot) -> Vec<Family> {
         .setup_error
         .as_deref()
         .is_some_and(|e| !e.is_empty());
-    let mut setup_error = Family::new("provide_telemetry_setup_error", PromType::Gauge, "");
+    let mut setup_error = Family::new(GLOBAL[0], PromType::Gauge, "");
     setup_error.push(Vec::new(), if has_error { 1.0 } else { 0.0 });
-    let mut receipts = Family::new(
-        "provide_telemetry_receipt_failures_total",
-        PromType::Counter,
-        "",
-    );
+    let mut receipts = Family::new(GLOBAL[1], PromType::Counter, "");
     receipts.push(Vec::new(), snapshot.receipt_failures as f64);
     families.push(setup_error);
     families.push(receipts);

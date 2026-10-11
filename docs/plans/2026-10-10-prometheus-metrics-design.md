@@ -438,9 +438,9 @@ Each stage is its own PR and leaves `main` releasable.
    unbuilt with `setup_error` set, as in Python and Go.
    `PROVIDE_METRICS_HEALTH_OTLP` registers the health families as observable
    instruments too. C# is in both capability sets and in the scrape E2E.
-   Rust (done): config keys in `config/prometheus.rs`, with the OTLP client TLS
+   Rust (done): config keys in `config/prometheus.rs`; the OTLP client TLS
    variables for every signal and transport (`OTEL_EXPORTER_OTLP_*CERTIFICATE`,
-   `_CLIENT_CERTIFICATE`, `_CLIENT_KEY`), which closes its `tls_basic_auth`
+   `_CLIENT_CERTIFICATE`, `_CLIENT_KEY`), which close its `tls_basic_auth`
    push gap; `gauge()` was already an OTel Gauge. No exporter crate: a
    cumulative `ManualReader` feeds a renderer ported from the Python one
    (`prometheus/render.rs`, with scrape-time UTF-8 negotiation) and a port of
@@ -452,7 +452,12 @@ Each stage is its own PR and leaves `main` releasable.
    config subset, certificate reload, fail-closed startup and bcrypt basic auth.
    Observable instruments filter out series their callback stopped reporting,
    which the Rust SDK would otherwise keep exporting under cumulative
-   temporality. Rust is in both capability sets and in the scrape E2E.
+   temporality. Like the others, the OTLP TLS variables are read when an
+   exporter is built: a file that cannot be read or loaded leaves that
+   signal's exporter unbuilt with `setup_error` naming the variable, and
+   `PROVIDE_METRICS_HEALTH_OTLP` registers the health families as observable
+   instruments, which the pull renderer leaves out of a scrape. Rust is in
+   both capability sets and in the scrape E2E.
 
 ## Decisions
 

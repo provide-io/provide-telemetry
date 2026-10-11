@@ -239,6 +239,9 @@ fn add_metric(
     scope: &Labels,
     strategy: Strategy,
 ) {
+    if super::is_health_metric(&metric.name) {
+        return; // the collector's copy is appended instead
+    }
     let (kind, prom_type) = kinds_of(&metric.points);
     let Some(name) = names::metric_name(&metric.name, &metric.unit, kind, strategy) else {
         return;

@@ -52,8 +52,8 @@ pub use classification::{
 };
 pub use config::{
     redact_config, BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig,
-    MetricsConfig, OtlpTlsConfig, PrometheusConfig, RuntimeOverrides, SLOConfig, SamplingConfig,
-    SecurityConfig, TelemetryConfig, TracingConfig,
+    MetricsConfig, PrometheusConfig, RuntimeOverrides, SLOConfig, SamplingConfig, SecurityConfig,
+    TelemetryConfig, TracingConfig,
 };
 pub use consent::{
     get_consent_level, load_consent_from_env, reset_consent_for_tests, set_consent_level,

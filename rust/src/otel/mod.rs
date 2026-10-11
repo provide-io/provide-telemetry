@@ -19,6 +19,8 @@ mod flush;
 #[cfg(feature = "otel-grpc")]
 mod grpc;
 #[cfg(feature = "otel")]
+mod health_otlp;
+#[cfg(feature = "otel")]
 pub(crate) mod logs;
 #[cfg(feature = "otel")]
 pub(crate) mod metrics;
@@ -40,10 +42,14 @@ pub(crate) fn setup_otel(config: &TelemetryConfig) -> Result<(), TelemetryError>
     // Build the resource once and clone for each provider (cheap — Resource
     // is internally Arc'd).
     let resource = resource::build_resource(config);
-    traces::install_tracer_provider(config, resource.clone())?;
-    metrics::install_meter_provider(config, resource.clone())?;
-    logs::install_logger_provider(config, resource)?;
-    Ok(())
+    let installed = traces::install_tracer_provider(config, resource.clone())
+        .and_then(|_| metrics::install_meter_provider(config, resource.clone()))
+        .and_then(|_| logs::install_logger_provider(config, resource));
+    // After the installs, and after setup's clear of setup_error, so it stays visible.
+    if let Some(problems) = tls::take_problems() {
+        crate::health::set_setup_error(Some(problems));
+    }
+    installed.map(|_| ())
 }
 
 #[cfg(feature = "otel")]

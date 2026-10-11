@@ -50,7 +50,7 @@ use super::prometheus_reader::PullReader;
 use super::resilient::ResilientMetricExporter;
 #[cfg(feature = "otel-grpc")]
 use super::tls::tonic_tls;
-use super::tls::{http_client, load_client_tls};
+use super::tls::{exporter_tls, http_client};
 
 #[derive(Clone)]
 pub(super) struct InstalledMeterProvider {
@@ -115,8 +115,8 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
             if metric_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.metrics.otlp_headers.clone());
             }
-            if let Some(tls) = load_client_tls("metrics", &cfg.metrics.otlp_tls)? {
-                builder = builder.with_http_client(http_client("metrics", &tls, timeout)?);
+            if let Some(tls) = exporter_tls("METRICS")? {
+                builder = builder.with_http_client(http_client(&tls, timeout)?);
             }
             map_exporter_build(builder.build(), "metrics")
         }
@@ -130,7 +130,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<MetricExporter, TelemetryErro
             if metric_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.metrics.otlp_headers)?);
             }
-            if let Some(tls) = load_client_tls("metrics", &cfg.metrics.otlp_tls)? {
+            if let Some(tls) = exporter_tls("METRICS")? {
                 builder = builder.with_tls_config(tonic_tls(&tls));
             }
             map_exporter_build(builder.build(), "metrics")
@@ -160,7 +160,11 @@ pub(super) fn install_meter_provider(
 ) -> Result<bool, TelemetryError> {
     shutdown_meter_provider(None);
     let pull_status = pull_status(cfg);
-    let want_otlp = cfg.metrics.otlp_reader_enabled() && cfg.metrics.otlp_endpoint.is_some();
+    // TLS files that cannot be loaded skip only the OTLP reader; the pull
+    // reader is unaffected, and setup reports the problem as setup_error.
+    let want_otlp = cfg.metrics.otlp_reader_enabled()
+        && cfg.metrics.otlp_endpoint.is_some()
+        && super::tls::ready("METRICS");
     if !want_otlp && pull_status.is_some() {
         prometheus::set_status(pull_status.unwrap_or(Status::NotSelected));
         return Ok(false);
@@ -194,6 +198,9 @@ pub(super) fn install_meter_provider(
     }
 
     let arc = Arc::new(builder.build());
+    if cfg.metrics.health_otlp {
+        super::health_otlp::register(&arc);
+    }
     global::set_meter_provider(arc.as_ref().clone());
     *crate::_lock::lock(meter_provider_slot()) = Some(InstalledMeterProvider {
         provider: arc,

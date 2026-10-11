@@ -87,3 +87,25 @@ impl Drop for TestCerts {
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
+
+/// Sets environment variables for one test and removes them when dropped.
+/// Hold the test state lock while it lives: the environment is process-wide.
+#[derive(Default)]
+pub(crate) struct EnvGuard(Vec<String>);
+
+impl EnvGuard {
+    #[mutants::skip] // test helper
+    pub(crate) fn set(&mut self, name: &str, value: impl AsRef<std::ffi::OsStr>) {
+        std::env::set_var(name, value);
+        self.0.push(name.to_string());
+    }
+}
+
+impl Drop for EnvGuard {
+    #[mutants::skip] // test helper
+    fn drop(&mut self) {
+        for name in &self.0 {
+            std::env::remove_var(name);
+        }
+    }
+}

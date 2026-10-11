@@ -39,7 +39,7 @@ use super::map_exporter_build;
 use super::resilient::ResilientLogExporter;
 #[cfg(feature = "otel-grpc")]
 use super::tls::tonic_tls;
-use super::tls::{http_client, load_client_tls};
+use super::tls::{exporter_tls, http_client};
 
 #[derive(Clone)]
 pub(super) struct InstalledLoggerProvider {
@@ -86,8 +86,8 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             if log_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.logging.otlp_headers.clone());
             }
-            if let Some(tls) = load_client_tls("logs", &cfg.logging.otlp_tls)? {
-                builder = builder.with_http_client(http_client("logs", &tls, timeout)?);
+            if let Some(tls) = exporter_tls("LOGS")? {
+                builder = builder.with_http_client(http_client(&tls, timeout)?);
             }
             map_exporter_build(builder.build(), "logs")
         }
@@ -101,7 +101,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             if log_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.logging.otlp_headers)?);
             }
-            if let Some(tls) = load_client_tls("logs", &cfg.logging.otlp_tls)? {
+            if let Some(tls) = exporter_tls("LOGS")? {
                 builder = builder.with_tls_config(tonic_tls(&tls));
             }
             map_exporter_build(builder.build(), "logs")
@@ -137,6 +137,11 @@ pub(super) fn install_logger_provider(
         return Ok(false);
     }
 
+    // TLS files that cannot be loaded leave the exporter unbuilt without
+    // failing setup; setup reports them as setup_error.
+    if !super::tls::ready("LOGS") {
+        return Ok(false);
+    }
     let exporter_result = build_exporter(cfg);
     let exporter = match exporter_result {
         Ok(e) => e,

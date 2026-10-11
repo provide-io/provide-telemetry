@@ -51,7 +51,6 @@ fn logging_provider_config_changed(current: &TelemetryConfig, target: &Telemetry
     current.logging.otlp_endpoint != target.logging.otlp_endpoint
         || current.logging.otlp_headers != target.logging.otlp_headers
         || current.logging.otlp_protocol != target.logging.otlp_protocol
-        || current.logging.otlp_tls != target.logging.otlp_tls
         || current.exporter.logs_timeout_seconds != target.exporter.logs_timeout_seconds
 }
 
@@ -62,7 +61,6 @@ fn tracing_provider_config_changed(current: &TelemetryConfig, target: &Telemetry
         || current.tracing.otlp_endpoint != target.tracing.otlp_endpoint
         || current.tracing.otlp_headers != target.tracing.otlp_headers
         || current.tracing.otlp_protocol != target.tracing.otlp_protocol
-        || current.tracing.otlp_tls != target.tracing.otlp_tls
         || current.exporter.traces_timeout_seconds != target.exporter.traces_timeout_seconds
 }
 
@@ -75,7 +73,6 @@ fn metrics_provider_config_changed(current: &TelemetryConfig, target: &Telemetry
         || current.metrics.otlp_headers != target.metrics.otlp_headers
         || current.metrics.otlp_protocol != target.metrics.otlp_protocol
         || current.metrics.metric_export_interval_ms != target.metrics.metric_export_interval_ms
-        || current.metrics.otlp_tls != target.metrics.otlp_tls
         // The readers, render options and listener are fixed when setup builds them.
         || current.metrics.exporters != target.metrics.exporters
         || current.metrics.prometheus != target.metrics.prometheus

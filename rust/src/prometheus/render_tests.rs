@@ -380,3 +380,18 @@ fn legacy_name_rules() {
     assert!(!is_legacy_label("a:b"));
     assert!(!is_legacy_label("9"));
 }
+
+#[test]
+fn reader_metrics_named_like_a_health_family_are_skipped() {
+    let view = one_scope(vec![
+        metric(
+            "provide_telemetry_setup_error",
+            "",
+            Points::Gauge(vec![(Labels::new(), 1.0)]),
+        ),
+        metric("kept", "", Points::Gauge(vec![(Labels::new(), 2.0)])),
+    ]);
+    let families = families_from(&view, &options("UnderscoreEscapingWithSuffixes"), false);
+    let names: Vec<&str> = families.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, vec!["kept"]);
+}

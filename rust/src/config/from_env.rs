@@ -16,24 +16,9 @@ use super::parse::{
 use super::prometheus::{parse_exporters, RawPrometheus};
 use super::{
     BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig, MetricsConfig,
-    OtlpTlsConfig, SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig, TracingConfig,
+    SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig, TracingConfig,
 };
 use crate::errors::ConfigurationError;
-
-/// One signal's OTLP TLS files: `OTEL_EXPORTER_OTLP_{SIGNAL}_*` winning over
-/// the shared `OTEL_EXPORTER_OTLP_*`, an empty value counting as unset.
-fn otlp_tls(env: &HashMap<String, String>, signal: &str) -> OtlpTlsConfig {
-    let pick = |suffix: &str| {
-        nonempty_env_value(env, &[&format!("OTEL_EXPORTER_OTLP_{signal}_{suffix}")])
-            .or_else(|| nonempty_env_value(env, &[&format!("OTEL_EXPORTER_OTLP_{suffix}")]))
-            .map(|value| value.trim().to_string())
-    };
-    OtlpTlsConfig {
-        certificate: pick("CERTIFICATE"),
-        client_certificate: pick("CLIENT_CERTIFICATE"),
-        client_key: pick("CLIENT_KEY"),
-    }
-}
 
 impl TelemetryConfig {
     pub fn from_env() -> Result<Self, ConfigurationError> {
@@ -104,7 +89,6 @@ impl TelemetryConfig {
                 module_levels: parse_module_levels(
                     env_value(env, &["PROVIDE_LOG_MODULE_LEVELS"]).unwrap_or(""),
                 ),
-                otlp_tls: otlp_tls(env, "LOGS"),
             },
             tracing: TracingConfig {
                 enabled: parse_bool(
@@ -128,7 +112,6 @@ impl TelemetryConfig {
                 otlp_protocol: env_value(env, &["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"])
                     .unwrap_or(shared_protocol)
                     .to_string(),
-                otlp_tls: otlp_tls(env, "TRACES"),
             },
             metrics: MetricsConfig {
                 enabled: parse_bool(
@@ -152,7 +135,6 @@ impl TelemetryConfig {
                     60_000,
                     "OTEL_METRIC_EXPORT_INTERVAL",
                 )? as u64,
-                otlp_tls: otlp_tls(env, "METRICS"),
                 exporters: parse_exporters(env_value(env, &["OTEL_METRICS_EXPORTER"]))?,
                 health_otlp: parse_bool(
                     env_value(env, &["PROVIDE_METRICS_HEALTH_OTLP"]),

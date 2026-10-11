@@ -35,7 +35,7 @@ use super::map_exporter_build;
 use super::resilient::ResilientSpanExporter;
 #[cfg(feature = "otel-grpc")]
 use super::tls::tonic_tls;
-use super::tls::{http_client, load_client_tls};
+use super::tls::{exporter_tls, http_client};
 
 #[derive(Clone)]
 pub(super) struct InstalledTracerProvider {
@@ -81,8 +81,8 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
             if trace_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.tracing.otlp_headers.clone());
             }
-            if let Some(tls) = load_client_tls("traces", &cfg.tracing.otlp_tls)? {
-                builder = builder.with_http_client(http_client("traces", &tls, timeout)?);
+            if let Some(tls) = exporter_tls("TRACES")? {
+                builder = builder.with_http_client(http_client(&tls, timeout)?);
             }
             map_exporter_build(builder.build(), "traces")
         }
@@ -96,7 +96,7 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
             if trace_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.tracing.otlp_headers)?);
             }
-            if let Some(tls) = load_client_tls("traces", &cfg.tracing.otlp_tls)? {
+            if let Some(tls) = exporter_tls("TRACES")? {
                 builder = builder.with_tls_config(tonic_tls(&tls));
             }
             map_exporter_build(builder.build(), "traces")
@@ -150,6 +150,11 @@ pub(super) fn install_tracer_provider(
         return Ok(false);
     }
 
+    // TLS files that cannot be loaded leave the exporter unbuilt without
+    // failing setup; setup reports them as setup_error.
+    if !super::tls::ready("TRACES") {
+        return Ok(false);
+    }
     let exporter_result = build_exporter(cfg);
     let exporter = match exporter_result {
         Ok(e) => e,
