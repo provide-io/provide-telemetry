@@ -25,7 +25,7 @@ from provide.telemetry.levels import LogSeverity, to_stdlib_level
 from provide.telemetry.logger import _otel_logs
 from provide.telemetry.logger import sink as _sink
 from provide.telemetry.logger.console import ansi_supported, structlog_colors, utf8_writer
-from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
+from provide.telemetry.logger.handlers import _BackpressureFanoutHandler, _HostWriterHandler
 from provide.telemetry.logger.pretty import PrettyRenderer
 from provide.telemetry.logger.processors import (
     add_error_fingerprint,
@@ -161,9 +161,11 @@ def _console_handler(installed: TextIO | None) -> logging.StreamHandler:  # type
 
     A writer installed by the host is taken as given: it is not passed through
     utf8_writer, which exists for the console stream this process did not choose.
+    It is wrapped in a handler that refuses a record the writer logs from inside
+    itself and counts a writer that raises, both as log export failures.
     """
     if installed is not None:
-        return logging.StreamHandler(installed)
+        return _HostWriterHandler(installed)
     return logging.StreamHandler(utf8_writer(sys.stderr))  # pragma: no mutate — None also defaults to stderr
 
 
