@@ -9,21 +9,12 @@ The TypeScript, Rust and C# suites run their real logger against the fixture;
 this is Python's. Stages are observed on the shipping structlog pipeline, not a
 model of it: each one is detected by wrapping the function the pipeline itself
 calls for that stage, and ``local`` / ``backend`` are the fan-out handler's two
-children.
+children. ``health`` is any emitted or dropped count, wherever the pipeline
+takes it -- the sampler and the queue count their own drops.
 
-Python does **not** match the fixture on two points, and the strict xfails
-below record exactly where, so a fix flips them to XPASS and fails the run:
-
-* ``hardening`` runs *before* admission. ``harden_input`` sits ahead of
-  ``apply_sampling`` in the processor chain, so a record consent or sampling
-  is about to drop is hardened first.
-* ``health`` is counted *at* admission. ``apply_sampling`` increments
-  ``emitted_logs`` as soon as a ticket is taken, ahead of PII, receipts and
-  both handlers, where the fixture places it after the backend.
-
-A rejected record never takes a ticket, so it has none to release -- the
-fixture's ``release`` on rejection paths is not observable here (Rust's suite
-says the same and checks capacity instead, as this one does).
+Every case must match its fixture path exactly, rejections included: a refused
+record counts its drop and then runs the release stage, releasing the ticket it
+never took (None).
 """
 
 from __future__ import annotations
@@ -124,6 +115,10 @@ def seen(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     _wrap(backpressure, "try_acquire", "backpressure")
     _wrap(backpressure, "release", "release")
     _wrap(health, "increment_emitted", "health")
+    _wrap(health, "increment_dropped", "health")
+    # The sampler and the queue bound increment_dropped at import.
+    _wrap(sampling, "increment_dropped", "health")
+    _wrap(backpressure, "increment_dropped", "health")
     try:
         yield observed
     finally:
@@ -142,7 +137,7 @@ def _run(seen: list[str], *, backend_fails: bool = False, with_backend: bool = T
     fanout.replace_children(children)
     seen.clear()
     core.get_logger("pipeline").info("pipeline.probe.ok", password="pipeline-secret")  # pragma: allowlist secret
-    return list(seen)
+    return [stage for stage in seen if stage in _OBSERVABLE]
 
 
 def _ticket_is_free() -> bool:
@@ -153,93 +148,61 @@ def _ticket_is_free() -> bool:
     return True
 
 
-# ── what Python already shares with the fixture ──────────────────────────────
+# ── every path, exactly as the fixture lists it ──────────────────────────────
 
 
-@pytest.mark.parametrize(
-    ("case_id", "backend"),
-    [("local_only_success", "none"), ("backend_success", "ok"), ("backend_failure", "fails")],
-)
-def test_admitted_records_run_the_payload_stages_in_canonical_order(
-    seen: list[str], case_id: str, backend: str
-) -> None:
-    observed = _run(seen, with_backend=backend != "none", backend_fails=backend == "fails")
-    tail = ["pii", "receipt", "local", "backend", "release"]
-    expected = [stage for stage in _expected(case_id) if stage in tail]
-    assert [stage for stage in observed if stage in tail] == expected
-    assert ("backend:error" in observed) is (backend == "fails")
-    assert observed.count("release") == 1
-    assert _ticket_is_free()
-
-
-def test_admission_runs_consent_then_sampling_then_backpressure(seen: list[str]) -> None:
-    observed = _run(seen)
-    admission = [stage for stage in observed if stage in ("consent", "sampling", "backpressure")]
-    assert admission == ["consent", "sampling", "backpressure"]
-
-
-def test_consent_rejection_does_no_payload_work(seen: list[str]) -> None:
-    consent.set_consent_level(consent.ConsentLevel.NONE)
-    observed = _run(seen)
-    assert "consent" in observed
-    assert not {"sampling", "backpressure", "pii", "receipt", "local", "backend"} & set(observed)
-    assert _ticket_is_free()
-
-
-def test_sampling_rejection_stops_before_backpressure(seen: list[str]) -> None:
-    sampling.set_sampling_policy("logs", sampling.SamplingPolicy(default_rate=0.0))
-    observed = _run(seen)
-    assert observed[-2:] == ["consent", "sampling"]
-    assert not {"backpressure", "pii", "receipt", "local", "backend"} & set(observed)
-
-
-def test_queue_rejection_leaks_no_capacity(seen: list[str]) -> None:
-    backpressure.set_queue_policy(backpressure.QueuePolicy(logs_maxsize=1))
-    held = backpressure.try_acquire("logs")
-    assert held is not None
-    observed = _run(seen)
-    assert observed[-3:] == ["consent", "sampling", "backpressure"]
-    assert not {"pii", "receipt", "local", "backend", "release"} & set(observed)
-    # The held ticket is still the only one out: the queue stays full.
-    assert backpressure.try_acquire("logs") is None
-    backpressure.release(held)
-
-
-# ── where Python diverges: recorded, not papered over ─────────────────────────
-
-_DIVERGES = pytest.mark.xfail(
-    strict=True,
-    reason="Python hardens before admission and counts health at admission; see module docstring",
-)
-
-
-@_DIVERGES
 @pytest.mark.parametrize(
     ("case_id", "backend"),
     [("local_only_success", "none"), ("backend_success", "ok"), ("backend_failure", "fails")],
 )
 def test_admitted_path_matches_the_fixture_exactly(seen: list[str], case_id: str, backend: str) -> None:
+    before = health.get_health_snapshot()
     observed = _run(seen, with_backend=backend != "none", backend_fails=backend == "fails")
-    assert [stage for stage in observed if stage in _OBSERVABLE] == _expected(case_id)
+    after = health.get_health_snapshot()
+    assert observed == _expected(case_id)
+    # Emitted once, never dropped, whether or not the backend accepted it.
+    assert after.emitted_logs - before.emitted_logs == 1
+    assert after.dropped_logs == before.dropped_logs
+    assert _ticket_is_free()
 
 
-@_DIVERGES
 def test_consent_rejection_matches_the_fixture_exactly(seen: list[str]) -> None:
     consent.set_consent_level(consent.ConsentLevel.NONE)
+    before = health.get_health_snapshot()
     assert _run(seen) == _expected("consent_rejection")
+    after = health.get_health_snapshot()
+    # A consent refusal is a drop, and only a drop.
+    assert after.dropped_logs - before.dropped_logs == 1
+    assert after.emitted_logs == before.emitted_logs
+    assert _ticket_is_free()
 
 
-def test_the_divergence_is_the_one_documented(seen: list[str]) -> None:
-    """Pins today's order, so the xfails above cannot pass or fail for another reason."""
-    assert _run(seen) == [
-        "hardening",
-        "consent",
-        "sampling",
-        "backpressure",
-        "health",
-        "pii",
-        "receipt",
-        "local",
-        "backend",
-        "release",
-    ]
+def test_sampling_rejection_matches_the_fixture_exactly(seen: list[str]) -> None:
+    sampling.set_sampling_policy("logs", sampling.SamplingPolicy(default_rate=0.0))
+    before = health.get_health_snapshot()
+    assert _run(seen) == _expected("sampling_rejection")
+    after = health.get_health_snapshot()
+    assert after.dropped_logs - before.dropped_logs == 1
+    assert after.emitted_logs == before.emitted_logs
+
+
+def test_queue_rejection_matches_the_fixture_and_leaks_no_capacity(seen: list[str]) -> None:
+    backpressure.set_queue_policy(backpressure.QueuePolicy(logs_maxsize=1))
+    held = backpressure.try_acquire("logs")
+    assert held is not None
+    before = health.get_health_snapshot()
+    assert _run(seen) == _expected("queue_rejection")
+    after = health.get_health_snapshot()
+    assert after.dropped_logs - before.dropped_logs == 1
+    assert after.emitted_logs == before.emitted_logs
+    # The held ticket is still the only one out: the queue stays full.
+    assert backpressure.try_acquire("logs") is None
+    backpressure.release(held)
+
+
+def test_the_backend_failure_case_really_fails(seen: list[str]) -> None:
+    """The failure is reported through handleError, not lost, and not raised."""
+    _run(seen, backend_fails=True)
+    assert seen.count("backend:error") == 1
+    _run(seen)
+    assert "backend:error" not in seen

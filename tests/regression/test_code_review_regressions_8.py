@@ -52,7 +52,10 @@ class TestConsentBlocksLogs:
         # apply_sampling now stashes a backpressure ticket — strip it for comparison.
         result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "test.consent.functional.warn"}
-        assert get_health_snapshot().emitted_logs == 1
+        # Admitted, not yet emitted: emitted_logs is counted at the handler
+        # boundary, after the local and backend sinks (pipeline_fixtures.yaml).
+        assert get_health_snapshot().emitted_logs == 0
+        assert get_health_snapshot().dropped_logs == 0
 
     def test_apply_sampling_allows_full_consent(self) -> None:
         from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
@@ -63,7 +66,10 @@ class TestConsentBlocksLogs:
         result = apply_sampling(None, "info", {"event": "test.consent.full"})
         result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "test.consent.full"}
-        assert get_health_snapshot().emitted_logs == 1
+        # Admitted, not yet emitted: emitted_logs is counted at the handler
+        # boundary, after the local and backend sinks (pipeline_fixtures.yaml).
+        assert get_health_snapshot().emitted_logs == 0
+        assert get_health_snapshot().dropped_logs == 0
 
 
 class TestConsentBlocksMetrics:
@@ -178,7 +184,10 @@ class TestLogBackpressure:
         result = apply_sampling(None, "info", {"event": "unlimited.log"})
         result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "unlimited.log"}
-        assert get_health_snapshot().emitted_logs == 1
+        # Admitted, not yet emitted: emitted_logs is counted at the handler
+        # boundary, after the local and backend sinks (pipeline_fixtures.yaml).
+        assert get_health_snapshot().emitted_logs == 0
+        assert get_health_snapshot().dropped_logs == 0
 
 
 class TestTraceSampleRateWired:

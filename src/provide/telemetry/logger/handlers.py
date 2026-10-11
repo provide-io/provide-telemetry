@@ -94,6 +94,7 @@ class _BackpressureFanoutHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         from provide.telemetry.backpressure import release
+        from provide.telemetry.health import increment_emitted
 
         # Popped, not read: the ticket is ours, and OTel's LoggingHandler turns
         # whatever is left on the record into OTLP attributes. Reading it with
@@ -106,12 +107,20 @@ class _BackpressureFanoutHandler(logging.Handler):
         # logger and never ran the processor chain; the children get a
         # hardened, sanitized copy of it instead. Popped for the same reason
         # as the ticket: nothing of ours is exported as an attribute.
-        if record.__dict__.pop(_PIPELINE_RECORD_KEY, None) is not _PIPELINE_RECORD_MARKER:
+        admitted = record.__dict__.pop(_PIPELINE_RECORD_KEY, None) is _PIPELINE_RECORD_MARKER
+        if not admitted:
             record = sanitize_foreign_record(record)
         try:
             for handler in self._handlers:
                 if record.levelno >= handler.level:
                     handler.handle(record)
+            # The health stage: after the local and backend sinks, before the
+            # release (spec/pipeline_fixtures.yaml). A backend that failed to
+            # export still counts -- its handler contained the failure and
+            # recorded it as an export failure -- but only a record the
+            # pipeline admitted, and so holds a ticket, is one it emitted.
+            if admitted and ticket is not None:
+                increment_emitted("logs")
         finally:
             if ticket is not None:
                 release(ticket)

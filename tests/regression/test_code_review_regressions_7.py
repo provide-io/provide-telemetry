@@ -83,8 +83,20 @@ class TestSchemaRejectDoesNotBumpEmittedLogs:
         # sentinel key before comparing payload identity.
         from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
 
-        result.pop(_BACKPRESSURE_TICKET_KEY, None)
+        ticket = result.pop(_BACKPRESSURE_TICKET_KEY, None)
         assert result == {"event": "ok.test"}
+        # Admission alone does not count the record: emitted_logs is the health
+        # stage, after the local and backend sinks (pipeline_fixtures.yaml).
+        assert get_health_snapshot().emitted_logs == 0
+
+        import logging
+
+        from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
+        from provide.telemetry.logger.processors import _PIPELINE_RECORD_KEY, _PIPELINE_RECORD_MARKER
+
+        record = logging.LogRecord("t", logging.INFO, __file__, 1, "ok.test", None, None)
+        record.__dict__.update({_PIPELINE_RECORD_KEY: _PIPELINE_RECORD_MARKER, _BACKPRESSURE_TICKET_KEY: ticket})
+        _BackpressureFanoutHandler([logging.NullHandler()]).handle(record)
         assert get_health_snapshot().emitted_logs == 1
 
     def test_sampled_out_log_does_not_count_as_emitted(self) -> None:

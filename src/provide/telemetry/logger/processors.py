@@ -290,6 +290,11 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 
         # `>=` is equivalent: at exactly the limit the rebuild keeps every key,
         # and dict equality ignores the reordering it introduces.
+        # Hardening runs after admission, so the record already holds its
+        # backpressure ticket. The ticket is ours, not the caller's: it is set
+        # aside so it neither spends the attribute budget nor gets truncated
+        # away -- a dropped ticket is queue capacity leaked for good.
+        ticket = event_dict.pop(_BACKPRESSURE_TICKET_KEY, None)
         over_budget = _max_attr_count > 0 and len(event_dict) > _max_attr_count  # pragma: no mutate — see above
         if over_budget:
             # Preserve control/telemetry fields first, then fill with user payload.
@@ -306,7 +311,10 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         # of defence, and also covers keys a caller passes directly. _harden_keys
         # rather than a plain comprehension because cleaning is many-to-one: see
         # its docstring for the trace_id-shadowing vector that opens up otherwise.
-        return {k: _clean_value(v, 0) for k, v in _harden_keys(event_dict).items()}
+        hardened_dict = {k: _clean_value(v, 0) for k, v in _harden_keys(event_dict).items()}
+        if ticket is not None:
+            hardened_dict[_BACKPRESSURE_TICKET_KEY] = ticket
+        return hardened_dict
 
     return _processor
 
@@ -349,25 +357,39 @@ _PIPELINE_RECORD_MARKER = PIPELINE_RECORD_MARKER
 
 
 def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    from provide.telemetry.backpressure import try_acquire
+    """Admission: the consent, sampling and backpressure stages, in that order.
+
+    This runs before any payload work (hardening, PII, receipts), so a record
+    refused here costs nothing beyond the decision. Every refusal ends the way
+    spec/pipeline_fixtures.yaml ends it: the drop is counted (the health
+    stage) and then the release stage runs. A refused record never took a
+    ticket, so what it releases is None -- a no-op that keeps the stage on
+    every path. An admitted record is counted as emitted only at the handler
+    boundary, after the local and backend sinks.
+    """
+    from provide.telemetry.backpressure import release, try_acquire
     from provide.telemetry.consent import should_allow
-    from provide.telemetry.health import increment_emitted
+    from provide.telemetry.health import increment_dropped
     from provide.telemetry.sampling import should_sample
 
     if not should_allow("logs", method_name):
+        # Consent is the one gate that does not count its own drop.
+        increment_dropped("logs")
+        release(None)
         raise structlog.DropEvent()
     event_name = str(
         event_dict.get("event", "")
     )  # pragma: no mutate — empty-string default is fed into sampler which treats "" as unnamed; cosmetic vs any empty sentinel
     if not should_sample("logs", event_name):
+        release(None)  # the sampler already counted the drop
         raise structlog.DropEvent()
     ticket = try_acquire("logs")
     if ticket is None:
-        raise structlog.DropEvent()  # backpressure full; dropped counter already incremented
-    increment_emitted("logs")
+        release(None)  # backpressure full; try_acquire already counted the drop
+        raise structlog.DropEvent()
     # Stash the ticket. The final renderer processor moves it onto the
-    # LogRecord via logging `extra`, and the stdlib handler boundary releases
-    # it once all configured child handlers return from emit().
+    # LogRecord via logging `extra`, and the stdlib handler boundary counts the
+    # record emitted and releases it once all child handlers return from emit().
     event_dict[_BACKPRESSURE_TICKET_KEY] = ticket
     return event_dict
 

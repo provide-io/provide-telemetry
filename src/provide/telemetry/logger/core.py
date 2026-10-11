@@ -499,8 +499,22 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
     if config.logging.include_timestamp:
         processors.append(structlog.processors.TimeStamper(fmt="iso"))
 
+    # Per-module level filter — runs BEFORE apply_sampling so we don't
+    # acquire backpressure tickets for records the filter is going to drop,
+    # AND so the DropEvent path doesn't strand a ticket between
+    # apply_sampling (acquire) and the final renderer/handler boundary. A
+    # filtered record is below its level, not refused: it is not a drop.
+    if config.logging.module_levels:
+        processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
+
+    # The canonical stage order (spec/pipeline_fixtures.yaml): admission —
+    # consent, sampling, backpressure — before any payload work, then
+    # hardening, then PII and its receipts. Enrichment and schema checks sit
+    # between hardening and PII, as they did before admission moved ahead of
+    # them: what they add is hardened-input-shaped and still gets sanitized.
     processors.extend(
         [
+            apply_sampling,
             harden_input(
                 config.security.max_attr_value_length,
                 config.security.max_attr_count,
@@ -508,24 +522,9 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
             ),
             add_standard_fields(config),
             add_error_fingerprint,
-            # Schema validation runs BEFORE sampling. Schema-invalid records are now
-            # annotated with _schema_error and continue through the pipeline — they
-            # DO contribute to emitted_logs. The ordering ensures _schema_error is
-            # set before apply_sampling evaluates the record.
+            # Schema-invalid records are annotated with _schema_error and
+            # continue through the pipeline rather than being dropped.
             enforce_event_schema(config),
-        ]
-    )
-
-    # Per-module level filter — runs BEFORE apply_sampling so we don't
-    # acquire backpressure tickets for records the filter is going to drop,
-    # AND so the DropEvent path doesn't strand a ticket between
-    # apply_sampling (acquire) and the final renderer/handler boundary.
-    if config.logging.module_levels:
-        processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
-
-    processors.extend(
-        [
-            apply_sampling,
             sanitize_sensitive_fields(config.logging.sanitize, config.pii_max_depth),
         ]
     )
