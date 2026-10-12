@@ -77,13 +77,13 @@
     "pino": "^10.3.1"
   },
   "peerDependencies": {
-    "@opentelemetry/api-logs": "^0.221.0",
+    "@opentelemetry/api-logs": ">=0.221.0 <0.224.0",
     "@opentelemetry/context-async-hooks": "^2.9.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.221.0",
-    "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/exporter-logs-otlp-http": ">=0.221.0 <0.224.0",
+    "@opentelemetry/exporter-metrics-otlp-http": ">=0.221.0 <0.224.0",
+    "@opentelemetry/exporter-trace-otlp-http": ">=0.221.0 <0.224.0",
     "@opentelemetry/resources": "^2.9.0",
-    "@opentelemetry/sdk-logs": "^0.221.0",
+    "@opentelemetry/sdk-logs": ">=0.221.0 <0.224.0",
     "@opentelemetry/sdk-metrics": "^2.9.0",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "bcryptjs": "^3.0.3",
@@ -130,13 +130,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@opentelemetry/api-logs": "^0.221.0",
+    "@opentelemetry/api-logs": "^0.223.0",
     "@opentelemetry/context-async-hooks": "^2.9.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.221.0",
-    "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.223.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.223.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
     "@opentelemetry/resources": "^2.9.0",
-    "@opentelemetry/sdk-logs": "^0.221.0",
+    "@opentelemetry/sdk-logs": "^0.223.0",
     "@opentelemetry/sdk-metrics": "^2.9.0",
     "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@peculiar/x509": "^2.1.0",
@@ -165,5 +165,8 @@
     "vite": "~8.0.16",
     "vitest": "^4.1.2",
     "yaml": "^2.8.3"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
   }
 }
