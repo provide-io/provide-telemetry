@@ -87,7 +87,7 @@ func _cacheDigest(user, password string) string {
 // _loadWebConfig reads and validates the file at path. Any problem is an error,
 // and the caller must then not start the listener: the listener fails closed.
 func _loadWebConfig(path string) (*_webSecurity, error) {
-	raw, err := os.ReadFile(path) //nolint:gosec // operator-supplied config path
+	raw, err := os.ReadFile(path) //#nosec G304 -- operator-supplied config path
 	if err != nil {
 		return nil, fmt.Errorf("web config: %w", err)
 	}
@@ -159,7 +159,7 @@ func _webClientAuth(c *_webTLSConfig) (tls.ClientAuthType, error) {
 }
 
 func _clientCAPool(path string) (*x509.CertPool, error) {
-	pem, err := os.ReadFile(path) //nolint:gosec // operator-supplied config path
+	pem, err := os.ReadFile(path) //#nosec G304 -- operator-supplied config path
 	if err != nil {
 		return nil, fmt.Errorf("client_ca_file: %w", err)
 	}
