@@ -20,7 +20,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::fmt::Write;

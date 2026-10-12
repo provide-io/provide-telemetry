@@ -98,7 +98,7 @@ impl ObservableInstrument {
 /// The collection-time metrics gates: the runtime enabled flag and consent.
 #[cfg_attr(not(feature = "otel"), allow(dead_code))] // only providers collect
 fn metrics_allowed() -> bool {
-    let enabled = get_runtime_config().map_or(true, |config| config.metrics.enabled);
+    let enabled = get_runtime_config().is_none_or(|config| config.metrics.enabled);
     enabled && should_allow("metrics", None)
 }
 

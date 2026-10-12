@@ -13,20 +13,20 @@ use provide_telemetry::{
     adopt_global_providers, metrics_handler, setup_telemetry, shutdown_telemetry, AdoptedProviders,
     TelemetryConfig,
 };
-use serde_yaml::Value;
+use serde_json::Value;
 
 fn fixtures() -> Value {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../spec/prometheus_fixtures.yaml"
     );
-    serde_yaml::from_str(&std::fs::read_to_string(path).expect("fixtures readable"))
+    serde_saphyr::from_str(&std::fs::read_to_string(path).expect("fixtures readable"))
         .expect("fixtures parse")
 }
 
 fn cases(section: &str) -> Vec<Value> {
     fixtures()[section]
-        .as_sequence()
+        .as_array()
         .unwrap_or_else(|| panic!("{section} is a list"))
         .clone()
 }
@@ -45,15 +45,10 @@ fn exporter_selection_cases() {
     for case in cases {
         let id = case["id"].as_str().unwrap();
         let env: HashMap<String, String> = case["env"]
-            .as_mapping()
+            .as_object()
             .unwrap()
             .iter()
-            .map(|(k, v)| {
-                (
-                    k.as_str().unwrap().to_string(),
-                    v.as_str().unwrap().to_string(),
-                )
-            })
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
             .collect();
         let parsed = TelemetryConfig::from_map(&env);
         if case["error"].as_bool() == Some(true) {
@@ -69,7 +64,7 @@ fn exporter_selection_cases() {
             effective.push("prometheus");
         }
         let expected: Vec<&str> = case["exporters"]
-            .as_sequence()
+            .as_array()
             .unwrap()
             .iter()
             .map(|v| v.as_str().unwrap())
@@ -81,7 +76,7 @@ fn exporter_selection_cases() {
             "{id}"
         );
         let warnings: Vec<&str> = case["warnings"]
-            .as_sequence()
+            .as_array()
             .map(|seq| seq.iter().map(|v| v.as_str().unwrap()).collect())
             .unwrap_or_default();
         assert_eq!(metrics.exporter_warnings, warnings, "{id}");

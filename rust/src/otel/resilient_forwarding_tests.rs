@@ -21,7 +21,7 @@ impl SpanExporter for ForwardingSpanExporter {
         Ok(())
     }
 
-    fn shutdown_with_timeout(&mut self, _timeout: Duration) -> OTelSdkResult {
+    fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
         self.shutdown_with_timeout_called
             .store(true, Ordering::SeqCst);
         Ok(())
@@ -106,7 +106,7 @@ fn resilient_exporter_shutdown_with_timeout_forwards_to_inner_exporter() {
     let _guard = acquire_test_state_lock();
 
     let span_called = Arc::new(AtomicBool::new(false));
-    let mut span = ResilientSpanExporter::new(ForwardingSpanExporter {
+    let span = ResilientSpanExporter::new(ForwardingSpanExporter {
         shutdown_with_timeout_called: span_called.clone(),
         resource_set: Arc::new(AtomicBool::new(false)),
     });

@@ -152,10 +152,7 @@ pub(super) fn http_client(
 ) -> Result<reqwest::Client, TelemetryError> {
     let mut builder = reqwest::Client::builder().timeout(timeout);
     if let Some((_, certificates)) = &tls.ca {
-        builder = builder.tls_built_in_root_certs(false);
-        for certificate in certificates {
-            builder = builder.add_root_certificate(certificate.clone());
-        }
+        builder = builder.tls_certs_only(certificates.iter().cloned());
     }
     if let Some((_, _, identity)) = &tls.identity {
         builder = builder.identity(identity.clone());

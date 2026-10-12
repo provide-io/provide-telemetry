@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime};
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider as _, Severity};
 #[cfg(feature = "otel-grpc")]
 use opentelemetry_otlp::WithTonicConfig;
-use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{LogExporter, Protocol, RetryPolicy, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::logs::log_processor_with_async_runtime::BatchLogProcessor;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::Resource;
@@ -78,7 +78,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             let mut builder = LogExporter::builder()
                 .with_http()
                 .with_protocol(http_protocol)
-                .with_timeout(timeout);
+                .with_timeout(timeout)
+                // Retries belong to the SDK's resilience policy; the exporter's own would stack on them.
+                .with_retry_policy(RetryPolicy::disabled());
             let endpoint = validate_optional_endpoint(cfg.logging.otlp_endpoint.as_ref())?;
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
@@ -93,7 +95,10 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
         }
         #[cfg(feature = "otel-grpc")]
         OtlpProtocol::Grpc => {
-            let mut builder = LogExporter::builder().with_tonic().with_timeout(timeout);
+            let mut builder = LogExporter::builder()
+                .with_tonic()
+                .with_timeout(timeout)
+                .with_retry_policy(RetryPolicy::disabled());
             let endpoint = validate_optional_endpoint(cfg.logging.otlp_endpoint.as_ref())?;
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);

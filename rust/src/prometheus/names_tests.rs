@@ -7,7 +7,7 @@
 
 use super::*;
 
-use serde_yaml::Value;
+use serde_json::Value;
 
 const STRATEGIES: [&str; 4] = [
     "UnderscoreEscapingWithSuffixes",
@@ -22,7 +22,7 @@ fn fixtures() -> Value {
         env!("CARGO_MANIFEST_DIR"),
         "/../spec/prometheus_fixtures.yaml"
     );
-    serde_yaml::from_str(&std::fs::read_to_string(path).expect("fixtures readable"))
+    serde_saphyr::from_str(&std::fs::read_to_string(path).expect("fixtures readable"))
         .expect("fixtures parse")
 }
 
@@ -40,7 +40,7 @@ fn kind_of(instrument: &str) -> Kind {
 #[mutants::skip] // test helper
 fn check_metric_section(section: &str) -> usize {
     let doc = fixtures();
-    let cases = doc[section].as_sequence().expect("section is a list");
+    let cases = doc[section].as_array().expect("section is a list");
     let mut checked = 0;
     for case in cases {
         let name = case["name"].as_str().unwrap();
@@ -62,7 +62,7 @@ fn check_metric_section(section: &str) -> usize {
 #[mutants::skip] // test helper
 fn check_label_section(section: &str) -> usize {
     let doc = fixtures();
-    let cases = doc[section].as_sequence().expect("section is a list");
+    let cases = doc[section].as_array().expect("section is a list");
     for case in cases {
         let attribute = case["attribute"].as_str().unwrap();
         let escaped = case["escaped"].as_str().map(str::to_string);

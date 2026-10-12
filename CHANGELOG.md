@@ -58,6 +58,28 @@ keys render to the same name (`1` and `"1"`), now canonicalizes to `null`.
 fails outright with `engine-strict=true`. Node 18 reached end-of-life on
 2025-04-30 and Node 20 on 2026-04-30; CI has only tested Node 22 and newer.
 
+**Rust: move to OpenTelemetry Rust 0.33 and Rust 1.89.** The `otel`
+features now build on `opentelemetry`, `opentelemetry_sdk` and
+`opentelemetry-otlp` 0.33, up from 0.31. If your application uses OTel's API
+directly, move its own `opentelemetry*` crates to 0.33 as well. Otherwise
+Cargo builds both versions side by side, each with its own global providers,
+and spans or metrics made through 0.31 never reach this SDK's exporters. The
+minimum supported Rust version rises from 1.81 to 1.89.
+
+- 0.33 fixes GHSA-w9wp-h8wv-79jx, unbounded memory in the SDK's W3C Baggage
+  propagator. This SDK parses baggage itself and never used that propagator,
+  but an application that installed it was exposed.
+- The OTLP exporters' own retries, on by default since 0.33, are turned off.
+  The SDK's resilience policy stays the only retry layer.
+- aws-lc-rs replaces ring as the crate's only crypto provider: in reqwest
+  0.13's TLS, the gRPC exporter's TLS and the Prometheus listener's rustls
+  config. Building it needs a C compiler. On Windows x86-64 it also needs
+  NASM, or `AWS_LC_SYS_PREBUILT_NASM=1` to use the prebuilt objects
+  aws-lc-sys ships.
+- The Prometheus listener reads its web config with `serde-saphyr` instead of
+  the deprecated `serde_yaml`, which pulled in the unmaintained
+  `unsafe-libyaml`.
+
 ### Added
 
 - **Prometheus scrape support in all five languages.** Add `prometheus` to

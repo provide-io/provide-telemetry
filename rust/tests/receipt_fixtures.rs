@@ -39,10 +39,31 @@ fn cases() -> Vec<ReceiptCase> {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/receipt_fixtures.yaml");
     let text =
         std::fs::read_to_string(path).expect("spec/receipt_fixtures.yaml should be readable");
-    let fixture: Fixture =
-        serde_yaml::from_str(&text).expect("spec/receipt_fixtures.yaml should parse");
+    // A non-finite float has no `serde_json::Value` form. Rather than fail the
+    // parse, serde-saphyr can hand it over as its YAML spelling (`.nan`, `.inf`,
+    // `-.inf`); `non_finite_to_null` then does what serde_json does with a
+    // non-finite f64. No fixture carries those spellings as quoted strings.
+    let options = serde_saphyr::options! { reject_non_finite_typeless_float: false };
+    let mut fixture: Fixture = serde_saphyr::from_str_with_options(&text, options)
+        .expect("spec/receipt_fixtures.yaml should parse");
     assert!(!fixture.cases.is_empty(), "the contract must carry vectors");
+    for case in &mut fixture.cases {
+        non_finite_to_null(&mut case.input);
+    }
     fixture.cases
+}
+
+/// Replace serde-saphyr's spellings of NaN and ±Infinity with `null`, as
+/// `serde_json` stores a non-finite f64.
+fn non_finite_to_null(value: &mut Value) {
+    match value {
+        Value::String(text) if matches!(text.as_str(), ".nan" | ".inf" | "-.inf") => {
+            *value = Value::Null;
+        }
+        Value::Array(items) => items.iter_mut().for_each(non_finite_to_null),
+        Value::Object(map) => map.values_mut().for_each(non_finite_to_null),
+        _ => {}
+    }
 }
 
 #[test]
@@ -90,7 +111,8 @@ fn receipt_vectors_match_exactly() {
 /// `input` and `normalized` differ only where JCS cannot encode the input —
 /// NaN and ±Infinity, which the contract fixes as `null`. Rust reaches that
 /// normalization without a code path for it: `serde_json::Number` cannot hold a
-/// non-finite float, so a deserialized `input` already *is* `normalized`.
+/// non-finite float, so `input`, once in a `serde_json::Value`, already *is*
+/// `normalized`.
 #[test]
 fn non_finite_inputs_normalize_before_reaching_the_canonicalizer() {
     for case in cases() {

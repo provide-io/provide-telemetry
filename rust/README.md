@@ -17,7 +17,7 @@ serde_json = "1"                                  # structured log fields are se
 # provide-telemetry = "0.11"
 ```
 
-Requires Rust 1.81+.
+Requires Rust 1.89+.
 
 ## Quick start
 
@@ -385,7 +385,7 @@ the OTLP E2E client/server pair used by the cross-language verification flow.
 
 ## Requirements
 
-- Rust 1.81+
+- Rust 1.89+
 
 ## Coverage gate
 

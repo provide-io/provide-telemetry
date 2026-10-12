@@ -62,7 +62,7 @@ fn fixture_path() -> PathBuf {
 fn cases() -> Vec<NumberCase> {
     let path = fixture_path();
     let text = std::fs::read_to_string(&path).expect("the number fixture should be readable");
-    let fixture: Fixture = serde_yaml::from_str(&text).expect("the number fixture should parse");
+    let fixture: Fixture = serde_saphyr::from_str(&text).expect("the number fixture should parse");
     assert!(
         fixture.cases.len() >= EXPECTED_CASES,
         "{} declared {} cases, want at least {EXPECTED_CASES}",

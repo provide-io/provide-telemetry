@@ -334,7 +334,10 @@ fn hash_value(value: &Value) -> String {
         _ => hasher.update(canonical_json(value).as_bytes()),
     }
     let digest = hasher.finalize();
-    format!("{:x}", digest)[..12].to_string()
+    digest[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn mask_value(value: &Value, mode: &PIIMode, truncate_to: usize) -> Option<Value> {

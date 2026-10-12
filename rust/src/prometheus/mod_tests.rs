@@ -9,7 +9,7 @@ use super::*;
 
 use crate::testing::acquire_test_state_lock;
 use render::{Labels, MetricView, Points, ScopeView};
-use serde_yaml::Value;
+use serde_json::Value;
 
 #[mutants::skip] // test helper
 fn fixtures() -> Value {
@@ -17,7 +17,7 @@ fn fixtures() -> Value {
         env!("CARGO_MANIFEST_DIR"),
         "/../spec/prometheus_fixtures.yaml"
     );
-    serde_yaml::from_str(&std::fs::read_to_string(path).expect("fixtures readable"))
+    serde_saphyr::from_str(&std::fs::read_to_string(path).expect("fixtures readable"))
         .expect("fixtures parse")
 }
 
@@ -72,20 +72,15 @@ fn samples(families: &[Family]) -> Vec<(String, Labels, f64)> {
 #[mutants::skip] // test helper
 fn expected_samples(case: &Value) -> Vec<(String, Labels, f64)> {
     case["expected_samples"]
-        .as_sequence()
+        .as_array()
         .unwrap()
         .iter()
         .map(|sample| {
             let labels = sample["labels"]
-                .as_mapping()
+                .as_object()
                 .unwrap()
                 .iter()
-                .map(|(k, v)| {
-                    (
-                        k.as_str().unwrap().to_string(),
-                        v.as_str().unwrap().to_string(),
-                    )
-                })
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
                 .collect();
             (
                 sample["metric"].as_str().unwrap().to_string(),
@@ -99,7 +94,7 @@ fn expected_samples(case: &Value) -> Vec<(String, Labels, f64)> {
 #[test]
 fn health_metrics_fixture_cases() {
     let doc = fixtures();
-    let cases = doc["health_metrics"].as_sequence().unwrap();
+    let cases = doc["health_metrics"].as_array().unwrap();
     let full = cases
         .iter()
         .find(|c| c["id"] == "full_snapshot")

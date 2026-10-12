@@ -293,7 +293,7 @@ fn main() {
             .expect("cannot read spec/contract_fixtures.yaml")
     });
 
-    let doc: Value = serde_yaml::from_str(&yaml_content).expect("failed to parse YAML");
+    let doc: Value = serde_saphyr::from_str(&yaml_content).expect("failed to parse YAML");
     let cases = doc
         .get("contract_cases")
         .expect("YAML missing contract_cases key");

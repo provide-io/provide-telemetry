@@ -41,9 +41,7 @@ fn client(certs: Option<&TestCerts>, client_cert: bool) -> reqwest::blocking::Cl
     let mut builder = reqwest::blocking::Client::builder().timeout(Duration::from_secs(5));
     if let Some(certs) = certs {
         let ca = std::fs::read(&certs.ca).unwrap();
-        builder = builder
-            .tls_built_in_root_certs(false)
-            .add_root_certificate(reqwest::Certificate::from_pem(&ca).unwrap());
+        builder = builder.tls_certs_only([reqwest::Certificate::from_pem(&ca).unwrap()]);
         if client_cert {
             let pem = [
                 std::fs::read(&certs.client_key).unwrap(),
@@ -71,7 +69,7 @@ fn raw(address: SocketAddr, request: &[u8]) -> String {
 
 /// Substitute the fixture placeholders and write the web config, if any.
 #[mutants::skip] // test helper
-fn web_config_for(case: &serde_yaml::Value, certs: &TestCerts) -> String {
+fn web_config_for(case: &serde_json::Value, certs: &TestCerts) -> String {
     let missing = certs.dir.join("missing.pem").display().to_string();
     if let Some(path) = case["web_config_path"].as_str() {
         return path.replace("{missing}", &missing);
@@ -79,7 +77,7 @@ fn web_config_for(case: &serde_yaml::Value, certs: &TestCerts) -> String {
     if case["web_config"].is_null() {
         return String::new();
     }
-    let text = serde_yaml::to_string(&case["web_config"])
+    let text = serde_saphyr::to_string(&case["web_config"])
         .unwrap()
         .replace("{cert}", &certs.cert.display().to_string())
         .replace("{key}", &certs.key.display().to_string())
@@ -92,14 +90,14 @@ fn web_config_for(case: &serde_yaml::Value, certs: &TestCerts) -> String {
 }
 
 #[mutants::skip] // test helper
-fn fixture_cases() -> Vec<serde_yaml::Value> {
+fn fixture_cases() -> Vec<serde_json::Value> {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../spec/prometheus_fixtures.yaml"
     );
-    let doc: serde_yaml::Value =
-        serde_yaml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-    doc["listener_web_config"].as_sequence().unwrap().clone()
+    let doc: serde_json::Value =
+        serde_saphyr::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    doc["listener_web_config"].as_array().unwrap().clone()
 }
 
 #[test]
@@ -347,8 +345,7 @@ fn tls13_only_refuses_a_tls12_client() {
     let url = format!("https://localhost:{}/metrics", address.port());
     let ca = std::fs::read(&certs.ca).unwrap();
     let tls12 = reqwest::blocking::Client::builder()
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(reqwest::Certificate::from_pem(&ca).unwrap())
+        .tls_certs_only([reqwest::Certificate::from_pem(&ca).unwrap()])
         .max_tls_version(reqwest::tls::Version::TLS_1_2)
         .build()
         .unwrap();
@@ -371,8 +368,7 @@ fn tls12_is_accepted_by_default() {
     let address = start(config("/metrics", &tls_web_config(&certs, ""))).unwrap();
     let ca = std::fs::read(&certs.ca).unwrap();
     let tls12 = reqwest::blocking::Client::builder()
-        .tls_built_in_root_certs(false)
-        .add_root_certificate(reqwest::Certificate::from_pem(&ca).unwrap())
+        .tls_certs_only([reqwest::Certificate::from_pem(&ca).unwrap()])
         .max_tls_version(reqwest::tls::Version::TLS_1_2)
         .build()
         .unwrap();

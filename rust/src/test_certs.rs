@@ -28,15 +28,14 @@ pub(crate) struct TestCerts {
 fn leaf(
     names: &[&str],
     usage: ExtendedKeyUsagePurpose,
-    ca: &rcgen::Certificate,
-    ca_key: &KeyPair,
+    issuer: &rcgen::Issuer<'_, &KeyPair>,
 ) -> (String, String) {
     let key = KeyPair::generate().expect("key");
     let names: Vec<String> = names.iter().map(|n| (*n).to_string()).collect();
     let mut params = CertificateParams::new(names).expect("params");
     params.extended_key_usages = vec![usage];
     params.distinguished_name.push(DnType::CommonName, "leaf");
-    let cert = params.signed_by(&key, ca, ca_key).expect("sign");
+    let cert = params.signed_by(&key, issuer).expect("sign");
     (cert.pem(), key.serialize_pem())
 }
 
@@ -53,18 +52,14 @@ impl TestCerts {
             .push(DnType::CommonName, "provide test CA");
         params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
         let ca = params.self_signed(&ca_key).expect("ca");
+        let issuer = rcgen::Issuer::from_params(&params, &ca_key);
         let (cert, key) = leaf(
             &["localhost", "127.0.0.1"],
             ExtendedKeyUsagePurpose::ServerAuth,
-            &ca,
-            &ca_key,
+            &issuer,
         );
-        let (client_cert, client_key) = leaf(
-            &["client"],
-            ExtendedKeyUsagePurpose::ClientAuth,
-            &ca,
-            &ca_key,
-        );
+        let (client_cert, client_key) =
+            leaf(&["client"], ExtendedKeyUsagePurpose::ClientAuth, &issuer);
         let write = |name: &str, text: &str| {
             let path = dir.join(name);
             std::fs::write(&path, text).expect("write pem");

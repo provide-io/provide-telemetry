@@ -53,7 +53,7 @@ fn fixture() -> Fixture {
     );
     let text =
         std::fs::read_to_string(path).expect("spec/pipeline_fixtures.yaml should be readable");
-    serde_yaml::from_str(&text).expect("spec/pipeline_fixtures.yaml should parse")
+    serde_saphyr::from_str(&text).expect("spec/pipeline_fixtures.yaml should parse")
 }
 
 fn expected(case_id: &str) -> Vec<String> {

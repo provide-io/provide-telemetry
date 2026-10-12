@@ -320,7 +320,7 @@ fn yaml_scalars_become_text() {
     assert_eq!(scalar(&Value::Number(5.into())), Some("5".to_string()));
     assert_eq!(scalar(&Value::Bool(true)), Some("true".to_string()));
     assert_eq!(scalar(&Value::Null), None);
-    assert_eq!(scalar(&Value::Sequence(Vec::new())), None);
+    assert_eq!(scalar(&Value::Array(Vec::new())), None);
 }
 
 #[test]

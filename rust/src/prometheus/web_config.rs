@@ -17,12 +17,12 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use base64::Engine as _;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig, SupportedProtocolVersion};
-use serde_yaml::Value;
+use serde_json::{Map, Value};
 use sha2::Sha256;
 
 const TOP_KEYS: [&str; 2] = ["basic_auth_users", "tls_server_config"];
@@ -85,7 +85,7 @@ impl TlsSettings {
     }
 
     fn build(&self) -> Result<Arc<ServerConfig>, String> {
-        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
         let certs = load_certs(&self.cert)?;
         let key = PrivateKeyDer::from_pem_file(&self.key)
             .map_err(|err| format!("{}: {err}", self.key.display()))?;
@@ -169,8 +169,8 @@ fn cache_key() -> &'static [u8; 32] {
 
 /// The verified-credentials cache's key for `user` and `password`.
 fn cache_digest(user: &str, password: &str) -> [u8; 32] {
-    let mut mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(cache_key()).expect("HMAC takes a key of any length");
+    let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(cache_key())
+        .expect("HMAC takes a key of any length");
     mac.update(format!("{user}\0{password}").as_bytes());
     mac.finalize().into_bytes().into()
 }
@@ -228,19 +228,18 @@ fn scalar(value: &Value) -> Option<String> {
     }
 }
 
-fn only_keys(map: &serde_yaml::Mapping, allowed: &[&str]) -> bool {
-    map.keys()
-        .all(|key| key.as_str().is_some_and(|key| allowed.contains(&key)))
+fn only_keys(map: &Map<String, Value>, allowed: &[&str]) -> bool {
+    map.keys().all(|key| allowed.contains(&key.as_str()))
 }
 
 /// Read and validate a web config file; any problem is an error message.
 pub(crate) fn load_web_config(path: &str) -> Result<WebSecurity, String> {
     let text = std::fs::read_to_string(path).map_err(|err| format!("web config {path}: {err}"))?;
     let data: Value =
-        serde_yaml::from_str(&text).map_err(|err| format!("web config {path}: {err}"))?;
+        serde_saphyr::from_str(&text).map_err(|err| format!("web config {path}: {err}"))?;
     let map = match data {
         Value::Null => return Ok(WebSecurity::default()),
-        Value::Mapping(map) if only_keys(&map, &TOP_KEYS) => map,
+        Value::Object(map) if only_keys(&map, &TOP_KEYS) => map,
         _ => {
             return Err(format!(
                 "web config {path}: only {TOP_KEYS:?} are supported"
@@ -250,7 +249,7 @@ pub(crate) fn load_web_config(path: &str) -> Result<WebSecurity, String> {
     let base = Path::new(path).parent().unwrap_or(Path::new(""));
     let users = match map.get("basic_auth_users") {
         None | Some(Value::Null) => HashMap::new(),
-        Some(Value::Mapping(raw)) => users(raw, path)?,
+        Some(Value::Object(raw)) => users(raw, path)?,
         Some(_) => {
             return Err(format!(
                 "web config {path}: basic_auth_users must map user names to bcrypt hashes"
@@ -268,10 +267,10 @@ pub(crate) fn load_web_config(path: &str) -> Result<WebSecurity, String> {
     })
 }
 
-fn users(raw: &serde_yaml::Mapping, path: &str) -> Result<HashMap<String, String>, String> {
+fn users(raw: &Map<String, Value>, path: &str) -> Result<HashMap<String, String>, String> {
     let mut users = HashMap::new();
     for (user, hashed) in raw {
-        let user = scalar(user).unwrap_or_default();
+        let user = user.clone();
         let hashed = scalar(hashed).unwrap_or_default();
         let well_formed = hashed
             .parse::<bcrypt::HashParts>()
@@ -288,7 +287,7 @@ fn users(raw: &serde_yaml::Mapping, path: &str) -> Result<HashMap<String, String
 
 fn tls(raw: &Value, base: &Path) -> Result<TlsReloader, String> {
     let map = match raw {
-        Value::Mapping(map) if only_keys(map, &TLS_KEYS) => map,
+        Value::Object(map) if only_keys(map, &TLS_KEYS) => map,
         _ => {
             return Err(format!(
                 "tls_server_config: only {TLS_KEYS:?} are supported"
