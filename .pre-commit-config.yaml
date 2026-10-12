@@ -113,9 +113,14 @@ repos:
         always_run: true
         types: [python]
 
+      # The same audit as CI's dependency-audit job: the committed lock, with
+      # pip-audit from a tool environment. `python -m pip_audit` needed
+      # pip-audit in the project venv, which no dependency group declares, so
+      # any `uv sync` removed it and the hook failed with "No module named
+      # pip_audit".
       - id: pip-audit
         name: pip-audit (vulnerability scan)
-        entry: uv run python -m pip_audit --path .
+        entry: uv run python ci/audit_python.py
         language: system
         pass_filenames: false
         always_run: true
