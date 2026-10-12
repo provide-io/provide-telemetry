@@ -15,7 +15,7 @@ from __future__ import annotations
 
 __all__ = ["apply_policies", "rolled_back_on_failure"]
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 from provide.telemetry.backpressure import QueuePolicy, get_queue_policy, set_queue_policy
@@ -27,7 +27,7 @@ _SIGNALS = ("logs", "traces", "metrics")
 
 
 @contextmanager
-def rolled_back_on_failure() -> Iterator[None]:
+def rolled_back_on_failure() -> Generator[None]:
     """Put back every policy ``apply_policies`` writes if the block raises.
 
     ``apply_policies`` installs the policies one at a time, and the update that

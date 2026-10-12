@@ -24,7 +24,7 @@ import pytest
 from provide.telemetry.tracing.span import _set_span_attr, record_exception, set_attrs, span
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator
 
 
 class _RecordingSpan:
@@ -125,7 +125,7 @@ def stub_open_span(monkeypatch: pytest.MonkeyPatch) -> tuple[dict[str, Any], _Re
     sp = _RecordingSpan()
 
     @contextmanager
-    def _stub(name: str, scope: str | None = None) -> Iterator[Any]:
+    def _stub(name: str, scope: str | None = None) -> Generator[Any]:
         captured["name"] = name
         captured["scope"] = scope
         yield sp

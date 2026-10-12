@@ -206,15 +206,12 @@ def _plain_console_renderer() -> Any:
 
 
 def _get_level(level: str) -> int:
-    # addLevelName registers TRACE, so getLevelName below resolves it anyway —
+    # addLevelName registers TRACE, so the names mapping below holds it anyway —
     # this fast path is a shortcut, making mutations of the literal equivalent.
-    is_trace = level == "TRACE"  # pragma: no mutate — shortcut only; getLevelName resolves TRACE anyway
+    is_trace = level == "TRACE"  # pragma: no mutate — shortcut only; the names mapping resolves TRACE anyway
     if is_trace:
         return TRACE
-    mapped = logging.getLevelName(level)
-    if isinstance(mapped, int):
-        return mapped
-    return logging.INFO
+    return logging.getLevelNamesMapping().get(level, logging.INFO)
 
 
 def _make_filtering_bound_logger(level: int) -> type[structlog.typing.BindableLogger]:
