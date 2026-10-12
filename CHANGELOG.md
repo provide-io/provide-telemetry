@@ -225,6 +225,20 @@ fails outright with `engine-strict=true`. Node 18 reached end-of-life on
   only for a third-party `IMeter` implementation, which must add the two
   parameters.
 
+- **Dependency floors move up in three SDKs.**
+  - **Go:** `go/otel` now requires OpenTelemetry Go v1.47.0, where `otel/log`
+    and `sdk/log` are stable at v1.47.0 too. That `otel/log` line is a breaking
+    change upstream: code of yours that builds OTel log records with
+    `log.Value`/`log.KeyValue` needs OTel's `attribute` types. The SDK reads and
+    sets the global logger provider through `otel.GetLoggerProvider` and
+    `otel.SetLoggerProvider`, which share one global with the deprecated
+    `otel/log/global`.
+  - **TypeScript:** the experimental OpenTelemetry JS peers (`api-logs`,
+    `sdk-logs` and the three OTLP HTTP exporters) accept `>=0.221.0 <0.224.0`.
+    `^0.221.0` accepted only 0.221.x.
+  - **C#:** `Provide.Telemetry.OpenTelemetry` depends on OpenTelemetry 1.19.1
+    and Microsoft.Extensions 10.0.12.
+
 ### Fixed
 
 - **Rust: metric unit and description now reach OTel.** `counter()`,
