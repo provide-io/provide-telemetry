@@ -20,7 +20,6 @@ each SDK joins the parametrization as it ships Tier 3.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import shutil
@@ -36,7 +35,15 @@ from urllib.request import urlopen
 
 import pytest
 
-pytestmark = pytest.mark.e2e
+# flock serialises the probes' shared port. It is POSIX-only, and the scrape
+# target is a Linux-runner service, so on Windows there is nothing to run.
+if sys.platform != "win32":
+    import fcntl
+
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.skipif(sys.platform == "win32", reason="fcntl.flock and the Prometheus service are POSIX-only"),
+]
 
 _REPO_ROOT = Path(__file__).parent.parent
 _READY_TIMEOUT_S = 300.0  # includes compiling the probe
@@ -114,7 +121,8 @@ def probe(request: pytest.FixtureRequest) -> Iterator[tuple[str, str]]:
     # runs workers in parallel, so hold the port exclusively for the probe's life.
     lock_path = Path(tempfile.gettempdir()) / f"provide-prometheus-scrape-{port}.lock"
     with lock_path.open("w", encoding="utf-8") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        if sys.platform != "win32":  # the module is skipped on Windows; this keeps mypy --platform win32 clean
+            fcntl.flock(lock, fcntl.LOCK_EX)
         proc = subprocess.Popen(  # nosec B603 — fixed probe command
             command, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )

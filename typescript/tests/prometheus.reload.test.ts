@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import bcrypt from 'bcryptjs';
 import { stringify } from 'yaml';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { Pki } from './support/pki.js';
+import { fillPathPlaceholders, Pki } from './support/pki.js';
 import { promFixtures, snapshotFrom } from './support/prometheus-fixtures.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -170,10 +170,11 @@ describe('prom-listener, freshly loaded', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'reload-')), 'web.yml');
     writeFileSync(
       path,
-      stringify(config)
-        .replace(/\{cert\}/g, pki.certFile)
-        .replace(/\{key\}/g, pki.keyFile)
-        .replace(/\{ca\}/g, pki.caFile),
+      fillPathPlaceholders(stringify(config), {
+        cert: pki.certFile,
+        key: pki.keyFile,
+        ca: pki.caFile,
+      }),
     );
     return path;
   }

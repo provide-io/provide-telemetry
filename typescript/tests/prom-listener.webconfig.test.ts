@@ -23,7 +23,7 @@ import {
 } from '../src/prom-listener.js';
 import { _resetPullForTests, markPullReady } from '../src/prom-pull.js';
 import { basic, fetchListener, PASSWORD, startListener } from './support/listener-client.js';
-import { Pki, SERVER_AUTH } from './support/pki.js';
+import { fillPathPlaceholders, Pki, SERVER_AUTH } from './support/pki.js';
 
 let pki: Pki;
 let hashed: string;
@@ -49,12 +49,12 @@ afterEach(async () => {
 });
 
 function writeConfig(config: unknown, dir = mkdtempSync(join(tmpdir(), 'web-'))): string {
-  const text = (typeof config === 'string' ? config : stringify(config))
-    .replace(/\{cert\}/g, pki.certFile)
-    .replace(/\{key\}/g, pki.keyFile)
-    .replace(/\{ca\}/g, pki.caFile)
-    .replace(/\{missing\}/g, join(dir, 'missing.pem'))
-    .replace(/\{hash\}/g, hashed);
+  const text = fillPathPlaceholders(typeof config === 'string' ? config : stringify(config), {
+    cert: pki.certFile,
+    key: pki.keyFile,
+    ca: pki.caFile,
+    missing: join(dir, 'missing.pem'),
+  }).replace(/\{hash\}/g, hashed);
   const path = join(dir, 'web.yml');
   writeFileSync(path, text);
   return path;

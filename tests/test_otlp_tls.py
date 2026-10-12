@@ -102,7 +102,10 @@ def test_other_signals_files_are_ignored(tmp_path: Path) -> None:
 
 def test_a_directory_is_unreadable(tmp_path: Path) -> None:
     problem = _otlp_tls.unreadable("logs", {"OTEL_EXPORTER_OTLP_CERTIFICATE": str(tmp_path)})
-    assert problem == f"OTEL_EXPORTER_OTLP_CERTIFICATE={tmp_path}: Is a directory"
+    # The reason is the OS's own: "Is a directory" on POSIX, "Permission denied" on Windows.
+    with pytest.raises(OSError) as refused:
+        tmp_path.open("rb")
+    assert problem == f"OTEL_EXPORTER_OTLP_CERTIFICATE={tmp_path}: {refused.value.strerror}"
 
 
 def test_tls_ready_records_logs_and_take_clears(

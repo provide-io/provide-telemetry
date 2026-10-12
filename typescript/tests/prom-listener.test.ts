@@ -29,7 +29,7 @@ import {
   settings,
   startListener,
 } from './support/listener-client.js';
-import { Pki } from './support/pki.js';
+import { fillPathPlaceholders, Pki } from './support/pki.js';
 import { promFixtures } from './support/prometheus-fixtures.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -50,12 +50,12 @@ function ready(): void {
 
 /** Write a web config with the fixture placeholders filled in; returns its path. */
 function writeConfig(config: unknown, dir = mkdtempSync(join(tmpdir(), 'web-'))): string {
-  const text = stringify(config)
-    .replace(/\{cert\}/g, pki.certFile)
-    .replace(/\{key\}/g, pki.keyFile)
-    .replace(/\{ca\}/g, pki.caFile)
-    .replace(/\{missing\}/g, join(dir, 'missing.pem'))
-    .replace(/bcrypt_of_e2e_test_only_password/g, `'${hashed}'`);
+  const text = fillPathPlaceholders(stringify(config), {
+    cert: pki.certFile,
+    key: pki.keyFile,
+    ca: pki.caFile,
+    missing: join(dir, 'missing.pem'),
+  }).replace(/bcrypt_of_e2e_test_only_password/g, `'${hashed}'`);
   const path = join(dir, 'web.yml');
   writeFileSync(path, text);
   return path;

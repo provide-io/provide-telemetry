@@ -29,7 +29,7 @@ async function keyPair(): Promise<CryptoKeyPair> {
 async function keyPem(key: CryptoKey): Promise<string> {
   const der = Buffer.from(await webcrypto.subtle.exportKey('pkcs8', key));
   const body = der.toString('base64').replace(/(.{64})/g, '$1\n');
-  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`;
+  return `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`; // pragma: allowlist secret -- PEM framing for a key generated at test time
 }
 
 /** Extended key usage OIDs, for issue(). */
@@ -116,4 +116,17 @@ export class Pki {
       this.write(`${name}.key`, await keyPem(keys.privateKey)),
     ];
   }
+}
+
+/**
+ * Fill `{name}` placeholders in YAML text with file paths, taking any quotes
+ * around the placeholder with it. Each path goes in as a JSON string, which is
+ * a valid double-quoted YAML scalar, so a Windows path's backslashes stay
+ * literal instead of reading as escapes (`"C:\Users"` is invalid YAML).
+ * Placeholders not in `paths` are left as they are.
+ */
+export function fillPathPlaceholders(text: string, paths: Record<string, string>): string {
+  return text.replace(/(["']?)\{(\w+)\}\1/g, (match: string, _quote: string, name: string) =>
+    name in paths ? JSON.stringify(paths[name]) : match,
+  );
 }
