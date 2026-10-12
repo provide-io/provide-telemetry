@@ -42,6 +42,7 @@ import shutil
 import ssl
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass
@@ -53,7 +54,14 @@ from urllib.request import Request, urlopen
 import pytest
 import yaml
 
-pytestmark = pytest.mark.e2e
+# flock serialises one language's probe runs; see test_sdk_pushes_metrics_to_prometheus_over_otlp.
+if sys.platform != "win32":
+    import fcntl
+
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.skipif(sys.platform == "win32", reason="fcntl.flock and the Prometheus service are POSIX-only"),
+]
 
 _REPO_ROOT = Path(__file__).parent.parent
 _FIXTURES = _REPO_ROOT / "spec" / "prometheus_fixtures.yaml"
@@ -205,15 +213,23 @@ def test_sdk_pushes_metrics_to_prometheus_over_otlp(language: str, mode: str) ->
     prefix = f"e2e.prom.{language}.{mode}.{run_id}"
     escaped = prefix.replace(".", "_")
     service = f"prometheus-push-probe-{language}"
-    done = subprocess.run(  # nosec B603 — fixed probe commands
-        probe.command,
-        cwd=probe.cwd,
-        env=_probe_env(target, service, prefix),
-        capture_output=True,
-        text=True,
-        timeout=_PROBE_TIMEOUT_S,
-        check=False,
-    )
+    # The pytest gate runs workers in parallel, and each mode's probe builds the
+    # same project first. cargo and go lock their own builds; `dotnet run` does
+    # not, and two at once fail writing the same deps file. One language's
+    # probes take turns; different languages still run side by side.
+    lock_path = Path(tempfile.gettempdir()) / f"provide-prometheus-push-{language}.lock"
+    with lock_path.open("w", encoding="utf-8") as lock:
+        if sys.platform != "win32":  # the module is skipped on Windows; this keeps mypy --platform win32 clean
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        done = subprocess.run(  # nosec B603 — fixed probe commands
+            probe.command,
+            cwd=probe.cwd,
+            env=_probe_env(target, service, prefix),
+            capture_output=True,
+            text=True,
+            timeout=_PROBE_TIMEOUT_S,
+            check=False,
+        )
 
     if unsupported:
         # The export fails open, so the probe may still exit 0; what must hold
