@@ -18,9 +18,11 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 import ipaddress
 import logging
 import os
+import secrets
 import socket
 import ssl
 import threading
@@ -48,6 +50,7 @@ _CLIENT_AUTH = {
 _MIN_VERSIONS = {"TLS12": ssl.TLSVersion.TLSv1_2, "TLS13": ssl.TLSVersion.TLSv1_3}
 # Compared against when the user is unknown, so a wrong user name costs the same
 # as a wrong password. Any well-formed cost-10 hash will do.
+_CACHE_KEY_BYTES = 32  # pragma: no mutate — any key length works; 32 bytes matches SHA-256
 _DUMMY_HASH = b"$2a$10$WuJ86tQzfCxkRPXM1G759Oi0am1AacPdbzSZS/UqQ3ePrV6MohbZq"
 # bcrypt.checkpw raises ValueError for a malformed hash whatever the password.
 _HASH_PROBE = b""
@@ -100,7 +103,11 @@ class _TLSReloader:
 class WebSecurity:
     users: dict[str, bytes] = field(default_factory=dict)
     tls: _TLSReloader | None = None
-    _verified: set[bytes] = field(default_factory=set)  # sha256(user, password) of successful checks
+    _verified: set[bytes] = field(default_factory=set)  # _cache_digest(user, password) of successful checks
+    # Keys the verified-credentials cache. A plain hash of user and password in
+    # memory could be guessed at hash speed, far faster than bcrypt; a keyed one
+    # cannot be without this key, which never leaves the process.
+    _cache_key: bytes = field(default_factory=lambda: secrets.token_bytes(_CACHE_KEY_BYTES), compare=False, repr=False)
 
     def authorized(self, header: str | None) -> bool:
         """Whether an Authorization header satisfies basic auth (always, with no users)."""
@@ -118,7 +125,7 @@ class WebSecurity:
     def authenticate(self, user: str, password: str) -> bool:
         import bcrypt
 
-        digest = hashlib.sha256(f"{user}\0{password}".encode()).digest()
+        digest = hmac.new(self._cache_key, f"{user}\0{password}".encode(), hashlib.sha256).digest()
         if digest in self._verified:
             return True
         hashed = self.users.get(user)

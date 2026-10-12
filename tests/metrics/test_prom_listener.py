@@ -35,7 +35,7 @@ from provide.telemetry.metrics import _prom_render as render
 from provide.telemetry.metrics import prometheus as prom
 from provide.telemetry.metrics.provider import _set_meter_for_test
 
-_PASSWORD = "e2e-test-only-password"
+_PASSWORD = "e2e-test-only-password"  # pragma: allowlist secret — the fixtures' test-only basic-auth password
 
 
 def _repo_root() -> Path:
@@ -406,6 +406,14 @@ def test_unreadable_and_malformed_files(tmp_path: Path) -> None:
     broken.write_text("tls_server_config: [unclosed\n", encoding="utf-8")
     with pytest.raises(listener.WebConfigError, match="web config"):
         listener.load_web_config(str(broken))
+
+
+def test_the_credential_cache_is_keyed_per_config_and_never_shown() -> None:
+    first, second = listener.WebSecurity(), listener.WebSecurity()
+    assert len(first._cache_key) == 32
+    assert first._cache_key != second._cache_key
+    assert first._cache_key.hex() not in repr(first)
+    assert "_cache_key" not in repr(first)
 
 
 def test_empty_file_and_empty_users_mean_no_security(tmp_path: Path) -> None:

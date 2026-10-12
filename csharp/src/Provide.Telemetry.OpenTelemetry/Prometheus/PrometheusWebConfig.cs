@@ -121,6 +121,11 @@ internal sealed class WebSecurity
         Encoding.GetEncoding("utf-8", EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
     private readonly HashSet<string> _verified = new(StringComparer.Ordinal);
+
+    // Keys the verified-credentials cache. A plain hash of user and password in
+    // memory could be guessed at hash speed, far faster than bcrypt; a keyed one
+    // cannot be without this key, which never leaves the process.
+    private readonly byte[] _cacheKey = RandomNumberGenerator.GetBytes(32);
     private readonly object _gate = new();
 
     public WebSecurity(IReadOnlyDictionary<string, string>? users = null, TlsReloader? tls = null)
@@ -153,11 +158,11 @@ internal sealed class WebSecurity
     }
 
     /// <summary>
-    /// Check a user and password with bcrypt, caching successes by a digest of the pair.
+    /// Check a user and password with bcrypt, caching successes by a keyed digest of the pair.
     /// </summary>
     public bool Authenticate(string user, string password)
     {
-        var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{user}\0{password}")));
+        var digest = Convert.ToHexString(HMACSHA256.HashData(_cacheKey, Encoding.UTF8.GetBytes($"{user}\0{password}")));
         lock (_gate)
         {
             if (_verified.Contains(digest)) return true;

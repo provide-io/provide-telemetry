@@ -16,7 +16,7 @@
  * through a runtime-only import, and only under Node.
  */
 
-import { createHash } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import {
   createServer as createHttpServer,
@@ -146,7 +146,13 @@ export class TlsReloader {
 
 /** Basic auth users and TLS settings read from a web config. */
 export class WebSecurity {
-  private readonly verified = new Set<string>(); // sha256(user, password) of successful checks
+  private readonly verified = new Set<string>(); // cacheDigest(user, password) of successful checks
+  /**
+   * Keys the verified-credentials cache. A plain hash of user and password in
+   * memory could be guessed at hash speed, far faster than bcrypt; a keyed one
+   * cannot be without this key, which never leaves the process.
+   */
+  private readonly cacheKey = randomBytes(32);
 
   constructor(
     readonly users: ReadonlyMap<string, string> = new Map(),
@@ -175,7 +181,7 @@ export class WebSecurity {
 
   async authenticate(user: string, password: string): Promise<boolean> {
     const bcrypt = this.bcrypt as Bcrypt;
-    const digest = createHash('sha256').update(`${user}\0${password}`).digest('hex');
+    const digest = createHmac('sha256', this.cacheKey).update(`${user}\0${password}`).digest('hex');
     if (this.verified.has(digest)) return true;
     const hashed = this.users.get(user);
     if (hashed === undefined) {

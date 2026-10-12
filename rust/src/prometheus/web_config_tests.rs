@@ -322,3 +322,24 @@ fn yaml_scalars_become_text() {
     assert_eq!(scalar(&Value::Null), None);
     assert_eq!(scalar(&Value::Sequence(Vec::new())), None);
 }
+
+#[test]
+fn the_credential_cache_is_keyed_and_tells_credentials_apart() {
+    use sha2::Digest as _;
+    assert_ne!(cache_key(), &[0u8; 32]);
+    assert_eq!(cache_key(), cache_key());
+    let digest = cache_digest("scraper", "s3cret");
+    assert_eq!(digest, cache_digest("scraper", "s3cret"));
+    assert_ne!(digest, cache_digest("scraper", "wrong"));
+    let plain: [u8; 32] = Sha256::digest("scraper\0s3cret").into();
+    assert_ne!(digest, plain);
+
+    // A cached success admits that credential only.
+    let security = WebSecurity {
+        users: HashMap::from([("scraper".to_string(), bcrypt::hash("s3cret", 4).unwrap())]),
+        tls: None,
+        verified: Mutex::default(),
+    };
+    assert!(security.authorized(Some(&basic("scraper:s3cret"))));
+    assert!(!security.authorized(Some(&basic("scraper:wrong"))));
+}

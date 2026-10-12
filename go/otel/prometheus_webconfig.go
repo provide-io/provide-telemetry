@@ -5,6 +5,8 @@ package otel
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -60,7 +62,26 @@ var _webMinVersions = map[string]uint16{ //nolint:gochecknoglobals
 type _webSecurity struct {
 	tlsConfig *tls.Config
 	users     map[string][]byte
-	verified  sync.Map // sha256(user, password) -> struct{}; successful checks only
+	verified  sync.Map // _cacheDigest(user, password) -> struct{}; successful checks only
+}
+
+// _credentialCacheKey keys the verified-credentials cache. A plain hash of user
+// and password in memory could be guessed at hash speed, far faster than
+// bcrypt; a keyed one cannot be without this key, which never leaves the
+// process.
+var _credentialCacheKey = _newCredentialCacheKey() //nolint:gochecknoglobals // one secret per process
+
+func _newCredentialCacheKey() []byte {
+	key := make([]byte, sha256.Size)
+	_, _ = rand.Read(key) // never fails: crypto/rand panics rather than return an error
+	return key
+}
+
+// _cacheDigest is the verified-credentials cache's key for user and password.
+func _cacheDigest(user, password string) string {
+	mac := hmac.New(sha256.New, _credentialCacheKey)
+	_, _ = mac.Write([]byte(user + "\x00" + password)) // hash.Hash writes never fail
+	return string(mac.Sum(nil))
 }
 
 // _loadWebConfig reads and validates the file at path. Any problem is an error,
@@ -223,7 +244,7 @@ func (s *_webSecurity) requireAuth(next http.Handler) http.Handler {
 }
 
 func (s *_webSecurity) authenticate(user, password string) bool {
-	key := sha256.Sum256([]byte(user + "\x00" + password))
+	key := _cacheDigest(user, password)
 	if _, ok := s.verified.Load(key); ok {
 		return true
 	}

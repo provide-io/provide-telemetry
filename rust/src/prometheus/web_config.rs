@@ -17,12 +17,13 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use base64::Engine as _;
+use hmac::{Hmac, Mac};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig, SupportedProtocolVersion};
 use serde_yaml::Value;
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 
 const TOP_KEYS: [&str; 2] = ["basic_auth_users", "tls_server_config"];
 const TLS_KEYS: [&str; 5] = [
@@ -154,8 +155,24 @@ impl TlsReloader {
 pub(crate) struct WebSecurity {
     users: HashMap<String, String>,
     pub(crate) tls: Option<TlsReloader>,
-    /// sha256(user, password) of successful checks, so bcrypt runs once per credential.
+    /// `cache_digest(user, password)` of successful checks, so bcrypt runs once per credential.
     verified: Mutex<HashSet<[u8; 32]>>,
+}
+
+/// Keys the verified-credentials cache. A plain hash of user and password in
+/// memory could be guessed at hash speed, far faster than bcrypt; a keyed one
+/// cannot be without this key, which never leaves the process.
+fn cache_key() -> &'static [u8; 32] {
+    static KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    KEY.get_or_init(rand::random)
+}
+
+/// The verified-credentials cache's key for `user` and `password`.
+fn cache_digest(user: &str, password: &str) -> [u8; 32] {
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(cache_key()).expect("HMAC takes a key of any length");
+    mac.update(format!("{user}\0{password}").as_bytes());
+    mac.finalize().into_bytes().into()
 }
 
 impl WebSecurity {
@@ -185,7 +202,7 @@ impl WebSecurity {
     }
 
     fn authenticate(&self, user: &str, password: &str) -> bool {
-        let digest: [u8; 32] = Sha256::digest(format!("{user}\0{password}")).into();
+        let digest = cache_digest(user, password);
         if crate::_lock::lock(&self.verified).contains(&digest) {
             return true;
         }
