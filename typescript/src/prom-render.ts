@@ -222,12 +222,17 @@ export function formatValue(value: number): string {
 }
 
 function escapeHelp(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+  return text.replace(/[\\\n]/g, escapeChar);
 }
 
 /** Escape a label value or a quoted name: backslash, newline and double quote. */
 function escapeQuoted(text: string): string {
-  return escapeHelp(text).replace(/"/g, '\\"');
+  return text.replace(/[\\\n"]/g, escapeChar);
+}
+
+/** One pass per string, so no escape can be escaped again. */
+function escapeChar(char: string): string {
+  return char === '\n' ? '\\n' : `\\${char}`;
 }
 
 function labelPairs(labels: Labels): string[] {

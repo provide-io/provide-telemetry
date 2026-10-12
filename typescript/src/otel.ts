@@ -62,7 +62,11 @@ function normalizeEndpoint(endpoint: string | undefined): string | undefined {
 }
 
 function appendSignalPath(endpoint: string, signalPath: string): string {
-  return `${endpoint.replace(/\/+$/, '')}${signalPath}`;
+  // A loop, not /\/+$/: that regex backtracks quadratically on a long run of
+  // slashes that is not at the end.
+  let end = endpoint.length;
+  while (endpoint.endsWith('/', end)) end--;
+  return `${endpoint.slice(0, end)}${signalPath}`;
 }
 
 /**
