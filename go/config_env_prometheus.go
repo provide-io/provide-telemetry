@@ -82,12 +82,17 @@ func parseMetricsExporters(raw string) ([]string, []string) {
 			continue
 		}
 		sawAny = true
-		switch {
-		case name == _metricsExporterNone:
+		// Early continues, not a tagless switch: gremlins reports a switch's
+		// case expressions as not covered. See _levelName in logger_pretty.go.
+		if name == _metricsExporterNone {
 			sawNone = true
-		case name == _metricsExporterOTLP || name == _metricsExporterPrometheus:
+			continue
+		}
+		if name == _metricsExporterOTLP || name == _metricsExporterPrometheus {
 			exporters = append(exporters, name)
-		case !seen[name]:
+			continue
+		}
+		if !seen[name] {
 			seen[name] = true
 			warnings = append(warnings, _ignoredExporterWarning(name))
 		}

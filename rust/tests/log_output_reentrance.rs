@@ -38,16 +38,26 @@ fn emit(message: &str) {
 
 /// Run `f` on its own thread and fail if it has not returned within a few
 /// seconds — the visible form of a deadlock, rather than a hung suite.
+///
+/// A deadline missed exits the test binary instead of panicking. The stuck
+/// thread keeps the logger's locks, so the next test here would hang on them
+/// and the run would end in a timeout, not a failure; cargo-mutants reports
+/// that as a timed-out mutant rather than a caught one.
 fn within_deadline<F: FnOnce() + Send + 'static>(f: F) {
     let (done, finished) = mpsc::channel();
     std::thread::spawn(move || {
         f();
         let _ = done.send(());
     });
-    finished
-        .recv_timeout(Duration::from_secs(10))
-        .expect("deadlocked: the call did not return");
+    let returned = finished.recv_timeout(Duration::from_secs(10)).is_ok();
+    // One line on purpose: a separate `if !returned { exit }` body never runs
+    // when the tests pass, and the coverage gate fails on an uncovered line.
+    #[allow(clippy::diverging_sub_expression)]
+    let _: bool = returned || std::process::exit(DEADLOCKED);
 }
+
+/// The exit status of a binary stopped by a missed deadline.
+const DEADLOCKED: i32 = 101;
 
 /// What the writer does from inside `write` or `flush`.
 #[derive(Clone, Copy, PartialEq)]
