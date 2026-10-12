@@ -10,7 +10,6 @@ import (
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -64,7 +63,7 @@ func _warnIfLoggerProviderConflict() {
 	if _otelLoggerProvider != nil {
 		return
 	}
-	existing := logglobal.GetLoggerProvider()
+	existing := otel.GetLoggerProvider()
 	existingType := fmt.Sprintf("%T", existing)
 	if strings.Contains(existingType, "global") || strings.Contains(existingType, "noop") {
 		return
@@ -179,7 +178,7 @@ func _setupLoggerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 	if lp, ok := provider.(*sdklog.LoggerProvider); ok {
 		_warnIfLoggerProviderConflict()
 		_otelLoggerProvider = lp
-		logglobal.SetLoggerProvider(lp)
+		otel.SetLoggerProvider(lp)
 		_weSetLoggerGlobal = true
 	}
 }

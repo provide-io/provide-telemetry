@@ -9,7 +9,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	otellog "go.opentelemetry.io/otel/log"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -79,19 +78,19 @@ func TestShutdown_LeavesALateHostLoggerProviderInstalled(t *testing.T) {
 	ours := sdklog.NewLoggerProvider()
 	_providersMu.Lock()
 	_otelLoggerProvider = ours
-	logglobal.SetLoggerProvider(ours)
+	otel.SetLoggerProvider(ours)
 	_weSetLoggerGlobal = true
 	_providersMu.Unlock()
 
 	hostLP := sdklog.NewLoggerProvider()
 	t.Cleanup(func() { _ = hostLP.Shutdown(context.Background()) })
-	logglobal.SetLoggerProvider(hostLP)
+	otel.SetLoggerProvider(hostLP)
 
 	if err := (&_backend{}).Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown failed: %v", err)
 	}
 
-	if got := logglobal.GetLoggerProvider(); got != otellog.LoggerProvider(hostLP) {
+	if got := otel.GetLoggerProvider(); got != otellog.LoggerProvider(hostLP) {
 		t.Fatalf("shutdown replaced the host's logger provider: got %T", got)
 	}
 }
@@ -146,7 +145,7 @@ func TestShutdown_StillResetsOurOwnLoggerGlobal(t *testing.T) {
 	ours := sdklog.NewLoggerProvider()
 	_providersMu.Lock()
 	_otelLoggerProvider = ours
-	logglobal.SetLoggerProvider(ours)
+	otel.SetLoggerProvider(ours)
 	_weSetLoggerGlobal = true
 	_providersMu.Unlock()
 
@@ -154,7 +153,7 @@ func TestShutdown_StillResetsOurOwnLoggerGlobal(t *testing.T) {
 		t.Fatalf("Shutdown failed: %v", err)
 	}
 
-	if got := logglobal.GetLoggerProvider(); got == otellog.LoggerProvider(ours) {
+	if got := otel.GetLoggerProvider(); got == otellog.LoggerProvider(ours) {
 		t.Fatal("shutdown left our own logger provider registered globally")
 	}
 }

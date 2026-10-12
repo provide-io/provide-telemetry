@@ -9,7 +9,6 @@ import (
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	otelmetricnoop "go.opentelemetry.io/otel/metric/noop"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -168,7 +167,7 @@ func TestOTel_LogsEndpointAutoWiresLoggerProvider(t *testing.T) {
 	if _otelLoggerProvider == nil {
 		t.Fatal("expected logger provider to be installed")
 	}
-	if got := logglobal.GetLoggerProvider(); got == nil {
+	if got := otel.GetLoggerProvider(); got == nil {
 		t.Fatal("expected global logger provider to be set")
 	}
 }
@@ -283,8 +282,8 @@ func TestOTel_ShutdownTelemetry_ClearsProvidersAndRestoresFallback(t *testing.T)
 	if _, ok := otel.GetMeterProvider().(otelmetricnoop.MeterProvider); !ok {
 		t.Fatalf("expected global meter provider to reset to noop, got %T", otel.GetMeterProvider())
 	}
-	if _, ok := logglobal.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
-		t.Fatalf("expected global logger provider to reset away from SDK logger, got %T", logglobal.GetLoggerProvider())
+	if _, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+		t.Fatalf("expected global logger provider to reset away from SDK logger, got %T", otel.GetLoggerProvider())
 	}
 	status := telemetry.GetRuntimeStatus()
 	if !status.Fallback.Logs || !status.Fallback.Traces || !status.Fallback.Metrics {

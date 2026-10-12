@@ -13,7 +13,6 @@ import (
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -203,7 +202,7 @@ func TestCoverageLowLevel_ConflictWarningsWithNilLogger(t *testing.T) {
 
 	otel.SetTracerProvider(&_thirdPartyTracerProvider{})
 	otel.SetMeterProvider(&_thirdPartyMeterProvider{})
-	logglobal.SetLoggerProvider(&_thirdPartyLoggerProvider{})
+	otel.SetLoggerProvider(&_thirdPartyLoggerProvider{})
 
 	_warnIfTracerProviderConflict()
 	_warnIfMeterProviderConflict()
@@ -231,7 +230,7 @@ func TestCoverageLowLevel_WarnIfMeterAndLoggerProviderConflict_WarnForHostSDKPro
 
 	lp := sdklog.NewLoggerProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
-	logglobal.SetLoggerProvider(lp)
+	otel.SetLoggerProvider(lp)
 	_warnIfLoggerProviderConflict()
 
 	out := h.buf.String()

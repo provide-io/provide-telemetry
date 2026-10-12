@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
-	otellog "go.opentelemetry.io/otel/log"
+	"go.opentelemetry.io/otel/attribute"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -53,7 +53,7 @@ func (e *_inMemoryLogExporter) bodies() []string {
 	bodies := make([]string, 0, len(e.records))
 	for _, record := range e.records {
 		body := record.Body()
-		if body.Kind() == otellog.KindString {
+		if body.Type() == attribute.STRING {
 			bodies = append(bodies, body.AsString())
 			continue
 		}

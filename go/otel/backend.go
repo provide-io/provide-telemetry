@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	otellog "go.opentelemetry.io/otel/log"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	otellognoop "go.opentelemetry.io/otel/log/noop"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	otelmetricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -256,8 +255,8 @@ func _resetGlobalsWeSet(tp *sdktrace.TracerProvider, mp *sdkmetric.MeterProvider
 		_weSetMeterGlobal = false
 	}
 	if _weSetLoggerGlobal {
-		if lp != nil && logglobal.GetLoggerProvider() == otellog.LoggerProvider(lp) {
-			logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+		if lp != nil && otel.GetLoggerProvider() == otellog.LoggerProvider(lp) {
+			otel.SetLoggerProvider(otellognoop.NewLoggerProvider())
 		}
 		_weSetLoggerGlobal = false
 	}
@@ -284,7 +283,7 @@ func (b *_backend) ResetForTests() {
 	_newOTLPLogExporter = _defaultOTLPLogExporterFactory
 	otel.SetTracerProvider(otelnooptrace.NewTracerProvider())
 	otel.SetMeterProvider(otelmetricnoop.NewMeterProvider())
-	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+	otel.SetLoggerProvider(otellognoop.NewLoggerProvider())
 }
 
 func _resetOTelProviders() {
