@@ -31,6 +31,12 @@ internal static class PrometheusListener
 
     internal const int MaxHeaderBytes = 16 * 1024;
 
+    /// <summary>
+    /// How long a served connection keeps discarding what the client still
+    /// sends before it closes. See <c>DrainBeforeClose</c>.
+    /// </summary>
+    internal static readonly TimeSpan LingerTimeout = TimeSpan.FromSeconds(1);
+
     private static readonly object Gate = new();
     private static Running? _running;
 
@@ -189,12 +195,38 @@ internal static class PrometheusListener
                     var request = await HttpRequestReader.ReadAsync(stream, deadline.Token);
                     var response = Dispatch(request);
                     await stream.WriteAsync(HttpRequestReader.Format(response), deadline.Token);
+                    await DrainBeforeClose(client);
                 }
             }
             catch (Exception)
             {
                 // A failed handshake, a timeout or a dropped client ends this
                 // connection only; the listener keeps serving.
+            }
+        }
+
+        /// <summary>
+        /// Half-close and discard what the client is still sending, for at most
+        /// <see cref="LingerTimeout"/>, before the socket closes.
+        /// </summary>
+        /// <remarks>
+        /// A request refused part-way, such as one whose headers run past
+        /// <see cref="MaxHeaderBytes"/>, leaves unread bytes behind. Closing a
+        /// socket with unread input sends a reset, and on Windows the reset
+        /// reaches the client before it has read the response, so the client
+        /// sees the connection forcibly closed instead of the 400.
+        /// </remarks>
+        private static async Task DrainBeforeClose(TcpClient client)
+        {
+            // The socket, not client.GetStream(): TcpClient refuses a stream once
+            // the socket is half-closed.
+            var socket = client.Client;
+            socket.Shutdown(SocketShutdown.Send);
+            using var linger = new CancellationTokenSource(LingerTimeout);
+            var sink = new byte[4096];
+            while (await socket.ReceiveAsync(sink, SocketFlags.None, linger.Token) > 0)
+            {
+                // Discarded.
             }
         }
 
