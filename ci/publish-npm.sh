@@ -35,8 +35,14 @@ echo "publish-npm: ${name}@${version}"
 # normal "not published yet" answer. Anything else — a hit reporting a DIFFERENT
 # version — means the query did not mean what we assumed, so stop rather than
 # guess.
+#
+# Every query passes --prefer-online. The registry serves package documents with
+# `Cache-Control: max-age=300`, and npm honours it from its local cache: without
+# the flag, the postcondition below re-reads this pre-publish answer, without
+# the new version, for five minutes after the publish. That, not registry lag,
+# is what failed the 0.11.0 release.
 set +e
-existing="$(npm view "${name}@${version}" version 2>/dev/null)"
+existing="$(npm view "${name}@${version}" version --prefer-online 2>/dev/null)"
 view_status=$?
 set -e
 
@@ -59,12 +65,13 @@ npm publish --access public --provenance --ignore-scripts
 # succeeded, printed its provenance attestation, and still answered an empty
 # string when asked about itself a second later. One immediate query turns that
 # lag into a red release for a package that is already live, which is worse
-# than waiting.
-readonly CONFIRM_ATTEMPTS="${PUBLISH_NPM_CONFIRM_ATTEMPTS:-10}"
-readonly CONFIRM_DELAY_SECONDS="${PUBLISH_NPM_CONFIRM_DELAY_SECONDS:-6}"
+# than waiting. The window outlasts the registry's 300-second max-age, so a
+# stale copy at the registry's edge expires inside it too.
+readonly CONFIRM_ATTEMPTS="${PUBLISH_NPM_CONFIRM_ATTEMPTS:-24}"
+readonly CONFIRM_DELAY_SECONDS="${PUBLISH_NPM_CONFIRM_DELAY_SECONDS:-15}"
 confirmed=""
 for (( attempt = 1; attempt <= CONFIRM_ATTEMPTS; attempt++ )); do
-  confirmed="$(npm view "${name}@${version}" version 2>/dev/null || true)"
+  confirmed="$(npm view "${name}@${version}" version --prefer-online 2>/dev/null || true)"
   if [[ "${confirmed}" == "${version}" ]]; then
     break
   fi

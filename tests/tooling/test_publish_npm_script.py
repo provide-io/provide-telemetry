@@ -74,6 +74,9 @@ def _run(tmp_path: Path, package_dir: Path, bin_dir: Path) -> subprocess.Complet
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
     env["PACKAGE_DIR"] = _bash_path(package_dir)
+    # The real wait spans minutes; a postcondition that never succeeds would
+    # sleep through all of it.
+    env["PUBLISH_NPM_CONFIRM_DELAY_SECONDS"] = "0"
     return subprocess.run(  # nosec B603 — fixed argv, no shell
         [_bash_executable(), _bash_path(_SCRIPT)],
         env=env,
@@ -104,6 +107,20 @@ def test_absent_version_is_published_and_verified(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "published @scope/pkg@1.2.3" in result.stdout
     assert "publish" in _calls(tmp_path)
+
+
+def test_every_registry_query_bypasses_the_local_cache(tmp_path: Path) -> None:
+    """npm caches the pre-publish answer for the registry's 300s max-age.
+
+    Read back from that cache, the postcondition never sees the version it just
+    published -- the 0.11.0 release failed that way on a package already live.
+    """
+    package_dir = _package(tmp_path)
+    bin_dir = _stub_npm(tmp_path, view_before="", view_after="1.2.3")
+    assert _run(tmp_path, package_dir, bin_dir).returncode == 0
+    views = [line for line in _calls(tmp_path).splitlines() if line.startswith("view")]
+    assert len(views) == 2
+    assert all("--prefer-online" in line.split() for line in views)
 
 
 def test_publish_failure_is_fatal(tmp_path: Path) -> None:
