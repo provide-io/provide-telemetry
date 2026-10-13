@@ -244,6 +244,7 @@ def test_effective_strategy() -> None:
 
 @pytest.mark.otel
 def test_renders_real_sdk_metrics_data() -> None:
+    pytest.importorskip("opentelemetry.sdk.metrics")
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 

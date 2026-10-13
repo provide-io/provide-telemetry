@@ -178,6 +178,7 @@ shutdown_telemetry()
 
 @pytest.mark.otel
 def test_real_sdk_exports_health_instruments_and_scrapes_them_once() -> None:
+    pytest.importorskip("opentelemetry.sdk.metrics")
     import subprocess  # nosec B404 — fixed script, no user input
     import sys
 
