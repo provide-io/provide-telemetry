@@ -10,6 +10,18 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Added
+
+- **Go: `LogDepth` names the caller of a logging adapter.** With
+  `PROVIDE_LOG_INCLUDE_CALLER` on, a record's `filename` and `lineno` come from
+  the slog record's program counter. A host that bridges another logging API
+  onto slog logs from inside its adapter, so every bridged record named the
+  adapter's own line. `LogDepth(ctx, logger, level, depth, msg, args...)` sets
+  the program counter `depth` frames above its caller, so the adapter can name
+  whoever called it. `slog.NewLogLogger` already does this for the standard
+  library's `log`. `callsite_fields.record_fields.adapters` in
+  `spec/telemetry-api.yaml` describes how each SDK finds an adapter's caller.
+
 ## [0.11.0] — 2026-10-13
 
 ### Breaking

@@ -1072,6 +1072,17 @@ callsite_fields:
       frames — a bundled or minified build, a runtime whose stack format it
       does not parse — emits neither field rather than naming itself: an
       absent callsite is recoverable, a confidently wrong one is not.
+    adapters: >
+      A host that bridges another logging API in through an adapter logs from
+      inside the adapter, so the caller is the adapter's frame unless the
+      adapter passes its own caller on. Each SDK takes that from the language's
+      own mechanism rather than walking further up the stack on every record.
+      Go reads the slog record's program counter; LogDepth(ctx, logger, level,
+      depth, msg, args...) sets it depth frames above its caller, and
+      slog.NewLogLogger sets it for the standard library's log. C# reads
+      CallerFilePath and CallerLineNumber, optional parameters of every Logger
+      method, which an adapter passes through from its own. Python and
+      TypeScript skip only the SDK's own frames and have no adapter hook yet.
   otel_attributes:
     gate: PROVIDE_LOG_CODE_ATTRIBUTES
     fields:
