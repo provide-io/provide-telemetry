@@ -188,11 +188,27 @@ mod tests {
     // thread already holds. Driven by setting the mark directly, with the lock
     // held to stand in for the writer's frame: a flush that took the lock here
     // would never return.
+    //
+    // So it runs on a thread of its own against a deadline. A missed deadline
+    // exits the binary rather than panicking: the stuck thread keeps the lock,
+    // the next test to log would hang on it, and cargo-mutants would report a
+    // timed-out mutant instead of a caught one.
     #[test]
     fn a_flush_from_inside_the_writer_returns_without_locking() {
-        let _held = crate::_lock::lock(&LOG_OUTPUT);
-        INSIDE_WRITER.with(|inside| inside.set(true));
-        flush_log_output();
-        INSIDE_WRITER.with(|inside| inside.set(false));
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _held = crate::_lock::lock(&LOG_OUTPUT);
+            INSIDE_WRITER.with(|inside| inside.set(true));
+            flush_log_output();
+            INSIDE_WRITER.with(|inside| inside.set(false));
+            let _ = done.send(());
+        });
+        let returned = finished
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .is_ok();
+        // One line on purpose: a separate `if !returned { exit }` body never
+        // runs when the test passes, and the coverage gate fails on it.
+        #[allow(clippy::diverging_sub_expression)]
+        let _: bool = returned || std::process::exit(101);
     }
 }

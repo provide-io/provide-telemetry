@@ -327,7 +327,10 @@ fn yaml_scalars_become_text() {
 fn the_credential_cache_is_keyed_and_tells_credentials_apart() {
     use sha2::Digest as _;
     assert_ne!(cache_key(), &[0u8; 32]);
-    assert_eq!(cache_key(), cache_key());
+    // One key for the process, drawn at random: the same allocation on every
+    // call, and not a fill of one byte.
+    assert!(std::ptr::eq(cache_key(), cache_key()));
+    assert!(cache_key().iter().any(|byte| *byte != cache_key()[0]));
     let digest = cache_digest("scraper", "s3cret");
     assert_eq!(digest, cache_digest("scraper", "s3cret"));
     assert_ne!(digest, cache_digest("scraper", "wrong"));
