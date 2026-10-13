@@ -175,6 +175,16 @@ def test_is_clean_rejects_survivors() -> None:
     assert gate._is_clean({"total": 100, "killed": 100, "survived": 0}) is True
 
 
+@pytest.mark.parametrize("status", ["survived", "timeout", "suspicious", "no tests", "segfault"])
+def test_every_unclean_result_is_named(status: str) -> None:
+    assert gate._UNCLEAN_RESULT.search(f"    provide.telemetry.pii.x_f__mutmut_3: {status}")
+
+
+@pytest.mark.parametrize("status", ["killed", "skipped", "not checked"])
+def test_a_clean_result_is_not_named(status: str) -> None:
+    assert gate._UNCLEAN_RESULT.search(f"    provide.telemetry.pii.x_f__mutmut_3: {status}") is None
+
+
 def test_run_forwards_env_to_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess  # nosec
 from pathlib import Path
@@ -30,6 +31,8 @@ BAD_STAT_KEYS: Final[tuple[str, ...]] = (
 # 100 so a run that somehow reports no survivors but a short total still fails
 # on the score rather than passing silently.
 DEFAULT_MIN_MUTATION_SCORE: Final[float] = 95.0
+# The statuses `mutmut results` prints for the bad stats above.
+_UNCLEAN_RESULT: Final[re.Pattern[str]] = re.compile(r": (survived|timeout|suspicious|no tests|segfault)$")
 
 CONFIG_FILES: Final[tuple[str, ...]] = (
     "pyproject.toml",
@@ -168,7 +171,9 @@ def run_mutation_gate(
         if attempt < attempts:
             print("Mutation gate not clean; retrying in single-worker mode.")
 
-    # Log surviving mutants for debugging CI failures.
+    # Log every mutant that kept the run unclean, timeouts included: a timeout
+    # fails the gate as surely as a survivor, and without its name there is no
+    # telling which mutant to look at.
     try:
         result = subprocess.run(
             _uv_mutmut_cmd(python_version, "results"),
@@ -176,10 +181,10 @@ def run_mutation_gate(
             text=True,
             env=mutation_env,
         )
-        survivors = [line.strip() for line in result.stdout.splitlines() if "survived" in line]
-        if survivors:
-            print("Surviving mutants:")
-            for s in survivors:
+        unclean = [line.strip() for line in result.stdout.splitlines() if _UNCLEAN_RESULT.search(line)]
+        if unclean:
+            print("Mutants that kept the run unclean:")
+            for s in unclean:
                 print(f"  {s}")
     except Exception:
         pass
