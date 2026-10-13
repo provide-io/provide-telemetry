@@ -8,6 +8,7 @@ Start from your role.
 |-----|-----------------|
 | [api.md](guide/api.md) | The shared semantic contract: every API, its behavior, in all five languages |
 | [configuration.md](guide/configuration.md) | Every environment variable, generated from the spec |
+| [upgrading.md](guide/upgrading.md) | What changes in output and health counters between versions, with nothing to recompile |
 | [conventions.md](guide/conventions.md) | DA(R)S event naming and telemetry conventions |
 | [capability-matrix.md](guide/capability-matrix.md) | What is guaranteed vs feature-gated vs a real per-language difference |
 | [positioning.md](guide/positioning.md) | Why this library exists relative to plain OpenTelemetry |
