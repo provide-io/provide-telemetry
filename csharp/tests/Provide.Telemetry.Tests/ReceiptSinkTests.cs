@@ -85,13 +85,15 @@ public class ReceiptSinkTests
     public void HealthSnapshotCarriesTwentySixCanonicalFields()
     {
         // spec/behavioral_fixtures.yaml health_snapshot: eight per-signal fields
-        // across three signals, plus setup_error and receipt_failures.
+        // across three signals, plus setup_error, receipt_failures and
+        // reserved_field_replacements.
         var fields = typeof(HealthSnapshot)
             .GetProperties()
             .Select(p => p.Name)
             .ToList();
-        Assert.Equal(26, fields.Count);
+        Assert.Equal(27, fields.Count);
         Assert.Contains(nameof(HealthSnapshot.ReceiptFailures), fields);
+        Assert.Contains(nameof(HealthSnapshot.ReservedFieldReplacements), fields);
         Assert.Equal(0L, ProvideTelemetry.GetHealthSnapshot().ReceiptFailures);
     }
 

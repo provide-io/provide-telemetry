@@ -18,6 +18,7 @@ import { resetPiiRulesForTests } from './pii.js';
 import { _resetSloForTests } from './slo.js';
 import { _resetPropagationForTests } from './propagation.js';
 import { _resetRootLogger } from './logger.js';
+import { _resetReservedWarningsForTests } from './reserved-fields.js';
 import { _resetOtelLogProviderForTests } from './otel-logs.js';
 import { _resetTraceContext } from './tracing.js';
 import { _resetRuntimeForTests } from './runtime.js';
@@ -39,6 +40,7 @@ export function resetTelemetryState(): void {
   _resetConfig();
   _resetContext();
   _resetHealthForTests();
+  _resetReservedWarningsForTests();
   _resetBackpressureForTests();
   _resetCardinalityForTests();
   _resetSamplingForTests();

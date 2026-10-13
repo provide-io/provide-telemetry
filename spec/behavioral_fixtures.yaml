@@ -448,7 +448,7 @@ secret_detection:
     - input: "make -C /home/deploy/apps/production/current/native/capture install"
       detected: false
       note: "Remediation command embedding a path"
-    - input: "/private/var/folders/sg/wy47gw996f78fznt898m8x540000gn/T/pytest-of-tim"
+    - input: "/private/var/folders/sg/wy47gw996f78fznt898m8x540000gn/T/pytest-of-tim"  # pragma: allowlist secret
       detected: false
       note: "macOS TMPDIR, whose random segment first surfaced this"
     - input: "GstpFvsHIiSVR91i5FLxOKZ8mNRZ5EifnBQR2i6bOhs="  # pragma: allowlist secret
@@ -622,14 +622,9 @@ schema_strict_mode:
 
 health_snapshot:
   description: >
-    Canonical 26-field health snapshot layout: 8 per-signal fields across 3
-    signals, plus 2 global fields. All languages must return these fields with
+    Canonical 27-field health snapshot layout: 8 per-signal fields across 3
+    signals, plus 3 global fields. All languages must return these fields with
     these default values after reset.
-
-    receipt_failures is the newest field and rolls out per language with that
-    language's receipt-delivery task: TypeScript has it; Go, Python, Rust and
-    C# return the other 25 until theirs lands. Their own parity tests assert
-    the surface each actually has, so this is visible rather than assumed.
   canonical_fields:
     per_signal:
       - emitted
@@ -643,6 +638,7 @@ health_snapshot:
     global:
       - setup_error
       - receipt_failures
+      - reserved_field_replacements
   defaults:
     emitted: 0
     dropped: 0
@@ -654,6 +650,7 @@ health_snapshot:
     circuit_open_count: 0
     setup_error: null
     receipt_failures: 0
+    reserved_field_replacements: 0
   circuit_state_values: ["closed", "open", "half-open"]
 
 pii_depth:
@@ -792,9 +789,9 @@ endpoint_validation:
     # absent, so a credentialed collector URL without an explicit port was
     # refused as an "empty port". Go was always correct here because net/url
     # keeps User out of Host. Both forms are pinned so no SDK can drift back.
-    - endpoint: "https://user:pw@collector.example/v1/logs"
+    - endpoint: "https://user:pw@collector.example/v1/logs"  # pragma: allowlist secret
       description: "credentials without port"
-    - endpoint: "https://user:pw@collector.example:4318/v1/logs"
+    - endpoint: "https://user:pw@collector.example:4318/v1/logs"  # pragma: allowlist secret
       description: "credentials with port"
 
   invalid:

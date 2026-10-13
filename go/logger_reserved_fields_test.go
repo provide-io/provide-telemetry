@@ -19,7 +19,9 @@ func _reservedRecord(t *testing.T, cfg *TelemetryConfig, ctx context.Context, ar
 	setupFullSampling(t)
 	var buf bytes.Buffer
 	newTestLogger(&buf, cfg, "").InfoContext(ctx, "reserved.fields.check", args...)
-	line := strings.TrimSpace(buf.String())
+	// The record is the last line: a replacement's warning comes before it.
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	line := lines[len(lines)-1]
 	var decoded map[string]any
 	if err := json.Unmarshal([]byte(line), &decoded); err != nil {
 		t.Fatalf("record is not JSON: %v: %s", err, line)

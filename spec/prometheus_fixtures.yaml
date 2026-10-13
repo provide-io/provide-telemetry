@@ -250,6 +250,7 @@ health_metrics:
       circuit_open_count_metrics: 3
       setup_error: "bind 127.0.0.1:9464: address already in use"
       receipt_failures: 2
+      reserved_field_replacements: 4
     expected_samples:
       - {metric: provide_telemetry_emitted_total, labels: {signal: logs}, value: 100}
       - {metric: provide_telemetry_dropped_total, labels: {signal: logs}, value: 7}
@@ -277,6 +278,7 @@ health_metrics:
       - {metric: provide_telemetry_circuit_open_total, labels: {signal: metrics}, value: 3}
       - {metric: provide_telemetry_setup_error, labels: {}, value: 1}
       - {metric: provide_telemetry_receipt_failures_total, labels: {}, value: 2}
+      - {metric: provide_telemetry_reserved_field_replacements_total, labels: {}, value: 4}
   - id: setup_error_empty_reads_zero
     snapshot_overrides: {setup_error: ""}
     expected_samples:

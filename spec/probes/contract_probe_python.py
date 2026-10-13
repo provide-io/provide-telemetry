@@ -32,6 +32,7 @@ import yaml  # noqa: E402
 
 from provide.telemetry import (  # noqa: E402
     bind_context,
+    get_health_snapshot,
     get_logger,
     get_runtime_status,
     get_trace_context,
@@ -164,19 +165,34 @@ def _op_emit_log(step: dict[str, Any], _variables: dict[str, object]) -> None:
     get_logger("contract").info(step["message"], **fields)
 
 
+def _captured_records() -> list[dict[str, object]]:
+    """Every JSON line captured since the last emit_log, in order."""
+    lines = (line.strip() for line in _capture_stream.getvalue().splitlines())
+    return [json.loads(line) for line in lines if line.startswith("{")]
+
+
+def _matching(step: dict[str, Any]) -> list[dict[str, object]]:
+    event = step.get("event")
+    return [r for r in _captured_records() if event is None or r.get("message") == event]
+
+
 def _op_capture_log(step: dict[str, Any], variables: dict[str, object]) -> None:
-    output = _capture_stream.getvalue()
-    record: dict[str, object] = {}
-    # Take the last JSON line from captured stderr.
-    for line in reversed(output.splitlines()):
-        line = line.strip()
-        if line.startswith("{"):
-            record = json.loads(line)
-            break
+    # The last captured record, or the last one with the step's event.
+    matching = _matching(step)
+    record: dict[str, object] = matching[-1] if matching else {}
     # Normalise: ensure message key has a string default (trace_id/span_id are
     # intentionally absent when propagation context is cleared).
     record.setdefault("message", "")
     variables[step["into"]] = record
+
+
+def _op_count_logs(step: dict[str, Any], variables: dict[str, object]) -> None:
+    variables[step["into"]] = {"count": len(_matching(step))}
+
+
+def _op_get_health(step: dict[str, Any], variables: dict[str, object]) -> None:
+    snapshot = get_health_snapshot()
+    variables[step["into"]] = {"reserved_field_replacements": snapshot.reserved_field_replacements}
 
 
 def _op_get_runtime_status(step: dict[str, Any], variables: dict[str, object]) -> None:
@@ -211,6 +227,8 @@ _DISPATCH: dict[str, Any] = {
     "register_secret_pattern": _op_register_secret_pattern,
     "emit_log": _op_emit_log,
     "capture_log": _op_capture_log,
+    "count_logs": _op_count_logs,
+    "get_health": _op_get_health,
     "get_runtime_status": _op_get_runtime_status,
 }
 

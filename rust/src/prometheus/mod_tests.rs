@@ -53,6 +53,7 @@ fn snapshot_from(fields: &Value) -> HealthSnapshot {
         circuit_open_count_metrics: u("circuit_open_count_metrics"),
         setup_error: Some(s("setup_error")),
         receipt_failures: u("receipt_failures"),
+        reserved_field_replacements: u("reserved_field_replacements"),
     }
 }
 
@@ -155,6 +156,10 @@ fn health_types_and_unknown_circuit_state() {
             ("provide_telemetry_setup_error", PromType::Gauge),
             (
                 "provide_telemetry_receipt_failures_total",
+                PromType::Counter
+            ),
+            (
+                "provide_telemetry_reserved_field_replacements_total",
                 PromType::Counter
             ),
         ]

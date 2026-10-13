@@ -57,7 +57,7 @@ def test_registers_every_health_family_with_its_kind() -> None:
     _health_otlp.register(meter, _make)
     expected = {f.name: f.kind for f in prom.health_families(get_health_snapshot())}
     assert {name: kind for name, (kind, _) in meter.instruments.items()} == expected
-    assert len(meter.instruments) == 10
+    assert len(meter.instruments) == 11
 
 
 def test_observations_follow_the_live_snapshot_without_counting_themselves() -> None:

@@ -36,8 +36,8 @@ public sealed class HealthOtlpTests : PromTestBase
         ProvideTelemetry.Counter("app.hits").Add(2);
         var health = RawCollection().Metrics.Where(m => PrometheusHealth.MetricNames.Contains(m.Name)).ToList();
 
-        Assert.Equal(10, health.Count);
-        Assert.Equal(26, health.Sum(m => m.Points.Count));
+        Assert.Equal(11, health.Count);
+        Assert.Equal(27, health.Sum(m => m.Points.Count));
         Assert.All(health, m => Assert.Equal(("", ""), (m.Unit, m.Description)));
         var emitted = health.Single(m => m.Name == "provide_telemetry_emitted_total");
         Assert.Equal(PrometheusNames.MonotonicCounter, emitted.Kind);
@@ -73,7 +73,7 @@ public sealed class HealthOtlpTests : PromTestBase
         var first = RawCollection();
         RawCollection();
         Assert.Equal(before, ProvideTelemetry.GetHealthSnapshot().MetricsEmitted);
-        Assert.Equal(26, first.Metrics.Where(m => PrometheusHealth.MetricNames.Contains(m.Name)).Sum(m => m.Points.Count));
+        Assert.Equal(27, first.Metrics.Where(m => PrometheusHealth.MetricNames.Contains(m.Name)).Sum(m => m.Points.Count));
     }
 
     [Fact]
@@ -97,6 +97,6 @@ public sealed class HealthOtlpTests : PromTestBase
         var options = new RenderOptions("UnderscoreEscapingWithSuffixes") { Skip = PrometheusHealth.MetricNames };
         Assert.Equal(["kept"], PrometheusRender.FamiliesFrom(batch, options).Select(f => f.Name));
         Assert.Equal(2, PrometheusRender.FamiliesFrom(batch, new RenderOptions("UnderscoreEscapingWithSuffixes")).Count);
-        Assert.Equal(10, PrometheusHealth.MetricNames.Count);
+        Assert.Equal(11, PrometheusHealth.MetricNames.Count);
     }
 }

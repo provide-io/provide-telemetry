@@ -26,7 +26,7 @@ func _healthSnapshotFixture() telemetry.HealthSnapshot {
 		LogsDropped: 4, LogsExportFailures: 5, LogsRetries: 6, LogsExportLatencyMs: 7.5,
 		LogsAsyncBlockingRisk: 8, LogsCircuitState: _circuitOpenState, LogsCircuitOpenCount: 9,
 		TracesCircuitState: _circuitHalfOpen, MetricsCircuitState: _circuitClosed,
-		SetupError: "boom", ReceiptFailures: 10,
+		SetupError: "boom", ReceiptFailures: 10, ReservedFieldReplacements: 11,
 	}
 }
 
@@ -76,13 +76,13 @@ func _collectHealth(t *testing.T, snapshot telemetry.HealthSnapshot) (map[string
 
 func TestHealthOTLP_InstrumentsCarryTheSnapshot(t *testing.T) {
 	values, kinds := _collectHealth(t, _healthSnapshotFixture())
-	if len(values) != 10 {
-		t.Fatalf("got %d instruments, want 10: %v", len(values), kinds)
+	if len(values) != 11 {
+		t.Fatalf("got %d instruments, want 11: %v", len(values), kinds)
 	}
 	wantKinds := map[string]string{
 		_healthEmitted: "counter", _healthDropped: "counter", _healthFailures: "counter", _healthRetries: "counter",
 		_healthLatency: "gauge", _healthBlockingRisk: "counter", _healthCircuit: "gauge", _healthCircuitOpens: "counter",
-		_healthSetupError: "gauge", _healthReceipts: "counter",
+		_healthSetupError: "gauge", _healthReceipts: "counter", _healthReplacements: "counter",
 	}
 	for name, kind := range wantKinds {
 		if kinds[name] != kind {
@@ -97,7 +97,7 @@ func TestHealthOTLP_InstrumentsCarryTheSnapshot(t *testing.T) {
 		{_healthDropped, _signalLogs, 4}, {_healthFailures, _signalLogs, 5}, {_healthRetries, _signalLogs, 6},
 		{_healthLatency, _signalLogs, 7.5}, {_healthBlockingRisk, _signalLogs, 8}, {_healthCircuitOpens, _signalLogs, 9},
 		{_healthCircuit, _signalLogs, 2}, {_healthCircuit, _signalTraces, 1}, {_healthCircuit, _signalMetrics, 0},
-		{_healthSetupError, "", 1}, {_healthReceipts, "", 10},
+		{_healthSetupError, "", 1}, {_healthReceipts, "", 10}, {_healthReplacements, "", 11},
 	}
 	for _, c := range checks {
 		if got, ok := values[c.name][c.signal]; !ok || got != c.want {
@@ -106,7 +106,7 @@ func TestHealthOTLP_InstrumentsCarryTheSnapshot(t *testing.T) {
 	}
 	for name, series := range values {
 		want := 3
-		if name == _healthSetupError || name == _healthReceipts {
+		if name == _healthSetupError || name == _healthReceipts || name == _healthReplacements {
 			want = 1
 		}
 		if len(series) != want {

@@ -7,7 +7,7 @@
 //   - RecordREDMetrics for HTTP request/error/duration (RED)
 //   - RecordUSEMetrics for resource utilization (USE)
 //   - ClassifyError for error taxonomy
-//   - GetHealthSnapshot with all 26 fields
+//   - GetHealthSnapshot with all 27 fields
 package main
 
 import (
@@ -109,6 +109,7 @@ func main() {
 	fmt.Printf("  MetricsCircuitState: %s\n", s.MetricsCircuitState)
 	fmt.Printf("  SetupError:          %q\n", s.SetupError)
 	fmt.Printf("  ReceiptFailures:     %d\n", s.ReceiptFailures)
+	fmt.Printf("  ReservedReplaced:    %d\n", s.ReservedFieldReplacements)
 
 	fmt.Println("\nDone!")
 }

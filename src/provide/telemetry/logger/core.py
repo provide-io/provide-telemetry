@@ -22,7 +22,7 @@ from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, to_stdlib_level
-from provide.telemetry.logger import _otel_logs
+from provide.telemetry.logger import _otel_logs, _reserved_fields
 from provide.telemetry.logger import sink as _sink
 from provide.telemetry.logger.console import ansi_supported, structlog_colors, utf8_writer
 from provide.telemetry.logger.handlers import _BackpressureFanoutHandler, _HostWriterHandler
@@ -616,6 +616,9 @@ def _reset_logging_for_tests() -> None:
     # installs one and does not clear it renders every later test in the worker
     # into a buffer nobody reads.
     _sink.release_log_output()
+    # Which reserved fields have already been warned about is per process,
+    # and every test is a fresh start for it.
+    _reserved_fields._reset_reserved_fields_for_tests()
     with _lock:
         _configured = False
         _active_config = None

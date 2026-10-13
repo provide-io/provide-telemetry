@@ -29,6 +29,12 @@ import { EventSchemaError, validateEventName, validateRequiredKeys } from './sch
 import { tryAcquire, release } from './backpressure.js';
 import { setSamplingPolicy, shouldSample } from './sampling.js';
 import { getTraceContext } from './tracing.js';
+import {
+  RESERVED_WARNING_EVENT,
+  RESERVED_WARNING_LOGGER,
+  reportReservedReplacements,
+  stampReserved,
+} from './reserved-fields.js';
 import { LogSeverity, severityFromPino, severityName, toPinoLevel } from './levels.js';
 
 /** Pino level number → console method name. */
@@ -328,13 +334,20 @@ export function makeWriteHook() {
       // naming some other service belongs in peer.service. What the SDK does
       // not stamp on this record — no live span, an empty identity value —
       // leaves the caller's field standing, since nothing better is known.
+      //
+      // A replacement that loses a different caller value is counted, and the
+      // first one for each field warns, before this record reaches any sink.
       Object.assign(o, getContext());
       const ids = getTraceContext();
-      if (ids.trace_id) o['trace_id'] = ids.trace_id;
-      if (ids.span_id) o['span_id'] = ids.span_id;
-      if (cfg.serviceName) o['service'] = cfg.serviceName;
-      if (cfg.environment) o['env'] = cfg.environment;
-      if (cfg.version) o['version'] = cfg.version;
+      const replaced: string[] = [];
+      stampReserved(o, 'trace_id', ids.trace_id, replaced);
+      stampReserved(o, 'span_id', ids.span_id, replaced);
+      stampReserved(o, 'service', cfg.serviceName, replaced);
+      stampReserved(o, 'env', cfg.environment, replaced);
+      stampReserved(o, 'version', cfg.version, replaced);
+      reportReservedReplacements(replaced, (field) =>
+        getLogger(RESERVED_WARNING_LOGGER).warn({ event: RESERVED_WARNING_EVENT, field }),
+      );
 
       // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
       if (!o['message']) o['message'] = o['event'] ?? '';

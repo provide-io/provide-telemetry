@@ -146,6 +146,7 @@ describe('parity: health_snapshot', () => {
     'circuitOpenCountMetrics',
     'setupError',
     'receiptFailures',
+    'reservedFieldReplacements',
   ];
 
   beforeEach(() => {
@@ -158,7 +159,7 @@ describe('parity: health_snapshot', () => {
     _resetResilienceForTests();
   });
 
-  it('returns the canonical 26-field layout with reset defaults', () => {
+  it('returns the canonical 27-field layout with reset defaults', () => {
     const snapshot = getHealthSnapshot();
 
     expect(Object.keys(snapshot)).toEqual(canonicalFields);
@@ -189,6 +190,7 @@ describe('parity: health_snapshot', () => {
       circuitOpenCountMetrics: 0,
       setupError: null,
       receiptFailures: 0,
+      reservedFieldReplacements: 0,
     });
   });
 });
@@ -467,9 +469,9 @@ describe('parity: secret_span_redaction', () => {
   // the base64 rule matches first.
   const cases: Array<[string, string]> = [
     // surrounding words survive
-    ['token AKIAIOSFODNN7EXAMPLE leaked', 'token *** leaked'],
+    ['token AKIAIOSFODNN7EXAMPLE leaked', 'token *** leaked'], // pragma: allowlist secret
     // every secret goes, not only the first
-    ['first AKIAIOSFODNN7EXAMPLE second AKIAIOSFODNN7EXAMPLB', 'first *** second ***'],
+    ['first AKIAIOSFODNN7EXAMPLE second AKIAIOSFODNN7EXAMPLB', 'first *** second ***'], // pragma: allowlist secret
     // a suppressed path does not shadow the secret behind it
     [
       '/home/deploy/apps/production/current/lib/service c2VjcmV0a2V5MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3A',

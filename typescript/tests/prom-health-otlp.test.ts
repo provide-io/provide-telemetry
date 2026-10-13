@@ -66,7 +66,7 @@ afterEach(async () => {
 });
 
 describe('registerHealthOtlp', () => {
-  it('reports the 26 series from a fresh snapshot, typed per the spec, ungated and uncounted', async () => {
+  it('reports the 27 series from a fresh snapshot, typed per the spec, ungated and uncounted', async () => {
     const reader = new TestReader();
     const provider = new MeterProvider({ readers: [reader] });
     registerHealthOtlp(provider.getMeter('t'));
@@ -75,11 +75,12 @@ describe('registerHealthOtlp', () => {
     setConsentLevel('NONE');
     const before = getHealthSnapshot().metricsEmitted;
     const { series: got, types } = series((await reader.collect()).resourceMetrics);
-    expect(got.size).toBe(26);
+    expect(got.size).toBe(27);
     expect(got.get('provide_telemetry_emitted_total{"signal":"logs"}')).toBe(5);
     expect(got.get('provide_telemetry_circuit_state{"signal":"traces"}')).toBe(0);
     expect(got.get('provide_telemetry_setup_error{}')).toBe(1);
     expect(got.get('provide_telemetry_receipt_failures_total{}')).toBe(0);
+    expect(got.get('provide_telemetry_reserved_field_replacements_total{}')).toBe(0);
     setSetupError(null);
     const again = series((await reader.collect()).resourceMetrics).series;
     expect(again.get('provide_telemetry_setup_error{}')).toBe(0);
@@ -114,7 +115,7 @@ describe('registerOtelProviders with metricsHealthOtlp', () => {
         (n, s) => n + s.observableRegistry._callbacks.length,
         0,
       );
-      expect(callbacks).toBe(healthOtlp ? 10 : 0);
+      expect(callbacks).toBe(healthOtlp ? 11 : 0);
       if (healthOtlp) {
         const names = [...provider._sharedState.meterSharedStates.keys()].join(' ');
         expect(names).toContain('@provide-io/telemetry');

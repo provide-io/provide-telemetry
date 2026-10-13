@@ -9,6 +9,7 @@ package telemetry
 // It is safe to call from external test packages (package telemetry_test).
 func ResetForTests() {
 	_resetHealth()
+	_resetReservedWarnings()
 	_resetSamplingPolicies()
 	_resetQueuePolicy()
 	_resetResiliencePolicies()

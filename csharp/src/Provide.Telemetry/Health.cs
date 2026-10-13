@@ -8,7 +8,7 @@ namespace Provide.Telemetry;
 /// <remarks>
 /// The snapshot layout is the cross-language contract in
 /// <c>spec/behavioral_fixtures.yaml</c>: eight per-signal fields across three
-/// signals plus two global ones.
+/// signals plus three global ones.
 /// </remarks>
 public static class Health
 {
@@ -36,6 +36,7 @@ public static class Health
     private static readonly SignalCounters TracesCounters = new();
     private static readonly SignalCounters MetricsCounters = new();
     private static long _receiptFailures;
+    private static long _reservedFieldReplacements;
     private static string _setupError = "";
 
     public static HealthSnapshot GetHealthSnapshot()
@@ -70,6 +71,7 @@ public static class Health
             MetricsCircuitOpenCount = Resilience.GetCircuitOpenCount(Signals.Metrics),
 
             ReceiptFailures = Interlocked.Read(ref _receiptFailures),
+            ReservedFieldReplacements = Interlocked.Read(ref _reservedFieldReplacements),
             SetupError = Volatile.Read(ref _setupError) ?? "",
         };
     }
@@ -123,6 +125,9 @@ public static class Health
     /// </remarks>
     internal static void RecordReceiptFailure() => Interlocked.Increment(ref _receiptFailures);
 
+    internal static void RecordReservedFieldReplacements(int count) =>
+        Interlocked.Add(ref _reservedFieldReplacements, count);
+
     internal static void SetSetupError(string error) => Volatile.Write(ref _setupError, error ?? "");
 
     internal static void Reset()
@@ -131,6 +136,7 @@ public static class Health
         TracesCounters.Reset();
         MetricsCounters.Reset();
         Interlocked.Exchange(ref _receiptFailures, 0);
+        Interlocked.Exchange(ref _reservedFieldReplacements, 0);
         Volatile.Write(ref _setupError, "");
     }
 

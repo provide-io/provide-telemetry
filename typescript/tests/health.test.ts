@@ -109,7 +109,7 @@ describe('_resetHealthForTests', () => {
   });
 });
 
-describe('getHealthSnapshot — all 26 fields present', () => {
+describe('getHealthSnapshot — all 27 fields present', () => {
   it('returns all expected fields with correct types', () => {
     const s = getHealthSnapshot();
     // Per-signal counter fields (logs)
@@ -143,11 +143,12 @@ describe('getHealthSnapshot — all 26 fields present', () => {
     // setupError is string | null — check it exists
     expect('setupError' in s).toBe(true);
     expect(typeof s.receiptFailures).toBe('number');
+    expect(typeof s.reservedFieldReplacements).toBe('number');
   });
 
-  it('has exactly 26 fields', () => {
+  it('has exactly 27 fields', () => {
     const s = getHealthSnapshot();
-    expect(Object.keys(s).length).toBe(26);
+    expect(Object.keys(s).length).toBe(27);
   });
 
   it('default circuit state is "closed" with zero counts', () => {

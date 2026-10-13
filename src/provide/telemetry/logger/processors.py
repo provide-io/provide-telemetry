@@ -22,6 +22,7 @@ from provide.telemetry._record_marker import PIPELINE_RECORD_KEY, PIPELINE_RECOR
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, parse_level
+from provide.telemetry.logger import _reserved_fields
 from provide.telemetry.logger.context import get_context
 from provide.telemetry.schema.events import EventSchemaError, validate_event_name, validate_required_keys
 from provide.telemetry.tracing.context import get_span_id, get_trace_id
@@ -179,12 +180,13 @@ def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[s
     ``service``/``env``/``version``.
     """
     event_dict.update(get_context())
-    trace_id = get_trace_id()
-    span_id = get_span_id()
-    if trace_id is not None:
-        event_dict["trace_id"] = trace_id
-    if span_id is not None:
-        event_dict["span_id"] = span_id
+    replaced = []
+    for key, live in (("trace_id", get_trace_id()), ("span_id", get_span_id())):
+        if live is not None:
+            if event_dict.get(key, live) != live:
+                replaced.append(key)
+            event_dict[key] = live
+    _reserved_fields.note_trace_replacements(tuple(replaced))
     return event_dict
 
 
@@ -333,7 +335,7 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 _HUMAN_RENDERERS = frozenset({"console", "pretty"})
 
 
-def _stamp(event_dict: dict[str, Any], key: str, value: str) -> None:
+def _stamp(event_dict: dict[str, Any], key: str, value: str) -> bool:
     """Stamp a reserved root field: the SDK's value wins over the caller's.
 
     ``service``/``env``/``version`` say which process wrote the record, and a
@@ -341,22 +343,31 @@ def _stamp(event_dict: dict[str, Any], key: str, value: str) -> None:
     one service's records read as another's. Only a value the SDK actually
     has replaces the caller's: with an empty config value the SDK has nothing
     to say, so a caller-supplied value stands (and an absent one is still
-    filled with the empty string, as before).
+    filled with the empty string, as before). Returns whether a different
+    caller value was replaced.
     """
-    if value:
-        event_dict[key] = value
-    else:
+    if not value:
         event_dict.setdefault(key, value)
+        return False
+    replaced = bool(event_dict.get(key, value) != value)
+    event_dict[key] = value
+    return replaced
 
 
 def add_standard_fields(config: TelemetryConfig) -> Any:
     stamp_identity = config.logging.fmt not in _HUMAN_RENDERERS
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+        replaced = set(_reserved_fields.take_trace_replacements())
         if stamp_identity:
-            _stamp(event_dict, "service", config.service_name)
-            _stamp(event_dict, "env", config.environment)
-            _stamp(event_dict, "version", config.version)
+            for key, value in (
+                ("service", config.service_name),
+                ("env", config.environment),
+                ("version", config.version),
+            ):
+                if _stamp(event_dict, key, value):
+                    replaced.add(key)
+        _reserved_fields.report(replaced)
         live = _get_active_config()
         include_error_taxonomy = (
             live.slo.include_error_taxonomy if live is not None else config.slo.include_error_taxonomy

@@ -99,6 +99,7 @@ async function main(): Promise<void> {
   );
   console.log(`  🚨 setupError:      ${s.setupError}`);
   console.log(`  🧾 receiptFailures: ${s.receiptFailures}`);
+  console.log(`  🔁 reservedFieldReplacements: ${s.reservedFieldReplacements}`);
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

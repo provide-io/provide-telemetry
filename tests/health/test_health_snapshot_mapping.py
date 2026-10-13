@@ -137,12 +137,13 @@ class TestHealthSnapshotFieldMapping:
         increment_receipt_failures()
         assert get_health_snapshot().receipt_failures == 2
 
-    def test_snapshot_has_exactly_26_fields(self) -> None:
-        """Canonical 26-field layout: 8 per signal * 3 + 2 global."""
+    def test_snapshot_has_exactly_27_fields(self) -> None:
+        """Canonical 27-field layout: 8 per signal * 3 + 3 global."""
         from provide.telemetry.health import HealthSnapshot
 
-        assert len(HealthSnapshot._fields) == 26
+        assert len(HealthSnapshot._fields) == 27
         assert "receipt_failures" in HealthSnapshot._fields
+        assert "reserved_field_replacements" in HealthSnapshot._fields
 
 
 # -- reset_health_for_tests --

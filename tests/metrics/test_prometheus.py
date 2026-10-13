@@ -134,7 +134,7 @@ def test_options_for_reads_the_prometheus_config() -> None:
 def test_health_metric_names_are_the_collector_families() -> None:
     families = prom.health_families(get_health_snapshot())
     assert {f.name for f in families} == prom.HEALTH_METRIC_NAMES
-    assert len(families) == 10
+    assert len(families) == 11
 
 
 # ── health families ─────────────────────────────────────────────────────────
