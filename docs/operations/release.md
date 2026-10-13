@@ -58,6 +58,14 @@ each language publishes off its own trigger:
 | Go (pkg.go.dev) | push of `go/vX.Y.Z` / `go/otel/vX.Y.Z` tags | No |
 | C# (NuGet) | push of a `csharp/vX.Y.Z` tag | No |
 
+**Push the tags one per `git push`.** GitHub creates no push event for tags when
+more than three arrive in one push, so a release pushed as `git push origin
+--tags` publishes nothing for the language tags, and nothing says so. At 0.11.0
+five tags went in one push and only the GitHub Release ran; the other four had
+to be deleted on the remote and pushed again one at a time. Push `go/vX.Y.Z`
+before `go/otel/vX.Y.Z`, whose module requires it, and create the GitHub
+Release for `vX.Y.Z` last.
+
 **C# builds and publishes.** The `build-csharp` job version-checks, builds with
 `-warnaserror`, tests, packs *both* `Provide.Telemetry` and
 `Provide.Telemetry.OpenTelemetry`, asserts two `.nupkg` files were produced, and
