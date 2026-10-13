@@ -377,7 +377,7 @@ fn span_exporter_shutdown_and_force_flush_forwarded() {
     let _g = acquire_test_state_lock();
     _reset_resilience_for_tests();
     let stub = StubSpanExporter::new_always_ok();
-    let mut w = ResilientSpanExporter::new(stub);
+    let w = ResilientSpanExporter::new(stub);
     w.force_flush().expect("force_flush must succeed");
     w.shutdown().expect("shutdown must succeed");
 }

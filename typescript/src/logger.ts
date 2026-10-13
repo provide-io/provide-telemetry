@@ -20,7 +20,8 @@ import { loadConsentFromEnv, shouldAllow } from './consent.js';
 import { computeErrorFingerprint } from './fingerprint.js';
 import { formatPretty, supportsColor } from './pretty.js';
 import type { ConsoleStream } from './pretty.js';
-import { _emittedField, _incrementHealth } from './health.js';
+import { _droppedField, _emittedField, _incrementHealth } from './health.js';
+import { closeRefused, pipelineStage } from './pipeline-stages.js';
 import { emitLogRecord } from './otel-logs.js';
 import { hardenRecord } from './harden.js';
 import { sanitize, sanitizePayload } from './pii.js';
@@ -292,26 +293,48 @@ export function makeWriteHook() {
     const cfg = resolveLoggerConfig();
     const o = obj as Record<string, unknown>;
 
-    // Consent gate: drop records the current consent level forbids.
+    // Consent gate: drop records the current consent level forbids. The
+    // refusal is a drop like any other admission refusal: logsDropped names
+    // consent alongside sampling and backpressure, which count their own.
+    pipelineStage('consent');
     const levelLabel = CONSENT_LEVEL_MAP[o['level'] as number] ?? 'info';
-    if (!shouldAllow('logs', levelLabel)) return;
+    if (!shouldAllow('logs', levelLabel)) {
+      _incrementHealth(_droppedField('logs'));
+      closeRefused();
+      return;
+    }
 
     // Sampling gate: probabilistically drop records based on configured rate.
     // Pass the canonical event key so per-event override rates take effect.
+    pipelineStage('sampling');
     const samplingKey = String(o['event'] ?? o['message'] ?? '');
-    if (!shouldSample('logs', samplingKey)) return;
+    if (!shouldSample('logs', samplingKey)) {
+      closeRefused();
+      return;
+    }
 
     // Backpressure gate: drop when the log queue is full.
+    pipelineStage('backpressure');
     const ticket = tryAcquire('logs');
-    if (!ticket) return;
+    if (!ticket) {
+      closeRefused();
+      return;
+    }
 
     try {
-      // Merge module-level context bindings first, then overlay trace context
-      // so real trace/span IDs always win over user-bound values.
+      // Merge module-level context bindings first, then overlay the fields
+      // the SDK stamps, so they always win over caller and bound values: the
+      // real trace/span IDs, and the service identity from config. A caller
+      // naming some other service belongs in peer.service. What the SDK does
+      // not stamp on this record — no live span, an empty identity value —
+      // leaves the caller's field standing, since nothing better is known.
       Object.assign(o, getContext());
       const ids = getTraceContext();
       if (ids.trace_id) o['trace_id'] = ids.trace_id;
       if (ids.span_id) o['span_id'] = ids.span_id;
+      if (cfg.serviceName) o['service'] = cfg.serviceName;
+      if (cfg.environment) o['env'] = cfg.environment;
+      if (cfg.version) o['version'] = cfg.version;
 
       // Ensure message is always non-empty — pino sets message='' when no string arg is passed.
       if (!o['message']) o['message'] = o['event'] ?? '';
@@ -404,12 +427,6 @@ export function makeWriteHook() {
         }
       }
 
-      // Count every record that survives all filters as emitted.
-      _incrementHealth(_emittedField('logs'));
-
-      // Export to OTLP when a log provider is registered (noop otherwise).
-      emitLogRecord(o, codeSite);
-
       // Capture to window.__pinoLogs for Playwright and devtools inspection.
       // Check is done inline (not at module load) so it works when loaded in Node.js
       // test environments that later gain a jsdom window.
@@ -437,7 +454,17 @@ export function makeWriteHook() {
           (console as any)[method](JSON.stringify(o));
         }
       }
+
+      // Export to OTLP when a log provider is registered (noop otherwise).
+      // After the local sinks, per the canonical order.
+      emitLogRecord(o, codeSite);
+
+      // Health follows every sink: a record counts as emitted once it has
+      // reached them, not when it was admitted.
+      pipelineStage('health');
+      _incrementHealth(_emittedField('logs'));
     } finally {
+      pipelineStage('release');
       release(ticket);
     }
   };

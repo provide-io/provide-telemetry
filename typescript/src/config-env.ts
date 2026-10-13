@@ -10,10 +10,21 @@ import type { TelemetryConfig } from './config.js';
 import { toPinoLevel } from './levels.js';
 import { DEFAULTS, parseOtlpHeaders } from './config.js';
 import { ConfigurationError } from './exceptions.js';
+import {
+  DEFAULT_HOST,
+  DEFAULT_PATH,
+  DEFAULT_TRANSLATION,
+  envStr,
+  parseMetricsExporters,
+  parsePort,
+  validateListen,
+  validatePath,
+  validateTranslation,
+} from './config-prometheus.js';
 
 /** Read a string from Node process.env. Silently returns undefined in non-Node environments. */
 // Stryker disable BlockStatement
-function nodeEnv(key: string): string | undefined {
+export function nodeEnv(key: string): string | undefined {
   try {
     // process.env is not available in browser builds after tree-shaking,
     // but some bundlers (esbuild, Vite) leave process.env.X inline replacements.
@@ -124,6 +135,55 @@ function normalizeConfiguredLevel(raw: string | undefined): string {
   return raw === undefined ? DEFAULTS.logLevel : toPinoLevel(raw);
 }
 
+/** The Prometheus fields of configFromEnv(); each invalid value throws ConfigurationError. */
+function prometheusFromEnv(): Pick<
+  TelemetryConfig,
+  | 'metricsExporters'
+  | 'metricsExporterWarnings'
+  | 'metricsHealthOtlp'
+  | 'prometheusListen'
+  | 'prometheusHost'
+  | 'prometheusPort'
+  | 'prometheusPath'
+  | 'prometheusTranslation'
+  | 'prometheusScopeLabels'
+  | 'prometheusTargetInfo'
+  | 'prometheusWebConfig'
+> {
+  const listen = envStr(nodeEnv('PROVIDE_METRICS_PROMETHEUS_LISTEN'), 'false').toLowerCase();
+  validateListen(listen);
+  const path = envStr(nodeEnv('PROVIDE_METRICS_PROMETHEUS_PATH'), DEFAULT_PATH);
+  validatePath(path);
+  const translation = envStr(
+    nodeEnv('PROVIDE_METRICS_PROMETHEUS_TRANSLATION'),
+    DEFAULT_TRANSLATION,
+  );
+  validateTranslation(translation);
+  const exporters = parseMetricsExporters(
+    nodeEnv('OTEL_METRICS_EXPORTER'),
+    envBool('PROVIDE_TELEMETRY_STRICT_CONFIG', DEFAULTS.strictConfig),
+  );
+  return {
+    metricsExporters: exporters.exporters,
+    metricsExporterWarnings: exporters.warnings,
+    metricsHealthOtlp: envBool('PROVIDE_METRICS_HEALTH_OTLP', DEFAULTS.metricsHealthOtlp),
+    prometheusListen: listen,
+    prometheusHost: envStr(nodeEnv('OTEL_EXPORTER_PROMETHEUS_HOST'), DEFAULT_HOST),
+    prometheusPort: parsePort(nodeEnv('OTEL_EXPORTER_PROMETHEUS_PORT')),
+    prometheusPath: path,
+    prometheusTranslation: translation,
+    prometheusScopeLabels: envBool(
+      'PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS',
+      DEFAULTS.prometheusScopeLabels,
+    ),
+    prometheusTargetInfo: envBool(
+      'PROVIDE_METRICS_PROMETHEUS_TARGET_INFO',
+      DEFAULTS.prometheusTargetInfo,
+    ),
+    prometheusWebConfig: envStr(nodeEnv('PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG'), ''),
+  };
+}
+
 export function configFromEnv(): TelemetryConfig {
   const otelHeader = nodeEnv('OTEL_EXPORTER_OTLP_HEADERS');
   const parsedHeaders = otelHeader ? parseOtlpHeaders(otelHeader) : undefined;
@@ -177,6 +237,7 @@ export function configFromEnv(): TelemetryConfig {
     consoleOutput: true,
     strictSchema: envBool('PROVIDE_TELEMETRY_STRICT_SCHEMA', DEFAULTS.strictSchema),
     strictEventName: envBool('PROVIDE_TELEMETRY_STRICT_EVENT_NAME', DEFAULTS.strictEventName),
+    strictConfig: envBool('PROVIDE_TELEMETRY_STRICT_CONFIG', DEFAULTS.strictConfig),
     requiredLogKeys: (() => {
       const raw = nodeEnv('PROVIDE_TELEMETRY_REQUIRED_KEYS');
       return raw
@@ -202,6 +263,7 @@ export function configFromEnv(): TelemetryConfig {
 
     // Metrics
     metricsEnabled: envBool('PROVIDE_METRICS_ENABLED', DEFAULTS.metricsEnabled),
+    ...prometheusFromEnv(),
 
     // Per-signal sampling
     samplingLogsRate: envFloatInRange(

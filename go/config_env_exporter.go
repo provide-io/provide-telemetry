@@ -122,7 +122,7 @@ func applyExporterBackoff(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"); err != nil {
+		if err := validateNonNegativeFloatFinite(f, "PROVIDE_EXPORTER_LOGS_BACKOFF_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.LogsBackoffSeconds = f
@@ -132,7 +132,7 @@ func applyExporterBackoff(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"); err != nil {
+		if err := validateNonNegativeFloatFinite(f, "PROVIDE_EXPORTER_TRACES_BACKOFF_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.TracesBackoffSeconds = f
@@ -142,7 +142,7 @@ func applyExporterBackoff(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"); err != nil {
+		if err := validateNonNegativeFloatFinite(f, "PROVIDE_EXPORTER_METRICS_BACKOFF_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.MetricsBackoffSeconds = f
@@ -157,7 +157,7 @@ func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"); err != nil {
+		if err := validateNonNegativeFloatFinite(f, "PROVIDE_EXPORTER_LOGS_TIMEOUT_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.LogsTimeoutSeconds = f
@@ -167,7 +167,7 @@ func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"); err != nil {
+		if err := validateNonNegativeFloatFinite(f, "PROVIDE_EXPORTER_TRACES_TIMEOUT_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.TracesTimeoutSeconds = f
@@ -177,7 +177,7 @@ func applyExporterTimeout(cfg *TelemetryConfig, env func(string) string) error {
 		if err != nil {
 			return err
 		}
-		if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"); err != nil {
+		if err := validateNonNegativeFloatFinite(f, "PROVIDE_EXPORTER_METRICS_TIMEOUT_SECONDS"); err != nil {
 			return err
 		}
 		cfg.Exporter.MetricsTimeoutSeconds = f
@@ -197,7 +197,7 @@ func applyExporterShutdownTimeout(cfg *TelemetryConfig, env func(string) string)
 	if err != nil {
 		return err
 	}
-	if err := validateNonNegativeFloat(f, "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS"); err != nil {
+	if err := validateNonNegativeFloatFinite(f, "PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS"); err != nil {
 		return err
 	}
 	cfg.Exporter.LogsShutdownTimeoutSeconds = f

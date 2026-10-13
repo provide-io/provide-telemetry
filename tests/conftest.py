@@ -5,7 +5,10 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
+from collections.abc import Generator
 from pathlib import Path
 
 import hypothesis
@@ -17,11 +20,13 @@ from provide.telemetry.cardinality import clear_cardinality_limits
 from provide.telemetry.consent import _reset_consent_for_tests
 from provide.telemetry.logger.context import clear_context
 from provide.telemetry.logger.core import _reset_logging_for_tests
+from provide.telemetry.metrics.provider import _set_meter_for_test
 from provide.telemetry.resilience import reset_resilience_for_tests
 from provide.telemetry.runtime import reset_runtime_for_tests
 from provide.telemetry.sampling import reset_sampling_for_tests
 from provide.telemetry.setup import _reset_setup_state_for_tests
 from provide.telemetry.tracing.context import set_trace_context
+from provide.telemetry.tracing.provider import _reset_tracing_for_tests
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -51,6 +56,22 @@ hypothesis.settings.register_profile("provide", deadline=None)
 hypothesis.settings.load_profile("provide")
 
 
+@pytest.fixture(autouse=True, scope="session")
+def drop_git_hook_environment() -> Generator[None]:
+    """Run the suite without the GIT_* variables a git hook exports.
+
+    The pre-commit hook runs this suite with GIT_DIR and GIT_INDEX_FILE pointing
+    at the real repository, and every git a test spawns inherits them. `git init`
+    in tmp_path then re-initialises the real repository as bare, and `go build`
+    fails its VCS stamping with exit status 128. Without them, git finds the
+    repository from the working directory, which is what every test expects.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        for name in [key for key in os.environ if key.startswith("GIT_")]:
+            patch.delenv(name)
+        yield
+
+
 @pytest.fixture(autouse=True)
 def reset_logger_state() -> None:
     """Reset structlog and logger core state before each test.
@@ -72,6 +93,12 @@ def reset_logger_state() -> None:
     structlog/runtime state, causing later setup_telemetry(config) calls to
     no-op and get_logger() to lazily rebuild logging from env defaults.
 
+    The tracer and meter provider latches go with it. A provider a previous
+    test installed makes the next setup_tracing()/setup_metrics() return
+    early, so a test that checks what setup builds sees nothing built. Under
+    pytest-randomly that depends on the shuffle: test_otlp_tls failed only
+    when it landed after a test that set up metrics without tearing down.
+
     The published lifecycle generation is also cleared: processors that read live config
     (harden_input, sanitize_sensitive_fields, enforce_event_schema) would
     otherwise pick up a previous test's TelemetryConfig and ignore the
@@ -86,7 +113,18 @@ def reset_logger_state() -> None:
     """
     structlog.reset_defaults()
     _reset_logging_for_tests()
+    # The SDK's fan-out handler outlives the state reset above, and the next
+    # lazy configuration attaches another beside it. Two fan-outs on the root
+    # is not a state any process reaches, and the second one re-sanitizes what
+    # the first already passed through (a receipt line becomes a new receipt).
+    # Matched by name: a module reload makes a second class object.
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        if type(handler).__name__ == "_BackpressureFanoutHandler":
+            root.removeHandler(handler)
     _reset_setup_state_for_tests()
+    _reset_tracing_for_tests()
+    _set_meter_for_test(None)
     reset_sampling_for_tests()
     reset_resilience_for_tests()
     reset_runtime_for_tests()

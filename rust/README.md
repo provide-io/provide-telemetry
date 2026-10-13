@@ -14,10 +14,10 @@ provide-telemetry = { path = "../rust" }          # local workspace
 serde_json = "1"                                  # structured log fields are serde_json::Value
 
 # or once published:
-# provide-telemetry = "0.8"
+# provide-telemetry = "0.11"
 ```
 
-Requires Rust 1.81+.
+Requires Rust 1.89+.
 
 ## Quick start
 
@@ -50,7 +50,9 @@ fn main() {
 | Export | Description |
 |--------|-------------|
 | `setup_telemetry(Option<TelemetryConfig>) -> Result<TelemetryConfig, TelemetryError>` | Idempotent init; `None` reads the environment. |
-| `reconfigure_telemetry(overrides)` | Hot-reload sampling / backpressure / exporter policy. |
+| `reconfigure_telemetry(Option<TelemetryConfig>)` | Apply a new config (`None` re-reads the environment); provider-changing fields are an error while OTel providers are installed. |
+| `update_runtime_config(RuntimeOverrides)` | Hot-reload sampling / backpressure / exporter policy. |
+| `set_log_output(writer)` / `clear_log_output()` | Send rendered log records to any `Write + Send` instead of stderr, and back. Colour is off while a writer is installed; reconfiguration does not touch it. A record the writer logs from inside its own `write`/`flush` on the same thread is dropped and counted as a log export failure, and so is a write that errors or panics. Other threads' records wait and are never dropped. |
 | `flush_telemetry(Option<f64>) -> Result<(), TelemetryError>` | Drain every installed provider and leave them installed; the argument is a timeout in seconds. |
 | `adopt_global_providers(AdoptedProviders)` | Tell the facade the host installed live providers on the OTel globals, so emission routes through them. Rust cannot detect this for itself. |
 | `shutdown_telemetry(Option<f64>) -> Result<(), TelemetryError>` | Flush and shut down all providers; the argument is a timeout in seconds. |
@@ -67,11 +69,11 @@ logger.info("request.received.ok");
 logger.warn("rate.limit.approaching");
 logger.error("db.query.failed");
 
-// Attach structured fields inline
-logger.info_with("user.login.ok", |ctx| {
-    ctx.insert("user_id".into(), 42.into());
-    ctx.insert("method".into(), "oauth".into());
-});
+// Attach structured fields
+let mut fields = BTreeMap::new();
+fields.insert("user_id".to_string(), Value::from(42));
+fields.insert("method".to_string(), Value::from("oauth"));
+logger.info_fields("user.login.ok", &fields);
 
 // Attach DARS metadata (domain.action.resource.status)
 use provide_telemetry::event;
@@ -79,8 +81,15 @@ let ev = event(&["auth", "login", "ok"]).expect("valid event name");
 logger.info_event(&ev);
 ```
 
-Event names follow the DA(R)S pattern: `event()` accepts 3–4 dot-separated
-segments; `event_name()` accepts 3–5 segments.
+Event names follow the DA(R)S pattern: `event()` accepts 3–4 segments in
+every mode. `event_name()` accepts one or more non-empty segments by default,
+and 3–5 segments matching `^[a-z][a-z0-9_]*$` under
+`PROVIDE_TELEMETRY_STRICT_SCHEMA=true`.
+
+The SDK stamps the service identity (`service`, `env`, `version`) and, while a
+span is live, `trace_id` and `span_id` on every record. A caller or bound
+field under one of those names is replaced by the stamped value, not
+duplicated; to name a remote service, use `peer.service`.
 
 ### Tracing
 
@@ -109,42 +118,91 @@ let cpu = gauge("cpu.utilization", Some("CPU utilization ratio"), Some("percent"
 cpu.set(72.5, None);
 ```
 
+Observable instruments report through a callback that runs at each collection
+(every Prometheus scrape, every OTLP export interval). Create them after
+`setup_telemetry()`: without a provider the callback never runs.
+
+```rust
+use provide_telemetry::{observable_gauge, Observation};
+
+let depth = observable_gauge(
+    "queue.depth",
+    move || vec![Observation::new(queue.len() as f64)],
+    None, // description
+    None, // unit
+);
+// ... later ...
+depth.unregister();
+```
+
+`observable_counter` and `observable_up_down_counter` take the same arguments.
+
+### Prometheus
+
+Built with `--features otel`, the crate can serve its metrics for Prometheus
+to pull. Add `prometheus` to `OTEL_METRICS_EXPORTER` (`prometheus` alone, or
+`otlp,prometheus` to push as well), then call the framework-neutral handler
+from your own HTTP server and write back its status, headers and body:
+
+```rust
+let response = provide_telemetry::metrics_handler(method, accept); // (&str, Option<&str>)
+// response.status: u16, response.headers: Vec<(&str, String)>, response.body: Vec<u8>
+```
+
+It serves `GET` and `HEAD` (405 otherwise) and answers 503 with a one-line
+reason before setup, after shutdown, with metrics disabled, or when the reader
+was not selected. `render_prometheus(accept)` returns `(body, content_type)`
+for servers that want only the payload.
+
+With the `prometheus-listener` feature, `PROVIDE_METRICS_PROMETHEUS_LISTEN=true`
+(or `auto`) starts a standalone listener on `127.0.0.1:9464/metrics`
+(`OTEL_EXPORTER_PROMETHEUS_HOST`, `OTEL_EXPORTER_PROMETHEUS_PORT`,
+`PROVIDE_METRICS_PROMETHEUS_PATH`), with TLS and basic auth from
+`PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`. Without the feature, asking for the
+listener sets the health snapshot's `setup_error` instead. Every scrape also
+carries the SDK's own health as `provide_telemetry_*` series;
+`PROVIDE_METRICS_HEALTH_OTLP=true` exports them over OTLP as well. See
+[docs/guide/configuration.md](../docs/guide/configuration.md) for the web
+config format.
+
 ### Context binding
 
 ```rust
 use provide_telemetry::{bind_context, clear_context};
-use std::collections::BTreeMap;
+use serde_json::Value;
 
-let mut fields = BTreeMap::new();
-fields.insert("request_id".into(), "req-abc".into());
-fields.insert("user_id".into(), 7.into());
-bind_context(fields);
-// All log calls on this task/thread include these fields automatically.
-clear_context();
+let _bound = bind_context([
+    ("request_id", Value::from("req-abc")),
+    ("user_id", Value::from(7)),
+]);
+// Log calls on this thread include these fields until `_bound` drops.
+let _cleared = clear_context(); // also scoped: dropping it restores the fields
 ```
+
+Every binding function returns a guard that restores the previous context when
+it drops, so hold it for as long as the binding should last; a bare
+`bind_context(...);` is undone at the end of the statement.
 
 ### Session correlation
 
 ```rust
 use provide_telemetry::{bind_session_context, get_session_id, clear_session_context};
 
-bind_session_context("sess-abc-123");
+let _session = bind_session_context("sess-abc-123");
 let sid = get_session_id();   // Some("sess-abc-123")
-clear_session_context();
+let _cleared = clear_session_context();
 ```
 
 ### W3C trace propagation
 
 ```rust
-use provide_telemetry::{extract_w3c_context, bind_propagation_context, clear_propagation_context};
+use provide_telemetry::{extract_w3c_context, bind_propagation_context};
 
-// In an HTTP handler — extract incoming traceparent/tracestate.
-let traceparent = headers.get("traceparent").map(|v| v.to_str().unwrap_or(""));
-let baggage = headers.get("baggage").map(|v| v.to_str().unwrap_or(""));
-let pc = extract_w3c_context(traceparent.unwrap_or(""), baggage.unwrap_or(""));
-bind_propagation_context(&pc);
-// ... handle request ...
-clear_propagation_context();
+// In an HTTP handler — extract incoming traceparent/tracestate/baggage.
+let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+let pc = extract_w3c_context(header("traceparent"), header("tracestate"), header("baggage"));
+let _propagation = bind_propagation_context(pc);
+// ... handle request; the binding is undone when `_propagation` drops ...
 ```
 
 ### PII sanitization
@@ -173,8 +231,12 @@ and similar keys by default.
 use provide_telemetry::get_health_snapshot;
 
 let snap = get_health_snapshot();
-println!("{} logs emitted, {} retries", snap.logs_emitted, snap.retries);
+println!("{} logs emitted, {} retries", snap.emitted_logs, snap.retries_logs);
 ```
+
+A log record counts in `emitted_logs` once it has passed the sinks. One
+refused before export — by consent, sampling or backpressure — counts in
+`dropped_logs` instead, never in both.
 
 ### Testing helpers
 
@@ -200,23 +262,28 @@ All options come from environment variables:
 | `PROVIDE_TELEMETRY_SERVICE_NAME` | `provide-service` | Service identity |
 | `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment |
 | `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Service version |
-| `PROVIDE_LOG_LEVEL` | `INFO` | Log level: `TRACE` / `DEBUG` / `INFO` / `WARN` / `ERROR` |
+| `PROVIDE_LOG_LEVEL` | `INFO` | Log level: `TRACE` / `DEBUG` / `INFO` / `WARN` (or `WARNING`) / `ERROR` / `CRITICAL` |
 | `PROVIDE_LOG_FORMAT` | `console` | Output format: `console` / `json` / `pretty` |
 | `PROVIDE_LOG_PRETTY_KEY_COLOR` | `dim` | ANSI color name for keys in pretty format |
 | `PROVIDE_LOG_PRETTY_VALUE_COLOR` | `""` | ANSI color name for values in pretty format |
 | `PROVIDE_LOG_PRETTY_FIELDS` | `""` | Comma-separated field names to display in pretty format |
 | `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Enforce DA(R)S event name format |
+| `PROVIDE_TELEMETRY_STRICT_CONFIG` | `false` | Fail config parsing instead of ignoring unusable `OTEL_METRICS_EXPORTER` entries |
 | `PROVIDE_TRACE_ENABLED` | `true` | Enable tracing |
 | `PROVIDE_TRACE_SAMPLE_RATE` | `1.0` | Trace sample rate `[0.0, 1.0]` |
 | `PROVIDE_METRICS_ENABLED` | `true` | Enable metrics |
 | `PROVIDE_SAMPLING_LOGS_RATE` | `1.0` | Log sampling rate `[0.0, 1.0]` |
-| `PROVIDE_BACKPRESSURE_LOGS_MAXSIZE` | `1000` | Max queued log events before backpressure |
+| `PROVIDE_BACKPRESSURE_LOGS_MAXSIZE` | `0` | Max queued log events before backpressure (`0` = unlimited) |
 | `PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH` | `1024` | Truncate long field values at this byte count |
 | `PROVIDE_SECURITY_MAX_ATTR_COUNT` | `64` | Maximum context attributes per log record |
 | `PROVIDE_SECURITY_MAX_NESTING_DEPTH` | `8` | Maximum PII sanitization recursion depth |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP base endpoint (e.g. `http://localhost:4318`) |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Percent-encoded `key=value` auth headers |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds (`--features otel`) |
+| `OTEL_METRICS_EXPORTER` | `otlp` | Comma-separated: `otlp`, `prometheus`, `none` (see [Prometheus](#prometheus)). Other entries are warned about, ignored and reported in `setup_error`; setup still succeeds |
+
+The full list, including the Prometheus variables, is in
+[docs/guide/configuration.md](../docs/guide/configuration.md).
 
 ## Cargo features
 
@@ -224,12 +291,13 @@ All options come from environment variables:
 |---------|---------|-------------|
 | `otel` | no | Real OTLP export for traces, metrics, and logs via `opentelemetry-otlp` (HTTP/protobuf). When off, the crate provides in-process fallback instrumentation (noop tracer, in-process metrics, stderr-only logs). |
 | `otel-grpc` | no | Adds gRPC transport on top of `otel`. Requires `tonic` (heavier dep tree). |
+| `prometheus-listener` | no | The standalone Prometheus listener (`PROVIDE_METRICS_PROMETHEUS_LISTEN`), with TLS (rustls) and bcrypt basic auth from the web config. Implies `otel`. |
 
 ```bash
-cargo build                        # default (fallback-only + governance)
-cargo build --features otel        # + OTLP/HTTP export
-cargo build --features otel-grpc   # + OTLP/gRPC transport
-cargo build --no-default-features  # minimal fallback-only build
+cargo build                                  # default (fallback-only)
+cargo build --features otel                  # + OTLP/HTTP export and the Prometheus handler
+cargo build --features otel-grpc             # + OTLP/gRPC transport
+cargo build --features prometheus-listener   # + standalone Prometheus listener
 ```
 
 ## OTLP export
@@ -245,6 +313,7 @@ emitted to the configured endpoint:
 | `OTEL_EXPORTER_OTLP_HEADERS` | `Authorization=Basic%20dXNlcjpwYXNz` | Shared auth header (percent-encoded). |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Default. Also accepts `http/json`. `grpc` requires `--features otel-grpc`. |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | `http://traces:4318/v1/traces` | Signal-specific override (used verbatim, no path appending). |
+| `OTEL_EXPORTER_OTLP_CERTIFICATE` | `/etc/ssl/private-ca.crt` | PEM CA bundle for TLS; `_CLIENT_CERTIFICATE` / `_CLIENT_KEY` add mutual TLS. Each has per-signal forms (`OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE`, ...) that win. |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Metrics push interval in milliseconds. |
 
 **Tokio runtime requirement:** this crate depends on `tokio` (for
@@ -257,10 +326,15 @@ explicit `tokio::runtime::Builder` runtime:
 ```rust
 #[tokio::main]
 async fn main() {
-    provide_telemetry::setup_telemetry().expect("telemetry setup");
+    provide_telemetry::setup_telemetry(None).expect("telemetry setup");
     // ...
 }
 ```
+
+A certificate or key that cannot be read or loaded leaves that signal's
+exporter unbuilt, logs `otlp.tls_file_unreadable` and sets the health
+snapshot's `setup_error`; setup still succeeds and the other signals are
+unaffected.
 
 Architecture: `consent`, `sampling`, `backpressure`, and `resilience`
 modules act as pre-filters. The OTel SDK sits behind them and handles
@@ -311,7 +385,7 @@ the OTLP E2E client/server pair used by the cross-language verification flow.
 
 ## Requirements
 
-- Rust 1.81+
+- Rust 1.89+
 
 ## Coverage gate
 
@@ -343,7 +417,7 @@ Re-run the sweep from `rust/`:
 
 ```bash
 CARGO_BUILD_JOBS=1 NEXTEST_TEST_THREADS=1 CARGO_PROFILE_TEST_DEBUG=0 \
-  cargo mutants --all-features --test-tool nextest -j 1 \
+  cargo mutants --in-place --all-features --test-tool nextest \
   --jobserver-tasks 1 --no-shuffle \
   --minimum-test-timeout 300 --timeout-multiplier 4
 ```

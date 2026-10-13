@@ -37,6 +37,14 @@ EXCLUDED_DIRS = {
     ".git",
     ".provide",
     ".venv",
+    # Git worktrees live here (.gitignore excludes the tree). A worktree holds
+    # another branch's checkout, so auditing it audits that branch's files
+    # against this one's rules -- and any developer with a worktree open could
+    # not commit at all.
+    ".worktrees",
+    # Claude Code's agent worktrees (.gitignore excludes .claude/), for the same
+    # reason; a build running in one also deletes files mid-scan.
+    ".claude",
     "workenv",
     ".mypy_cache",
     ".pytest_cache",
@@ -53,7 +61,9 @@ EXCLUDED_DIRS = {
 def find_python_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for path in root.rglob("*.py"):
-        if any(part in EXCLUDED_DIRS for part in path.parts):
+        # Relative, so a checkout that itself sits under an excluded part (an
+        # agent worktree in .claude/worktrees/) still scans its own files.
+        if any(part in EXCLUDED_DIRS for part in path.relative_to(root).parts):
             continue
         files.append(path)
     return sorted(files)

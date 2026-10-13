@@ -17,6 +17,7 @@ import structlog
 
 from provide.telemetry import levels as _levels
 from provide.telemetry._endpoint import validate_otlp_endpoint
+from provide.telemetry._otlp_tls import tls_ready
 from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
@@ -24,7 +25,7 @@ from provide.telemetry.levels import LogSeverity, to_stdlib_level
 from provide.telemetry.logger import _otel_logs
 from provide.telemetry.logger import sink as _sink
 from provide.telemetry.logger.console import ansi_supported, structlog_colors, utf8_writer
-from provide.telemetry.logger.handlers import _BackpressureFanoutHandler
+from provide.telemetry.logger.handlers import _BackpressureFanoutHandler, _HostWriterHandler
 from provide.telemetry.logger.pretty import PrettyRenderer
 from provide.telemetry.logger.processors import (
     add_error_fingerprint,
@@ -160,9 +161,11 @@ def _console_handler(installed: TextIO | None) -> logging.StreamHandler:  # type
 
     A writer installed by the host is taken as given: it is not passed through
     utf8_writer, which exists for the console stream this process did not choose.
+    It is wrapped in a handler that refuses a record the writer logs from inside
+    itself and counts a writer that raises, both as log export failures.
     """
     if installed is not None:
-        return logging.StreamHandler(installed)
+        return _HostWriterHandler(installed)
     return logging.StreamHandler(utf8_writer(sys.stderr))  # pragma: no mutate — None also defaults to stderr
 
 
@@ -203,15 +206,12 @@ def _plain_console_renderer() -> Any:
 
 
 def _get_level(level: str) -> int:
-    # addLevelName registers TRACE, so getLevelName below resolves it anyway —
+    # addLevelName registers TRACE, so the names mapping below holds it anyway —
     # this fast path is a shortcut, making mutations of the literal equivalent.
-    is_trace = level == "TRACE"  # pragma: no mutate — shortcut only; getLevelName resolves TRACE anyway
+    is_trace = level == "TRACE"  # pragma: no mutate — shortcut only; the names mapping resolves TRACE anyway
     if is_trace:
         return TRACE
-    mapped = logging.getLevelName(level)
-    if isinstance(mapped, int):
-        return mapped
-    return logging.INFO
+    return logging.getLevelNamesMapping().get(level, logging.INFO)
 
 
 def _make_filtering_bound_logger(level: int) -> type[structlog.typing.BindableLogger]:
@@ -302,6 +302,8 @@ def _build_handlers(config: TelemetryConfig, level: int) -> list[logging.Handler
     # log records goes through `floor < OTEL_* env < explicit` like every other
     # signal's. Hand-rolling it here dropped deployment.environment and made
     # OTEL_SERVICE_NAME apply to spans but not to logs.
+    if not tls_ready("logs"):
+        return handlers
     resource = build_resource(config, resource_cls)
     provider = sdk_logs_mod.LoggerProvider(resource=resource)
     raw_exporter = run_with_resilience(
@@ -496,8 +498,22 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
     if config.logging.include_timestamp:
         processors.append(structlog.processors.TimeStamper(fmt="iso"))
 
+    # Per-module level filter — runs BEFORE apply_sampling so we don't
+    # acquire backpressure tickets for records the filter is going to drop,
+    # AND so the DropEvent path doesn't strand a ticket between
+    # apply_sampling (acquire) and the final renderer/handler boundary. A
+    # filtered record is below its level, not refused: it is not a drop.
+    if config.logging.module_levels:
+        processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
+
+    # The canonical stage order (spec/pipeline_fixtures.yaml): admission —
+    # consent, sampling, backpressure — before any payload work, then
+    # hardening, then PII and its receipts. Enrichment and schema checks sit
+    # between hardening and PII, as they did before admission moved ahead of
+    # them: what they add is hardened-input-shaped and still gets sanitized.
     processors.extend(
         [
+            apply_sampling,
             harden_input(
                 config.security.max_attr_value_length,
                 config.security.max_attr_count,
@@ -505,24 +521,9 @@ def _configure_logging_inner(config: TelemetryConfig, *, claim_root: bool) -> No
             ),
             add_standard_fields(config),
             add_error_fingerprint,
-            # Schema validation runs BEFORE sampling. Schema-invalid records are now
-            # annotated with _schema_error and continue through the pipeline — they
-            # DO contribute to emitted_logs. The ordering ensures _schema_error is
-            # set before apply_sampling evaluates the record.
+            # Schema-invalid records are annotated with _schema_error and
+            # continue through the pipeline rather than being dropped.
             enforce_event_schema(config),
-        ]
-    )
-
-    # Per-module level filter — runs BEFORE apply_sampling so we don't
-    # acquire backpressure tickets for records the filter is going to drop,
-    # AND so the DropEvent path doesn't strand a ticket between
-    # apply_sampling (acquire) and the final renderer/handler boundary.
-    if config.logging.module_levels:
-        processors.append(make_level_filter(config.logging.level, config.logging.module_levels))
-
-    processors.extend(
-        [
-            apply_sampling,
             sanitize_sensitive_fields(config.logging.sanitize, config.pii_max_depth),
         ]
     )

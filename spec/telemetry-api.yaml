@@ -17,6 +17,11 @@
 #               Supported values: "governance"
 #               Capability rules by language:
 #                 python, typescript, go, rust, csharp — governance always present
+#               A capability can stage new symbols: they stay required: false behind it,
+#               a language joins its set in validate_conformance.py in the PR that ships
+#               them, and once every language has shipped they become required: true and
+#               the capability is retired (as observable_metrics and prometheus were; see
+#               docs/plans/2026-10-10-prometheus-metrics-design.md)
 #   note:       human-readable description or rationale
 
 spec_version: "2"
@@ -104,6 +109,28 @@ api:
     - name: histogram
       kind: function
       required: true
+    - name: observable_counter
+      kind: function
+      required: true
+      note: "Callback-reported monotonic counter; callbacks run at collection (each scrape or export interval). See prometheus.observable_instruments."
+    - name: observable_gauge
+      kind: function
+      required: true
+      note: "Callback-reported gauge. Series a callback stops reporting disappear from the next collection."
+    - name: observable_up_down_counter
+      kind: function
+      required: true
+      note: "Callback-reported non-monotonic sum."
+
+  prometheus:
+    - name: metrics_handler
+      kind: function
+      required: true
+      note: "Tier 2 pull handler the host mounts on its own HTTP server; idiomatic shape per language (ASGI app, http.Handler, node:http listener; a framework-neutral (method, accept) handler in C# and Rust). Not exported by browser TypeScript. Go exports it from the otel module, which owns the MeterProvider."
+    - name: render_prometheus
+      kind: function
+      required: true
+      note: "Returns (body, content_type) for one collection, for hosts whose server the handler does not fit."
 
   propagation:
     - name: extract_w3c_context
@@ -391,6 +418,11 @@ config_defaults:
       default: "false"
       description: "Master switch: when true, overrides event name strictness to on"
       applicability: [python, typescript, go, rust, csharp]
+    - env: PROVIDE_TELEMETRY_STRICT_CONFIG
+      type: bool
+      default: "false"
+      description: "When true, a configuration value the SDK would otherwise warn about and ignore fails config parsing with ConfigurationError instead. Today that covers OTEL_METRICS_EXPORTER only (prometheus_metrics.metrics_exporter_warnings); it does not touch event-name strictness (PROVIDE_TELEMETRY_STRICT_SCHEMA) or values that are already errors."
+      applicability: [python, typescript, go, rust, csharp]
 
   event_schema:
     - env: PROVIDE_TELEMETRY_STRICT_EVENT_NAME
@@ -507,6 +539,56 @@ config_defaults:
       default: "true"
       description: "Enable OTel metrics provider (falls back to in-process when false)"
       applicability: [python, typescript, go, rust, csharp]
+    - env: OTEL_METRICS_EXPORTER
+      type: str
+      default: "otlp"
+      description: "Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader. Other values are warned about and ignored (see prometheus_metrics.metrics_exporter_warnings)."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: OTEL_EXPORTER_PROMETHEUS_HOST
+      type: str
+      default: "127.0.0.1"
+      description: "Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: OTEL_EXPORTER_PROMETHEUS_PORT
+      type: int
+      default: "9464"
+      description: "Tier 3 bind port."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: PROVIDE_METRICS_PROMETHEUS_LISTEN
+      type: str
+      default: "false"
+      description: "Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER)."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: PROVIDE_METRICS_PROMETHEUS_PATH
+      type: str
+      default: "/metrics"
+      description: "Tier 3 path. Ignored by Tier 2, where the host picks the mount path."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: PROVIDE_METRICS_PROMETHEUS_TRANSLATION
+      type: str
+      default: "UnderscoreEscapingWithSuffixes"
+      description: "Metric and label name translation strategy; one of translation.strategies."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS
+      type: bool
+      default: "false"
+      description: "Add otel_scope_name / otel_scope_version labels to every series."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: PROVIDE_METRICS_PROMETHEUS_TARGET_INFO
+      type: bool
+      default: "true"
+      description: "Emit the target_info series carrying resource attributes."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: PROVIDE_METRICS_HEALTH_OTLP
+      type: bool
+      default: "false"
+      description: "Also export the health metrics over OTLP as observable instruments."
+      applicability: [python, typescript, go, csharp, rust]
+    - env: PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG
+      type: str
+      default: ""
+      description: "Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth."
+      applicability: [python, typescript, go, csharp, rust]
 
   otlp:
     - env: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -528,7 +610,7 @@ config_defaults:
       type: str
       default: ""
       description: "Per-signal OTLP headers for logs"
-      applicability: [python, typescript, go, rust]
+      applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
       type: str
       default: ""
@@ -538,7 +620,7 @@ config_defaults:
       type: str
       default: ""
       description: "Per-signal OTLP headers for traces"
-      applicability: [python, typescript, go, rust]
+      applicability: [python, typescript, go, rust, csharp]
     - env: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
       type: str
       default: ""
@@ -548,7 +630,7 @@ config_defaults:
       type: str
       default: ""
       description: "Per-signal OTLP headers for metrics"
-      applicability: [python, typescript, go, rust]
+      applicability: [python, typescript, go, rust, csharp]
 
   sampling:
     - env: PROVIDE_SAMPLING_LOGS_RATE
@@ -864,6 +946,51 @@ log_output:
     the writer's own isatty, which every file object carries. Rust would have to
     charge every host a trait implementation for the same answer, so it assumes
     not-a-terminal.
+
+    The writer is the host's code running inside a log call, and two things it
+    can do there cost only the record in hand. A writer that fails -- returns an
+    error, raises or panics -- loses the record it was writing, which counts as
+    a log export failure; the log call does not fail with it. And a record
+    logged from inside the log output writer, on the call stack already writing
+    to it, is not written and counts as an export failure; concurrent writers
+    are never dropped. Without the second rule a writer that reports its own
+    trouble through the SDK deadlocks on the sink's lock or recurses into
+    itself, so the rule is a guard, not a documented prohibition. Both counts
+    land in the logs export_failures health counter. The record is still
+    emitted, health being the stage after the sinks: it passed every admission
+    gate, and a sink that failed still ran.
+  reentrance:
+    rule: >
+      A record logged from inside the log output writer, on the call stack
+      already writing to it, is not written and counts as an export failure;
+      concurrent writers are never dropped.
+    call_stack: >
+      What "the call stack already writing" means is each runtime's own unit of
+      execution, because that is the unit that can come back to the sink while
+      it holds it. A writer is synchronous, so nothing else runs on that unit
+      until the writer returns; any record from another unit is a concurrent
+      writer and waits for the sink as it always has. None of the three can say
+      which sink a writer frame belongs to, so a writer that logs into a
+      replacement sink installed meanwhile is refused too.
+    go: >
+      the goroutine. Go does not expose goroutine identity, so the sink checks,
+      only once TryLock has failed, whether the caller's own stack holds the
+      frame that calls the host's writer.
+    python: >
+      the thread. A thread-local flag is set around the writer call; the stdlib
+      handler lock is an RLock, so without it a same-thread record recursed
+      rather than deadlocked. Records reaching the root through stdlib logging
+      are caught the same way, and, never having been admitted by the
+      pipeline, count as an export failure without counting as emitted.
+    rust: >
+      the thread. A thread_local flag is set around the writer call, checked
+      before the sink's std::sync::Mutex, which deadlocks when one thread
+      locks it twice.
+    portability: >
+      Not a behavioural fixture. The writer is a host handle, so no
+      cross-language probe can install one; each SDK holds the rule in its own
+      tests, and tests/tooling/test_log_output_contract.py asserts each guard
+      is present in the source.
   applicability: [go, rust, python]
   host_control:
     go: none after setup — the SDK owns the slog handler chain
@@ -980,6 +1107,30 @@ callsite_fields:
     that derives its OTel attributes from the record fields couples them by
     accident, which is a defect rather than a contract.
 
+reserved_root_fields:
+  description: >
+    Root fields of a log record that the SDK stamps: the service identity,
+    from config (PROVIDE_TELEMETRY_SERVICE_NAME, PROVIDE_TELEMETRY_ENV,
+    PROVIDE_TELEMETRY_VERSION), and the live trace context. Names are the
+    wire names of log_output_format in spec/behavioral_fixtures.yaml; each
+    SDK's raw spelling of the same field is reserved with it (Go's
+    service.name, service.env, service.version, trace.id and span.id; C#'s
+    service_name and environment attributes).
+  fields: [service, env, version, trace_id, span_id]
+  collision: >
+    The SDK wins. A caller or bound-context value under a reserved name is
+    replaced by the stamped one rather than duplicated — the same rule as
+    callsite_fields. A record carrying two answers is filed under whichever
+    one a backend happens to keep, so a payload logged as attributes could
+    otherwise correlate a record to a trace, or attribute it to a service,
+    of the sender's choosing. A caller describing a remote service uses
+    peer.service, which is not reserved.
+  unstamped: >
+    A field the SDK does not stamp on a given record leaves the caller's value
+    standing, since nothing better is known: trace_id and span_id when no span
+    is live, and an identity field whose config value is empty. Only root keys
+    are reserved; a nested field of the same name is the caller's.
+
 health_snapshot:
   description: >
     Typed, canonical health surface. Every SDK serializes exactly these
@@ -1064,6 +1215,169 @@ health_snapshot:
     receipt_failures:
       type: uint64
       description: "Governance receipts a configured ReceiptSink refused or threw on. Without this, a sink that silently drops every receipt is indistinguishable from one that delivers them."
+
+prometheus_metrics:
+  description: >
+    Contract for Prometheus support, delivered in stages (see
+    docs/plans/2026-10-10-prometheus-metrics-design.md). Tier 1 is OTLP push to
+    a Prometheus 3 OTLP receiver and needs no new SDK surface. Tier 2 is the
+    metrics_handler / render_prometheus pull surface. Tier 3 is an opt-in
+    standalone listener serving the Tier 2 handler. All tiers read one
+    MeterProvider: the Prometheus reader sits beside the OTLP reader and never
+    becomes a second instrument system. Cases live in
+    spec/prometheus_fixtures.yaml.
+
+  # Keys move from here into config_defaults (with an applicability list) in the
+  # PR that makes the first SDK parse them; config_defaults rejects an empty
+  # applicability, so planned keys cannot live there yet. The Prometheus keys
+  # moved with the Go implementation; see config_defaults.metrics.
+  # Read from the environment by each signal's OTLP exporter builder, not by
+  # config parsing (so they are not in config_defaults); push_security says how.
+  push_tls_env:
+    - env: OTEL_EXPORTER_OTLP_CERTIFICATE
+      type: str
+      default: ""
+      description: "PEM file of CA certificates trusted for OTLP over TLS, for every signal. Per-signal OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_CERTIFICATE override it."
+    - env: OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE
+      type: str
+      default: ""
+      description: "PEM client certificate for mutual TLS to the OTLP endpoint. Per-signal _{LOGS,TRACES,METRICS}_CLIENT_CERTIFICATE override it."
+    - env: OTEL_EXPORTER_OTLP_CLIENT_KEY
+      type: str
+      default: ""
+      description: "PEM private key for OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE. Per-signal _{LOGS,TRACES,METRICS}_CLIENT_KEY override it."
+
+  config_rules:
+    - "OTEL_METRICS_EXPORTER is split on commas, entries trimmed and lowercased, empty entries dropped. An empty value means the default."
+    - "OTEL_METRICS_EXPORTER follows the OpenTelemetry environment-variable rule for enums: a value the SDK does not support is warned about and ignored, never a setup failure. metrics_exporter_warnings below says exactly how; PROVIDE_TELEMETRY_STRICT_CONFIG=true turns those warnings back into a ConfigurationError."
+    - "An unknown LISTEN value or translation strategy is a ConfigurationError from config parsing, as for the other enum keys (PROVIDE_LOG_FORMAT and the like)."
+    - "PROVIDE_METRICS_PROMETHEUS_PATH must start with '/' and contain no '?' or '#'; anything else is a ConfigurationError. An empty value means the default."
+    - "OTEL_EXPORTER_PROMETHEUS_PORT must be an integer in 0-65535; 0 asks the OS for a free port."
+    - "PROVIDE_METRICS_ENABLED=false disables every metrics reader, including the Prometheus reader and the listener."
+    - "LISTEN=true without prometheus in OTEL_METRICS_EXPORTER still attaches the Prometheus reader; asking for a listener implies the reader."
+
+  metrics_exporter_warnings:
+    description: >
+      How OTEL_METRICS_EXPORTER entries other than otlp and prometheus resolve.
+      Config parsing produces the exporter list and an ordered list of warning
+      messages; the messages are part of the config, so every SDK reports the
+      same text for the same value (cases: exporter_selection in
+      spec/prometheus_fixtures.yaml).
+    supported: [otlp, prometheus]
+    # Registered by the OpenTelemetry spec for OTEL_METRICS_EXPORTER but not
+    # implemented here (logging is OTel's deprecated name for console).
+    unsupported: [console, logging]
+    event: config.metrics_exporter.value_ignored
+    messages:
+      unsupported: "OTEL_METRICS_EXPORTER: {name} is not supported by provide-telemetry, ignored"
+      unknown: "OTEL_METRICS_EXPORTER: unknown exporter {name}, ignored"
+      none_combined: "OTEL_METRICS_EXPORTER: none cannot be combined with other exporters, ignored"
+      fallback: "OTEL_METRICS_EXPORTER: no supported exporter left, using otlp"
+    strict_error: "PROVIDE_TELEMETRY_STRICT_CONFIG: {messages}"
+    rules:
+      - "none alone (after trimming and dropping empty entries) selects no exporter, with no warning."
+      - "An entry in unsupported produces the unsupported message and is dropped; any other entry that is not otlp, prometheus or none produces the unknown message and is dropped. {name} is the trimmed, lowercased entry. Each distinct name is reported once, in order of first appearance."
+      - "none together with any other entry (valid or not) is dropped and produces the none_combined message once, after the per-entry messages. none only wins when it is alone."
+      - "If no otlp or prometheus entry remains and none was not alone, the exporters fall back to the default [otlp] and the fallback message comes last. An empty or unset value is the default with no warning."
+      - "Duplicate otlp or prometheus entries are not warned about."
+      - "Setup still succeeds. Each message is logged once per setup as a warning with event config.metrics_exporter.value_ignored (the message in a reason field), and setup_error is set to the messages joined with '; ', ahead of any OTLP TLS problems (joined with the same separator). A later successful setup without such messages clears it, as for the TLS problems."
+      - "With PROVIDE_TELEMETRY_STRICT_CONFIG=true, config parsing raises ConfigurationError instead whenever the message list is non-empty; its text is strict_error with {messages} being the messages joined with '; '."
+      - "An exporter list built in code (not from the environment) is still validated strictly: a name other than otlp or prometheus is a ConfigurationError."
+
+  observable_instruments:
+    - "A callback reports zero or more (value, attributes) observations per collection: each scrape for Prometheus, each export interval for OTLP."
+    - "A callback that raises or panics contributes no observations for that collection and never fails the collection or the scrape. The SDK logs one warning per instrument, not one per collection."
+    - "Observations obey the metrics gates that apply at collection time: none when metrics are disabled or consent denies metrics. They are not sampled and do not take backpressure tickets, since each is a snapshot rather than an event."
+    - "Registration returns a handle whose unregister stops the callback; unregistering twice is a no-op."
+    - "Like the synchronous instruments, an observable binds to the provider live at creation. Created before setup, or with no provider, its callback is never invoked and unregister is a no-op, so create observables after setup."
+
+  translation:
+    reference: "github.com/prometheus/otlptranslator v1.0.0 (MetricNamer and LabelNamer)"
+    default: UnderscoreEscapingWithSuffixes
+    strategies:
+      - UnderscoreEscapingWithSuffixes
+      - UnderscoreEscapingWithoutSuffixes
+      - NoUTF8EscapingWithSuffixes
+      - NoTranslation
+    instrument_types:
+      counter: monotonic_counter
+      observable_counter: monotonic_counter
+      observable_up_down_counter: non_monotonic_counter
+      gauge: gauge
+      observable_gauge: gauge
+      histogram: histogram
+    rules:
+      - "Names are translated by the reference implementation's rules, pinned by the cases in spec/prometheus_fixtures.yaml. An SDK whose exporter cannot be configured to match translates names itself before handing them over."
+      - "Histogram series append _bucket, _sum and _count to the translated name."
+      - "An attribute whose key the reference cannot translate, or translates to a label name starting with __ (a prefix Prometheus reserves), is dropped from that sample in the Prometheus output; the metric itself is kept. A Prometheus client that refuses such a label would otherwise drop the whole metric. Go drops these keys with a provider-level attribute filter, so while its Prometheus reader is attached they are also missing from its OTLP export."
+      - "The two NoUTF8/NoTranslation strategies emit UTF-8 names only to a scraper that negotiates them; any other scrape gets UnderscoreEscaping output with the same suffix choice."
+    known_divergences: []
+
+  handler:
+    - "GET (and HEAD) only; other methods return 405."
+    - "Content-Type starts with text/plain; version=0.0.4; charset=utf-8 unless the scraper negotiates another supported format. It may carry an escaping parameter (client_golang adds escaping=underscores)."
+    - "Before setup, after shutdown, with metrics disabled, or when the host owns the MeterProvider: 503 with a one-line text body naming the reason. Never an empty 200."
+    - "Each request runs one collection: observable callbacks, then the health collector."
+
+  listener:
+    - "Started by setup() and stopped by shutdown(). Reconfiguration restarts it only when host, port or path changed."
+    - "Serves the handler at PROVIDE_METRICS_PROMETHEUS_PATH; every other path returns 404."
+    - "Read-header, read, write and idle timeouts are set so a slow client cannot hold the listener."
+    - "A bind failure logs one warning, records setup_error, and never fails setup."
+
+  listener_security:
+    format: "Prometheus exporter-toolkit web config (the file Prometheus takes as --web.config.file), restricted to the keys below so every SDK reads the same file the same way."
+    supported_keys:
+      tls_server_config: [cert_file, key_file, client_ca_file, client_auth_type, min_version]
+      basic_auth_users: "map of user name to bcrypt hash"
+    client_auth_type_values: [NoClientCert, RequireAndVerifyClientCert, VerifyClientCertIfGiven]
+    min_version_values: [TLS12, TLS13]
+    rules:
+      - "Fail closed: if the file is unreadable, malformed, names an unsupported key, or a referenced certificate or key cannot be loaded, the listener does not start, and setup_error is recorded and logged; setup itself does not fail. It never falls back to plain HTTP or to no auth."
+      - "Relative paths in the file resolve against the file's directory."
+      - "min_version defaults to TLS12. client_auth_type defaults to NoClientCert, or RequireAndVerifyClientCert when client_ca_file is set."
+      - "Certificate and key files are re-read when their modification time changes, checked on each new connection, so rotation needs no restart."
+      - "Basic auth compares with bcrypt; a failed check returns 401 with WWW-Authenticate: Basic and no detail. An implementation may cache successful (user, password) verifications in memory."
+      - "basic_auth_users without tls_server_config is allowed (credentials then travel in clear text) and logs one warning at setup."
+      - "Bind host, port and path keep their own settings; the web config controls only TLS and auth."
+
+  push_security:
+    - "Headers: OTEL_EXPORTER_OTLP_HEADERS and the per-signal OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_HEADERS, per-signal winning, in every SDK."
+    - "TLS: OTEL_EXPORTER_OTLP_CERTIFICATE, _CLIENT_CERTIFICATE and _CLIENT_KEY and their per-signal forms, per-signal winning, in every SDK."
+    - "A configured certificate or key that cannot be read or loaded (a CA file with no PEM certificates; a client certificate and key, both set, that do not form a pair) leaves that signal's OTLP exporter unbuilt, logs otlp.tls_file_unreadable, and records setup_error naming the variable and path (several joined with '; '); setup itself does not fail, and the other signals and the Prometheus pull reader are unaffected. It is never silently ignored in favour of the system trust store."
+    - "Current gaps are recorded in spec/prometheus_fixtures.yaml push_ingestion.unsupported_modes and asserted by e2e/test_prometheus_push_e2e.py."
+
+  temporality:
+    - "The Prometheus reader is always cumulative."
+    - "Tier 1 requires cumulative OTLP metrics (the Prometheus OTLP receiver rejects delta by default); cumulative is already the SDK default."
+
+  health_metrics:
+    description: >
+      The health_snapshot fields served as Prometheus series by a collector on
+      the pull path. These names are already valid under every translation
+      strategy and are emitted unchanged. They bypass the MeterProvider unless
+      PROVIDE_METRICS_HEALTH_OTLP is true; when both are on, the pull output
+      carries only the collector's copy.
+    health_otlp:
+      - "With PROVIDE_METRICS_HEALTH_OTLP=true, setup registers one observable instrument per family below on the MeterProvider it installs (never on a host's), once per installed provider: named verbatim, no unit, no description; counter entries as observable counters, gauge entries as observable gauges."
+      - "Per-signal families report one observation per signal with the signal attribute; the globals report one observation with no attributes. Values come from a fresh health snapshot at each collection."
+      - "These observations describe the SDK, not user data: they are not consent-gated and do not count toward emitted_metrics."
+      - "The pull renderer leaves out any reader metric named like a health family, so each health family appears exactly once in a scrape whether or not the flag is set."
+    circuit_state_values: {closed: 0, half-open: 1, open: 2}
+    circuit_state_unknown_value: -1
+    per_signal:
+      - {field: emitted, metric: provide_telemetry_emitted_total, type: counter}
+      - {field: dropped, metric: provide_telemetry_dropped_total, type: counter}
+      - {field: export_failures, metric: provide_telemetry_export_failures_total, type: counter}
+      - {field: retries, metric: provide_telemetry_export_retries_total, type: counter}
+      - {field: export_latency_ms, metric: provide_telemetry_export_latency_milliseconds, type: gauge}
+      - {field: async_blocking_risk, metric: provide_telemetry_async_blocking_risk_total, type: counter}
+      - {field: circuit_state, metric: provide_telemetry_circuit_state, type: gauge}
+      - {field: circuit_open_count, metric: provide_telemetry_circuit_open_total, type: counter}
+    per_signal_label: signal
+    global:
+      - {field: setup_error, metric: provide_telemetry_setup_error, type: gauge, value: "1 when setup_error is non-empty, else 0"}
+      - {field: receipt_failures, metric: provide_telemetry_receipt_failures_total, type: counter}
 
 required_behaviors:
   - id: graceful_degradation
@@ -1235,8 +1549,8 @@ behavioral_parity:
     description: >
       Health counter increment semantics — when emitted/dropped counters fire.
     rules:
-      - emitted_* incremented once per signal event that passes sampling (in shouldSample or equivalent gate)
-      - dropped_* incremented once per signal event rejected by sampling (rate drop) OR by backpressure (queue full)
+      - emitted_* incremented once per signal event at the health stage of spec/pipeline_fixtures.yaml, after the local and backend sinks; still incremented when the backend export fails (export_failures_* records that), never on a refused path
+      - dropped_* incremented once per signal event refused by consent, by sampling (rate drop) OR by backpressure (queue full); a level-filtered event is not a drop
       - a single event MUST NOT increment both emitted and dropped
       - a single event MUST NOT increment emitted more than once (no double-counting across gates)
       - retries_* incremented once per retry attempt in the resilience/export path
@@ -1344,6 +1658,15 @@ language_overrides:
     - spec_name: histogram
       accepted_kinds: [type]
       note: "Go exports Histogram as interface type; NewHistogram() is the constructor"
+    - spec_name: observable_counter
+      accepted_kinds: [type]
+      note: "Go exports ObservableCounter as interface type; NewObservableCounter() is the constructor"
+    - spec_name: observable_gauge
+      accepted_kinds: [type]
+      note: "Go exports ObservableGauge as interface type; NewObservableGauge() is the constructor"
+    - spec_name: observable_up_down_counter
+      accepted_kinds: [type]
+      note: "Go exports ObservableUpDownCounter as interface type; NewObservableUpDownCounter() is the constructor"
     - spec_name: logger
       accepted_kinds: [function]
       note: >-

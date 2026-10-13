@@ -39,6 +39,10 @@ from provide.telemetry.config import TelemetryConfig  # noqa: E402
 # fails validation proves the variable is read, but raises before any config
 # object exists to diff.
 _PROBE_VALUES = (
+    # First, so OTEL_METRICS_EXPORTER is settled by a value it accepts: every
+    # garbage value below only adds an ignored-entry warning to the config,
+    # which would otherwise be reported as the variable's field.
+    "prometheus",
     "DEBUG",
     "json",
     "red",  # validated ANSI colour names
@@ -51,6 +55,10 @@ _PROBE_VALUES = (
     "http://probe.invalid:4318",
     "probe-module=DEBUG",  # module-level overrides: name=<valid level>
     "probe-key=probe-value",
+    # Valid values for the Prometheus enums, which reject everything above.
+    "auto",
+    "/probe-path",
+    "UnderscoreEscapingWithoutSuffixes",
 )
 
 # Environment prefixes the config reads. Everything under them is cleared so a

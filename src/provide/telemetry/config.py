@@ -12,6 +12,7 @@ __all__ = [
     "ExporterPolicyConfig",
     "LoggingConfig",
     "MetricsConfig",
+    "PrometheusConfig",
     "RuntimeOverrides",
     "SLOConfig",
     "SamplingConfig",
@@ -29,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import unquote
 
+from provide.telemetry import _config_prometheus as _prom
 from provide.telemetry._config_validation import parse_duration_float as _parse_duration_float
 from provide.telemetry._config_validation import parse_env_retries as _parse_env_retries
 from provide.telemetry._config_validation import resolve_otlp_endpoint as _resolve_otlp_endpoint
@@ -91,13 +93,64 @@ class TracingConfig:
 
 
 @dataclass(slots=True)
+class PrometheusConfig:
+    """Prometheus pull reader, handler and listener settings (see spec prometheus_metrics)."""
+
+    listen: str = "false"  # "false", "true", or "auto" (listen when "prometheus" is an exporter)
+    host: str = _prom.DEFAULT_HOST
+    port: int = _prom.DEFAULT_PORT  # 0 asks the OS for a free port
+    path: str = _prom.DEFAULT_PATH
+    translation: str = _prom.DEFAULT_TRANSLATION
+    scope_labels: bool = False
+    target_info: bool = True
+    web_config: str = ""  # path to a Prometheus web config file; empty means plain HTTP
+
+    def __post_init__(self) -> None:
+        _prom.validate_listen(self.listen)
+        _prom.validate_port(self.port)
+        _prom.validate_path(self.path)
+        _prom.validate_translation(self.translation)
+
+
+@dataclass(slots=True)
 class MetricsConfig:
     enabled: bool = True
     otlp_endpoint: str | None = None
     otlp_headers: dict[str, str] = field(default_factory=dict)
+    exporters: tuple[str, ...] = (_prom.EXPORTER_OTLP,)
+    # What OTEL_METRICS_EXPORTER asked for that was ignored; setup logs these
+    # and reports them as setup_error (spec prometheus_metrics.metrics_exporter_warnings).
+    exporter_warnings: tuple[str, ...] = ()
+    health_otlp: bool = False
+    prometheus: PrometheusConfig = field(default_factory=PrometheusConfig)
+
+    def __post_init__(self) -> None:
+        _prom.validate_exporters(self.exporters)
 
     def __repr__(self) -> str:
         return _masked_dataclass_repr(self)
+
+    def has_exporter(self, name: str) -> bool:
+        return name in self.exporters
+
+    @property
+    def prometheus_listener_enabled(self) -> bool:
+        """Whether the standalone Prometheus listener should run."""
+        if not self.enabled:
+            return False
+        if self.prometheus.listen == "true":
+            return True
+        return self.prometheus.listen == "auto" and self.has_exporter(_prom.EXPORTER_PROMETHEUS)
+
+    @property
+    def prometheus_reader_enabled(self) -> bool:
+        """Whether the Prometheus pull reader is attached; asking for the listener implies it."""
+        return self.enabled and (self.has_exporter(_prom.EXPORTER_PROMETHEUS) or self.prometheus_listener_enabled)
+
+    @property
+    def otlp_reader_enabled(self) -> bool:
+        """Whether OTLP metrics export is selected (it still needs an endpoint)."""
+        return self.enabled and self.has_exporter(_prom.EXPORTER_OTLP)
 
 
 @dataclass(slots=True)
@@ -198,6 +251,9 @@ class TelemetryConfig:
     environment: str = "dev"
     version: str = "0.0.0"
     strict_schema: bool = False
+    # Fail config parsing on a value that would otherwise be warned about and
+    # ignored. Today that is OTEL_METRICS_EXPORTER only.
+    strict_config: bool = False
     pii_max_depth: int = 8
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     tracing: TracingConfig = field(default_factory=TracingConfig)
@@ -236,6 +292,12 @@ class TelemetryConfig:
     def from_env(cls, env: Mapping[str, str] | None = None) -> TelemetryConfig:
         data = env if env is not None else os.environ
         _warn_on_endpoint_shadowing(data)
+        strict_config = _parse_env_bool(
+            data.get("PROVIDE_TELEMETRY_STRICT_CONFIG"), False, "PROVIDE_TELEMETRY_STRICT_CONFIG"
+        )
+        exporters, exporter_warnings = _prom.parse_metrics_exporters(
+            data.get("OTEL_METRICS_EXPORTER"), strict=strict_config
+        )
         return cls(
             service_name=data.get("PROVIDE_TELEMETRY_SERVICE_NAME", "provide-service"),
             environment=data.get("PROVIDE_TELEMETRY_ENV", "dev"),
@@ -243,6 +305,7 @@ class TelemetryConfig:
             strict_schema=_parse_env_bool(
                 data.get("PROVIDE_TELEMETRY_STRICT_SCHEMA"), False, "PROVIDE_TELEMETRY_STRICT_SCHEMA"
             ),
+            strict_config=strict_config,
             pii_max_depth=_parse_env_int(data.get("PROVIDE_LOG_PII_MAX_DEPTH", "8"), "PROVIDE_LOG_PII_MAX_DEPTH"),
             logging=LoggingConfig(
                 level=data.get("PROVIDE_LOG_LEVEL", "INFO"),
@@ -282,6 +345,31 @@ class TelemetryConfig:
                 otlp_endpoint=_resolve_otlp_endpoint(data, "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", "v1/metrics"),
                 otlp_headers=_parse_otlp_headers(
                     data.get("OTEL_EXPORTER_OTLP_METRICS_HEADERS") or data.get("OTEL_EXPORTER_OTLP_HEADERS")
+                ),
+                exporters=exporters,
+                exporter_warnings=exporter_warnings,
+                health_otlp=_parse_env_bool(
+                    data.get("PROVIDE_METRICS_HEALTH_OTLP"), False, "PROVIDE_METRICS_HEALTH_OTLP"
+                ),
+                prometheus=PrometheusConfig(
+                    listen=_prom.env_str(data, "PROVIDE_METRICS_PROMETHEUS_LISTEN", "false").lower(),
+                    host=_prom.env_str(data, "OTEL_EXPORTER_PROMETHEUS_HOST", _prom.DEFAULT_HOST),
+                    port=_prom.parse_port(data.get("OTEL_EXPORTER_PROMETHEUS_PORT")),
+                    path=_prom.env_str(data, "PROVIDE_METRICS_PROMETHEUS_PATH", _prom.DEFAULT_PATH),
+                    translation=_prom.env_str(
+                        data, "PROVIDE_METRICS_PROMETHEUS_TRANSLATION", _prom.DEFAULT_TRANSLATION
+                    ),
+                    scope_labels=_parse_env_bool(
+                        data.get("PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS"),
+                        False,
+                        "PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS",
+                    ),
+                    target_info=_parse_env_bool(
+                        data.get("PROVIDE_METRICS_PROMETHEUS_TARGET_INFO"),
+                        True,
+                        "PROVIDE_METRICS_PROMETHEUS_TARGET_INFO",
+                    ),
+                    web_config=_prom.env_str(data, "PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG", ""),
                 ),
             ),
             event_schema=SchemaConfig(

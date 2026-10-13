@@ -15,6 +15,12 @@ public sealed class LoggingConfig
     public string OtlpEndpoint { get; set; } = "";
     public bool OtlpEnabled { get; set; } = true;
     public Dictionary<string, string> OtlpHeaders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>PEM CA bundle trusted for this signal's OTLP endpoint (OTEL_EXPORTER_OTLP[_SIGNAL]_CERTIFICATE).</summary>
+    public string OtlpCertificate { get; set; } = "";
+    /// <summary>PEM client certificate for mutual TLS (OTEL_EXPORTER_OTLP[_SIGNAL]_CLIENT_CERTIFICATE).</summary>
+    public string OtlpClientCertificate { get; set; } = "";
+    /// <summary>PEM private key for <see cref="OtlpClientCertificate"/> (OTEL_EXPORTER_OTLP[_SIGNAL]_CLIENT_KEY).</summary>
+    public string OtlpClientKey { get; set; } = "";
     // No LogCodeAttributes here, for the same reason as the Pretty* properties
     // below. config_defaults in spec/telemetry-api.yaml lists
     // PROVIDE_LOG_CODE_ATTRIBUTES for python, typescript and go; nothing in this
@@ -35,6 +41,12 @@ public sealed class TracingConfig
     public double SampleRate { get; set; } = 1.0;
     public string OtlpEndpoint { get; set; } = "";
     public Dictionary<string, string> OtlpHeaders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>PEM CA bundle trusted for this signal's OTLP endpoint (OTEL_EXPORTER_OTLP[_SIGNAL]_CERTIFICATE).</summary>
+    public string OtlpCertificate { get; set; } = "";
+    /// <summary>PEM client certificate for mutual TLS (OTEL_EXPORTER_OTLP[_SIGNAL]_CLIENT_CERTIFICATE).</summary>
+    public string OtlpClientCertificate { get; set; } = "";
+    /// <summary>PEM private key for <see cref="OtlpClientCertificate"/> (OTEL_EXPORTER_OTLP[_SIGNAL]_CLIENT_KEY).</summary>
+    public string OtlpClientKey { get; set; } = "";
 }
 
 public sealed class MetricsConfig
@@ -42,6 +54,62 @@ public sealed class MetricsConfig
     public bool Enabled { get; set; } = true;
     public string OtlpEndpoint { get; set; } = "";
     public Dictionary<string, string> OtlpHeaders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>PEM CA bundle trusted for this signal's OTLP endpoint (OTEL_EXPORTER_OTLP[_SIGNAL]_CERTIFICATE).</summary>
+    public string OtlpCertificate { get; set; } = "";
+    /// <summary>PEM client certificate for mutual TLS (OTEL_EXPORTER_OTLP[_SIGNAL]_CLIENT_CERTIFICATE).</summary>
+    public string OtlpClientCertificate { get; set; } = "";
+    /// <summary>PEM private key for <see cref="OtlpClientCertificate"/> (OTEL_EXPORTER_OTLP[_SIGNAL]_CLIENT_KEY).</summary>
+    public string OtlpClientKey { get; set; } = "";
+
+    /// <summary>
+    /// The metric exporters <c>OTEL_METRICS_EXPORTER</c> selected: <c>otlp</c> and/or
+    /// <c>prometheus</c>; empty for <c>none</c>.
+    /// </summary>
+    public List<string> Exporters { get; set; } = [PrometheusSettings.ExporterOtlp];
+
+    /// <summary>
+    /// What <c>OTEL_METRICS_EXPORTER</c> asked for that was ignored; setup logs these
+    /// and reports them as <c>setup_error</c>
+    /// (spec <c>prometheus_metrics.metrics_exporter_warnings</c>).
+    /// </summary>
+    public List<string> ExporterWarnings { get; set; } = [];
+
+    /// <summary>Also export the health metrics over OTLP (PROVIDE_METRICS_HEALTH_OTLP).</summary>
+    public bool HealthOtlp { get; set; }
+
+    /// <summary>Prometheus pull reader, handler and listener settings.</summary>
+    public PrometheusConfig Prometheus { get; set; } = new();
+
+    /// <summary>Whether OTLP metrics export is selected (it still needs an endpoint).</summary>
+    public bool OtlpReaderEnabled() => Enabled && Exporters.Contains(PrometheusSettings.ExporterOtlp);
+
+    /// <summary>Whether the standalone Prometheus listener should run.</summary>
+    public bool PrometheusListenerEnabled() =>
+        Enabled && (Prometheus.Listen == PrometheusSettings.ListenTrue
+                    || (Prometheus.Listen == PrometheusSettings.ListenAuto
+                        && Exporters.Contains(PrometheusSettings.ExporterPrometheus)));
+
+    /// <summary>Whether the Prometheus pull reader is attached; asking for the listener implies it.</summary>
+    public bool PrometheusReaderEnabled() =>
+        Enabled && (Exporters.Contains(PrometheusSettings.ExporterPrometheus) || PrometheusListenerEnabled());
+}
+
+/// <summary>Prometheus settings; see <c>prometheus_metrics</c> in spec/telemetry-api.yaml.</summary>
+public sealed class PrometheusConfig
+{
+    /// <summary><c>false</c>, <c>true</c>, or <c>auto</c> (listen when prometheus is an exporter).</summary>
+    public string Listen { get; set; } = PrometheusSettings.ListenFalse;
+    public string Host { get; set; } = PrometheusSettings.DefaultHost;
+    /// <summary>Listener port; 0 asks the OS for a free one.</summary>
+    public int Port { get; set; } = PrometheusSettings.DefaultPort;
+    public string Path { get; set; } = PrometheusSettings.DefaultPath;
+    public string Translation { get; set; } = PrometheusSettings.DefaultTranslation;
+    public bool ScopeLabels { get; set; }
+    public bool TargetInfo { get; set; } = true;
+    /// <summary>Path to a Prometheus web config file; empty means plain HTTP, no auth.</summary>
+    public string WebConfig { get; set; } = "";
+
+    public PrometheusConfig Clone() => (PrometheusConfig)MemberwiseClone();
 }
 
 public sealed class SchemaConfig
@@ -110,6 +178,11 @@ public sealed class TelemetryConfig
     public string Version { get; set; } = "0.0.0";
     public bool StrictSchema { get; set; }
     /// <summary>
+    /// Fail config parsing on a value that would otherwise be warned about and
+    /// ignored (PROVIDE_TELEMETRY_STRICT_CONFIG). Today that is OTEL_METRICS_EXPORTER only.
+    /// </summary>
+    public bool StrictConfig { get; set; }
+    /// <summary>
     /// Extra OTel resource attributes, at the top of the precedence ladder.
     /// </summary>
     /// <remarks>
@@ -139,6 +212,7 @@ public sealed class TelemetryConfig
             Environment = Environment,
             Version = Version,
             StrictSchema = StrictSchema,
+            StrictConfig = StrictConfig,
             ResourceAttributes = new Dictionary<string, string>(ResourceAttributes, StringComparer.Ordinal),
             Logging = new LoggingConfig
             {
@@ -151,6 +225,9 @@ public sealed class TelemetryConfig
                 OtlpEndpoint = Logging.OtlpEndpoint,
                 OtlpEnabled = Logging.OtlpEnabled,
                 OtlpHeaders = new Dictionary<string, string>(Logging.OtlpHeaders, StringComparer.OrdinalIgnoreCase),
+                OtlpCertificate = Logging.OtlpCertificate,
+                OtlpClientCertificate = Logging.OtlpClientCertificate,
+                OtlpClientKey = Logging.OtlpClientKey,
                 ModuleLevels = new Dictionary<string, string>(Logging.ModuleLevels, StringComparer.Ordinal),
             },
             Tracing = new TracingConfig
@@ -159,12 +236,22 @@ public sealed class TelemetryConfig
                 SampleRate = Tracing.SampleRate,
                 OtlpEndpoint = Tracing.OtlpEndpoint,
                 OtlpHeaders = new Dictionary<string, string>(Tracing.OtlpHeaders, StringComparer.OrdinalIgnoreCase),
+                OtlpCertificate = Tracing.OtlpCertificate,
+                OtlpClientCertificate = Tracing.OtlpClientCertificate,
+                OtlpClientKey = Tracing.OtlpClientKey,
             },
             Metrics = new MetricsConfig
             {
                 Enabled = Metrics.Enabled,
                 OtlpEndpoint = Metrics.OtlpEndpoint,
                 OtlpHeaders = new Dictionary<string, string>(Metrics.OtlpHeaders, StringComparer.OrdinalIgnoreCase),
+                OtlpCertificate = Metrics.OtlpCertificate,
+                OtlpClientCertificate = Metrics.OtlpClientCertificate,
+                OtlpClientKey = Metrics.OtlpClientKey,
+                Exporters = new List<string>(Metrics.Exporters),
+                ExporterWarnings = new List<string>(Metrics.ExporterWarnings),
+                HealthOtlp = Metrics.HealthOtlp,
+                Prometheus = Metrics.Prometheus.Clone(),
             },
             EventSchema = new SchemaConfig
             {

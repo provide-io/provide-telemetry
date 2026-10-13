@@ -33,6 +33,7 @@ below; the rest are self-contained.
 | Log records have no trace IDs after propagation | The inbound W3C `traceparent` was rejected: all-zero IDs, reserved version `ff`, or an invalid flags/version token. Rejected values are never bound | The caller's header |
 | A request handler stalls during export | Exporter retries/backoff are running on the event loop | [Async services](#async-services-and-the-blocking-guard) |
 | An export runs past `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS` | Four runtimes enforce that variable; C# does not | [Exporter timeouts](#exporter-timeouts) |
+| One signal stops exporting over OTLP while the others continue; `otlp.tls_file_unreadable` was logged at setup | An `OTEL_EXPORTER_OTLP_CERTIFICATE` / `_CLIENT_CERTIFICATE` / `_CLIENT_KEY` file (or its per-signal form) could not be read or loaded, so that signal's OTLP exporter was not built. Setup does not fail and never falls back to the system trust store | `setup_error` in the health snapshot names the variable and path |
 
 ### Consent gate
 

@@ -91,6 +91,11 @@ log.error({ event: 'db.query.error', error: err.message });
 
 Event names follow the DA(R)S pattern: 3 segments (`domain.action.status`) or 4 segments (`domain.action.resource.status`).
 
+The SDK stamps `service`, `env` and `version` from config and, while a span is
+live, `trace_id` and `span_id` on every record. A field you log or bind under
+one of those names is replaced by the stamped value; to name a remote service,
+use `peer.service`.
+
 ### Callsite capture
 
 Two independent knobs select two different outputs from one stack walk. Enabling
@@ -136,14 +141,44 @@ const result = await withTrace('my.operation.ok', async () => {
 ### Metrics
 
 ```typescript
-import { counter, gauge, histogram } from '@provide-io/telemetry';
+import { counter, gauge, histogram, observableGauge } from '@provide-io/telemetry';
 
 const requests = counter('http.requests', { unit: '1', description: 'Total HTTP requests' });
 requests.add(1, { method: 'GET', status: '200' });
 
 const latency = histogram('http.duration', { unit: 'ms' });
 latency.record(42, { route: '/api/users' });
+
+const cpu = gauge('cpu.utilization', { unit: '%' }); // an OTel Gauge: last value wins
+cpu.set(72.5);
+
+// Values computed at collection time (each scrape or export interval).
+const depth = observableGauge('queue.depth', () => [{ value: queue.length }]);
+depth.unregister();
 ```
+
+### Prometheus (Node only)
+
+With `OTEL_METRICS_EXPORTER=prometheus` (or `otlp,prometheus`),
+`registerOtelProviders()` attaches a Prometheus pull reader. Mount the handler
+on a server you already run, or set `PROVIDE_METRICS_PROMETHEUS_LISTEN=true`
+for a standalone listener on `127.0.0.1:9464/metrics`:
+
+```typescript
+import { metricsHandler, renderPrometheus } from '@provide-io/telemetry/prometheus';
+
+app.get('/metrics', metricsHandler()); // node:http, Express, Connect
+const { body, contentType } = await renderPrometheus(req.headers.accept);
+```
+
+TLS and basic auth for the listener come from a Prometheus web config file
+named by `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`, which needs the optional
+`yaml` and `bcryptjs` packages (`npm install yaml bcryptjs`). Every scrape also
+carries the SDK's own health as `provide_telemetry_*` series;
+`PROVIDE_METRICS_HEALTH_OTLP=true` exports them over OTLP as well. See
+"Serving Metrics for Prometheus to Scrape" in
+[docs/guide/configuration.md](../docs/guide/configuration.md). The browser
+build has no pull support.
 
 ### Context binding
 
@@ -188,8 +223,9 @@ try {
 ```typescript
 import { extractW3cContext, bindPropagationContext } from '@provide-io/telemetry';
 
-// In an HTTP handler — extract incoming traceparent/tracestate.
-const ctx = extractW3cContext(req.headers);
+// In an HTTP handler — extract incoming traceparent/tracestate/baggage.
+// Takes a Record<string, string>; node:http's IncomingHttpHeaders needs narrowing.
+const ctx = extractW3cContext(req.headers as Record<string, string>);
 bindPropagationContext(ctx);
 ```
 
@@ -218,6 +254,10 @@ import { getHealthSnapshot } from '@provide-io/telemetry';
 const snap = getHealthSnapshot();
 // snap.exportFailuresLogs, snap.tracesDropped, ...
 ```
+
+A log record counts in `logsEmitted` once it has passed the sinks. One refused
+before export — by consent, sampling or backpressure — counts in
+`logsDropped` instead, never in both.
 
 ### Runtime inspection
 
@@ -373,6 +413,7 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `PROVIDE_TELEMETRY_ENV` | `dev` | Deployment environment tag (e.g. dev, staging, prod) |
 | `PROVIDE_TELEMETRY_VERSION` | `0.0.0` | Application version tag |
 | `PROVIDE_TELEMETRY_STRICT_SCHEMA` | `false` | Master switch: when true, overrides event name strictness to on |
+| `PROVIDE_TELEMETRY_STRICT_CONFIG` | `false` | When true, a configuration value the SDK would otherwise warn about and ignore fails config parsing with ConfigurationError instead. Today that covers OTEL_METRICS_EXPORTER only (prometheus_metrics.metrics_exporter_warnings); it does not touch event-name strictness (PROVIDE_TELEMETRY_STRICT_SCHEMA) or values that are already errors. |
 | `PROVIDE_LOG_LEVEL` | `INFO` | Log level: TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL |
 | `PROVIDE_LOG_FORMAT` | `console` | Renderer: console, json, or pretty |
 | `PROVIDE_LOG_INCLUDE_TIMESTAMP` | `true` | Add ISO-8601 timestamp to each log event |
@@ -397,6 +438,19 @@ All options can be set programmatically via `setupTelemetry()` or via environmen
 | `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | `""` | Per-signal OTLP headers for metrics |
 <!-- END GENERATED CONFIG: typescript_summary -->
 
+`OTEL_METRICS_EXPORTER` (`otlp`, `prometheus`, `otlp,prometheus` or `none`)
+and the Prometheus variables are covered under [Prometheus](#prometheus-node-only).
+Any other entry (`console`, a typo, `none` mixed with another) does not fail
+setup: it is dropped, logged as `config.metrics_exporter.value_ignored` and
+reported in `getHealthSnapshot().setupError`, falling back to `otlp` when
+nothing usable is left. `PROVIDE_TELEMETRY_STRICT_CONFIG=true` makes it a
+`ConfigurationError` instead.
+OTLP over TLS reads `OTEL_EXPORTER_OTLP_CERTIFICATE`, `_CLIENT_CERTIFICATE`
+and `_CLIENT_KEY`, each with per-signal forms that win; a file that cannot be
+read or loaded leaves that signal's exporter unbuilt, logs
+`otlp.tls_file_unreadable` and sets `getHealthSnapshot().setupError`. The full
+list is in [docs/guide/configuration.md](../docs/guide/configuration.md).
+
 ### Pretty renderer
 
 Set `logFormat: 'pretty'` (or `PROVIDE_LOG_FORMAT=pretty`) for human-readable colored output during local development. Color support respects `FORCE_COLOR`, `NO_COLOR`, and stderr TTY detection.
@@ -407,7 +461,7 @@ setupTelemetry({ logFormat: 'pretty' });
 
 ## Requirements
 
-- Node.js ≥ 18
+- Node.js ≥ 22
 - TypeScript ≥ 5 (built with TypeScript 6)
 
 ## License

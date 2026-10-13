@@ -81,29 +81,37 @@ async function main(): Promise<void> {
 
   // ── 🛡️ Exporter resilience ─────────────────────────────
   console.log('\n🛡️  Exporter resilience: fail-open with 2 retries');
-  setExporterPolicy({ retries: 2, backoffMs: 10, failOpen: true, timeoutMs: 1000 });
+  for (const signal of ['logs', 'traces', 'metrics']) {
+    setExporterPolicy(signal, { retries: 2, backoffMs: 10, failOpen: true, timeoutMs: 1000 });
+  }
 
   // ── 📊 SLO RED/USE metrics ─────────────────────────────
   console.log('\n📊 Recording SLO metrics...');
   recordRedMetrics({ route: '/game/start', method: 'POST', statusCode: 200, durationMs: 22.0 });
   recordRedMetrics({ route: '/game/start', method: 'POST', statusCode: 500, durationMs: 150.0 });
   recordUseMetrics({ resource: 'cpu', utilization: 55 });
-  histogram('example.hardening.latency', { description: 'Request latency', unit: 'ms' }).record(22.0);
+  histogram('example.hardening.latency', { description: 'Request latency', unit: 'ms' }).record(
+    22.0,
+  );
   console.log('  ✅ RED: 2 requests (1 success, 1 error)');
   console.log('  ✅ USE: cpu=55%');
 
   // ── 🔧 Runtime reconfiguration ─────────────────────────
-  console.log('\n🔧 Hot-swapping serviceName mid-flight...');
+  // Only hot policies can change mid-flight; identity fields such as
+  // serviceName are cold and need a restart (setupTelemetry with new config).
+  console.log('\n🔧 Hot-swapping the log sampling rate mid-flight...');
   const current = getRuntimeConfig();
-  console.log(`  📋 Before: serviceName=${current.serviceName}`);
-  updateRuntimeConfig({ serviceName: 'provide-telemetry-hardening-v2' });
+  console.log(`  📋 Before: samplingLogsRate=${current.samplingLogsRate}`);
+  updateRuntimeConfig({ samplingLogsRate: 0.5 });
   const updated = getRuntimeConfig();
-  console.log(`  ✅ After:  serviceName=${updated.serviceName}`);
+  console.log(`  ✅ After:  samplingLogsRate=${updated.samplingLogsRate}`);
 
   // ── 🩺 Health snapshot ──────────────────────────────────
   console.log('\n🩺 Health snapshot summary:');
   const s = getHealthSnapshot();
-  console.log(`  📉 Dropped:        logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`);
+  console.log(
+    `  📉 Dropped:        logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`,
+  );
   console.log(`  🔄 retriesLogs:            ${s.retriesLogs}`);
   console.log(`  ❌ exportFailuresLogs:     ${s.exportFailuresLogs}`);
   console.log(`  ⚠️  asyncRiskLogs:         ${s.asyncBlockingRiskLogs}`);

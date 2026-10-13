@@ -65,6 +65,14 @@ if TYPE_CHECKING:
     from provide.telemetry.consent import ConsentLevel, get_consent_level, set_consent_level, should_allow
     from provide.telemetry.health import HealthSnapshot, get_health_snapshot
     from provide.telemetry.metrics import counter, gauge, histogram
+    from provide.telemetry.metrics.observable import (
+        ObservableInstrument,
+        Observation,
+        observable_counter,
+        observable_gauge,
+        observable_up_down_counter,
+    )
+    from provide.telemetry.metrics.prometheus import metrics_handler, render_prometheus
     from provide.telemetry.pii import (
         PIIRule,
         get_pii_rules,
@@ -133,6 +141,8 @@ __all__ = [
     "FlushResult",
     "HealthSnapshot",
     "LogSeverity",
+    "ObservableInstrument",
+    "Observation",
     "PIIRule",
     "ProviderImmutableError",
     "ProviderMode",
@@ -193,6 +203,10 @@ __all__ = [
     "level_order",
     "log_output_installed",
     "logger",
+    "metrics_handler",
+    "observable_counter",
+    "observable_gauge",
+    "observable_up_down_counter",
     "parse_baggage",
     "parse_level",
     "provider_immutable_error",
@@ -209,6 +223,7 @@ __all__ = [
     "register_pii_rule",
     "register_secret_pattern",
     "reload_runtime_from_env",
+    "render_prometheus",
     "replace_pii_rules",
     "runtime_state",
     "runtime_status",

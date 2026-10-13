@@ -166,7 +166,11 @@ def find_loc_offenders(
         candidates = (
             path
             for path in files
-            if path.is_file() and _is_source_file(path, extensions, filenames) and not _is_excluded(path)
+            if path.is_file()
+            and _is_source_file(path, extensions, filenames)
+            # Relative, so a checkout that itself sits under an excluded part
+            # (an agent worktree in .claude/worktrees/) still scans its files.
+            and not _is_excluded(path.relative_to(repo_root) if path.is_relative_to(repo_root) else path)
         )
     for path in sorted(candidates):
         lines = _line_count(path)

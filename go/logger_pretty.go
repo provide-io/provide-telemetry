@@ -39,6 +39,7 @@ const (
 	_colorNameGreen = "green"
 	_colorNameBlue  = "blue"
 	_colorNameCyan  = "cyan"
+	_colorNameNone  = "none"
 )
 
 // _levelColorMap returns the ANSI color for a lowercased level name.
@@ -81,7 +82,7 @@ func _resolveNamedColor(name string) string {
 		return _ansiCyan
 	case "white":
 		return _ansiWhite
-	case "", "none":
+	case "", _colorNameNone:
 		return ""
 	default:
 		return ""
@@ -125,13 +126,16 @@ type _prettyHandler struct {
 // destination being a terminal. An installed sink decided that once, when the
 // host handed over its writer; anything else is probed here.
 func newPrettyHandler(w io.Writer, cfg *TelemetryConfig) *_prettyHandler {
-	colors := false
+	return newPrettyHandlerWithColors(w, cfg, _prettyColors(w))
+}
+
+// _prettyColors reports whether the pretty renderer should color output bound
+// for w: an installed sink's decision, or a probe of anything else.
+func _prettyColors(w io.Writer) bool {
 	if sink, ok := w.(*_logSink); ok {
-		colors = sink.colors
-	} else {
-		colors = _isTerminalWriter(w)
+		return sink.colors
 	}
-	return newPrettyHandlerWithColors(w, cfg, colors)
+	return _isTerminalWriter(w)
 }
 
 // newPrettyHandlerWithColors is the test-friendly constructor that lets callers

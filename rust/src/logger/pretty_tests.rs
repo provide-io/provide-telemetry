@@ -250,7 +250,7 @@ fn pretty_test_emit_if_pretty_writes_to_capture_when_format_is_pretty() {
         ..LoggingConfig::default()
     });
 
-    crate::logger::emit::emit_if_pretty(&sample_event("INFO"));
+    crate::logger::emit::emit_if_pretty(&sample_event("INFO")).expect("the local write succeeds");
 
     let captured = String::from_utf8(take_pretty_capture()).expect("pretty capture must be utf8");
     assert!(captured.contains("pretty.message"));
@@ -268,7 +268,7 @@ fn pretty_test_emit_if_pretty_no_op_when_format_is_not_pretty() {
         ..LoggingConfig::default()
     });
 
-    crate::logger::emit::emit_if_pretty(&sample_event("INFO"));
+    crate::logger::emit::emit_if_pretty(&sample_event("INFO")).expect("the local write succeeds");
 
     assert!(take_pretty_capture().is_empty());
 }
@@ -285,8 +285,8 @@ fn pretty_test_emit_if_console_suppressed_when_format_is_pretty() {
         ..LoggingConfig::default()
     });
 
-    crate::logger::emit::emit_if_console(&sample_event("INFO"));
-    crate::logger::emit::emit_if_pretty(&sample_event("INFO"));
+    crate::logger::emit::emit_if_console(&sample_event("INFO")).expect("the local write succeeds");
+    crate::logger::emit::emit_if_pretty(&sample_event("INFO")).expect("the local write succeeds");
 
     assert!(take_console_capture().is_empty());
     assert!(!take_pretty_capture().is_empty());
@@ -310,7 +310,7 @@ fn pretty_test_emit_if_pretty_falls_back_to_stderr_without_capture() {
 
     // Without a pretty capture buffer enabled, emit writes to stderr via
     // eprintln!. Just confirm it does not panic.
-    crate::logger::emit::emit_if_pretty(&sample_event("INFO"));
+    crate::logger::emit::emit_if_pretty(&sample_event("INFO")).expect("the local write succeeds");
 }
 
 // ── Colour follows the destination ───────────────────────────────────────────

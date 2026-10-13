@@ -87,8 +87,8 @@ func SetDefaultTracer(t Tracer) {
 
 // _traceIDKey and _spanIDKey are context keys for trace/span propagation.
 var (
-	_traceIDKey = contextKey{"trace.id"} //nolint:gochecknoglobals
-	_spanIDKey  = contextKey{"span.id"}  //nolint:gochecknoglobals
+	_traceIDKey = contextKey{_attrTraceID} //nolint:gochecknoglobals
+	_spanIDKey  = contextKey{_attrSpanID}  //nolint:gochecknoglobals
 )
 
 // GetTracer returns a named Tracer. Currently returns the package-level tracer.

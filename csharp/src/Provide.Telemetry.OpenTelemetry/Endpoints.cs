@@ -30,11 +30,16 @@ internal static class Endpoints
         OtlpExporterOptions options,
         string endpoint,
         string signal,
-        IReadOnlyDictionary<string, string> headers)
+        IReadOnlyDictionary<string, string> headers,
+        OtlpTls? tls = null)
     {
         options.Endpoint = BuildSignalUri(endpoint, signal);
         options.Protocol = OtlpExportProtocol.HttpProtobuf;
         options.Headers = FormatHeaders(headers);
+        if (tls is not null)
+        {
+            options.HttpClientFactory = () => tls.CreateClient(TimeSpan.FromMilliseconds(options.TimeoutMilliseconds));
+        }
     }
 
     /// <summary>

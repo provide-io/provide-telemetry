@@ -30,7 +30,11 @@ import {
 async function main(): Promise<void> {
   console.log('🔄 Runtime Reconfiguration Demo\n');
 
-  setupTelemetry({ serviceName: 'provide-telemetry-examples', logLevel: 'info', consoleOutput: false });
+  setupTelemetry({
+    serviceName: 'provide-telemetry-examples',
+    logLevel: 'info',
+    consoleOutput: false,
+  });
   const log = getLogger('examples.runtime');
 
   // ── 📊 Inspect current config ────────────────────────
@@ -41,7 +45,8 @@ async function main(): Promise<void> {
 
   // ── 🔧 Hot-swap log level ─────────────────────────────
   console.log('\n🔧 Hot-swapping logLevel to warn...');
-  updateRuntimeConfig({ logLevel: 'warn' });
+  // Logging fields travel in the nested `logging` override (RuntimeOverrides.logging).
+  updateRuntimeConfig({ logging: { logLevel: 'warn' } });
   const cfgAfter = getRuntimeConfig();
   console.log(`  ✅ After update: logLevel=${cfgAfter.logLevel}`);
 
@@ -51,12 +56,16 @@ async function main(): Promise<void> {
   console.log('\n♻️  reconfigureTelemetry() — safe reconfigure (no provider change)...');
   reconfigureTelemetry({ logLevel: 'info', serviceName: 'provide-telemetry-examples-v2' });
   const cfgRestarted = getRuntimeConfig();
-  console.log(`  ✅ Reconfigured: serviceName=${cfgRestarted.serviceName}  logLevel=${cfgRestarted.logLevel}`);
+  console.log(
+    `  ✅ Reconfigured: serviceName=${cfgRestarted.serviceName}  logLevel=${cfgRestarted.logLevel}`,
+  );
 
   log.info({ ...event('example', 'runtime', 'reconfigured') });
 
   const healthAfter = getHealthSnapshot();
-  console.log(`  📊 Health after reconfigure: logsDropped=${healthAfter.logsDropped} exportFailuresLogs=${healthAfter.exportFailuresLogs}`);
+  console.log(
+    `  📊 Health after reconfigure: logsDropped=${healthAfter.logsDropped} exportFailuresLogs=${healthAfter.exportFailuresLogs}`,
+  );
 
   // ── 🌍 Reload from environment ───────────────────────
   console.log('\n🌍 reloadRuntimeFromEnv() — re-reads process.env hot fields only...');

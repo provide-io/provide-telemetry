@@ -13,7 +13,6 @@ import (
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -149,9 +148,12 @@ func TestCoverageLowLevel_ConfigAndProviderHelpers(t *testing.T) {
 	cfg := telemetry.DefaultTelemetryConfig()
 	cfg.Metrics.OTLPEndpoint = "http://collector:4318"
 
-	mp, err := _buildDefaultMeterProvider(cfg)
+	mp, reg, err := _buildDefaultMeterProvider(cfg)
 	if err != nil {
 		t.Fatalf("expected meter provider build to succeed, got %v", err)
+	}
+	if reg != nil {
+		t.Fatal("an OTLP-only provider must not carry a Prometheus registry")
 	}
 	if err := mp.Shutdown(context.Background()); err != nil {
 		t.Fatalf("expected built meter provider to shut down cleanly, got %v", err)
@@ -200,7 +202,7 @@ func TestCoverageLowLevel_ConflictWarningsWithNilLogger(t *testing.T) {
 
 	otel.SetTracerProvider(&_thirdPartyTracerProvider{})
 	otel.SetMeterProvider(&_thirdPartyMeterProvider{})
-	logglobal.SetLoggerProvider(&_thirdPartyLoggerProvider{})
+	otel.SetLoggerProvider(&_thirdPartyLoggerProvider{})
 
 	_warnIfTracerProviderConflict()
 	_warnIfMeterProviderConflict()
@@ -228,7 +230,7 @@ func TestCoverageLowLevel_WarnIfMeterAndLoggerProviderConflict_WarnForHostSDKPro
 
 	lp := sdklog.NewLoggerProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
-	logglobal.SetLoggerProvider(lp)
+	otel.SetLoggerProvider(lp)
 	_warnIfLoggerProviderConflict()
 
 	out := h.buf.String()

@@ -1,10 +1,28 @@
 # Configuration Reference
 
 Runtime configuration is typically driven by environment variables, parsed via
-`TelemetryConfig.from_env()` / `ConfigFromEnv()`. Python and TypeScript also
-accept in-memory config at setup; Go accepts `WithConfig(*TelemetryConfig)` so
-hosts that re-exec or fork need not mutate process environment to configure
-telemetry.
+`TelemetryConfig.from_env()` / `ConfigFromEnv()`. Every SDK also accepts
+in-memory config at setup — Python `setup_telemetry(config)`, TypeScript
+`setupTelemetry(overrides)`, Go `WithConfig(*TelemetryConfig)`, Rust
+`setup_telemetry(Some(config))`, C# `SetupTelemetry(config)` — so hosts that
+re-exec or fork need not mutate process environment to configure telemetry.
+
+Not every variable is read by every SDK. The tables below list the union; the
+`applicability` list of each entry under `config_defaults` in
+`spec/telemetry-api.yaml` is authoritative. The variables not read by all five:
+
+| Variable | Read by |
+|----------|---------|
+| `PROVIDE_LOG_INCLUDE_CALLER`, `PROVIDE_LOG_SANITIZE` | Python, TypeScript, Go, C# |
+| `PROVIDE_LOG_CODE_ATTRIBUTES` | Python, TypeScript, Go |
+| `PROVIDE_LOG_PRETTY_KEY_COLOR`, `PROVIDE_LOG_PRETTY_VALUE_COLOR`, `PROVIDE_LOG_PRETTY_FIELDS`, `PROVIDE_LOG_MODULE_LEVELS` | Python, TypeScript, Go, Rust |
+| `PROVIDE_BACKPRESSURE_*_MAXSIZE` | Python, TypeScript, Go, Rust |
+| `PROVIDE_EXPORTER_*_BACKOFF_SECONDS`, `PROVIDE_EXPORTER_*_TIMEOUT_SECONDS`, `PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS` | Python, TypeScript, Go, Rust |
+| `PROVIDE_EXPORTER_*_ALLOW_BLOCKING_EVENT_LOOP` | Python, Go |
+| `PROVIDE_SLO_ENABLE_RED_METRICS`, `PROVIDE_SLO_ENABLE_USE_METRICS` | Python, TypeScript, Go, Rust |
+| `PROVIDE_SLO_INCLUDE_ERROR_TAXONOMY` | Python, Go |
+| `PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH`, `PROVIDE_SECURITY_MAX_ATTR_COUNT` | Python, TypeScript, Go, Rust |
+| `PROVIDE_SECURITY_MAX_NESTING_DEPTH` | Python, Go, Rust |
 
 ## Core
 
@@ -15,6 +33,7 @@ telemetry.
 | `PROVIDE_TELEMETRY_ENV` | str | `dev` | Deployment environment tag (e.g. dev, staging, prod) |
 | `PROVIDE_TELEMETRY_VERSION` | str | `0.0.0` | Application version tag |
 | `PROVIDE_TELEMETRY_STRICT_SCHEMA` | bool | `false` | Master switch: when true, overrides event name strictness to on |
+| `PROVIDE_TELEMETRY_STRICT_CONFIG` | bool | `false` | When true, a configuration value the SDK would otherwise warn about and ignore fails config parsing with ConfigurationError instead. Today that covers OTEL_METRICS_EXPORTER only (prometheus_metrics.metrics_exporter_warnings); it does not touch event-name strictness (PROVIDE_TELEMETRY_STRICT_SCHEMA) or values that are already errors. |
 <!-- END GENERATED CONFIG: core -->
 
 ## Event Schema
@@ -60,7 +79,45 @@ telemetry.
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `PROVIDE_METRICS_ENABLED` | bool | `true` | Enable OTel metrics provider (falls back to in-process when false) |
+| `OTEL_METRICS_EXPORTER` | str | `otlp` | Comma-separated metric exporters: otlp, prometheus, none. prometheus attaches the pull reader. Other values are warned about and ignored (see prometheus_metrics.metrics_exporter_warnings). |
+| `OTEL_EXPORTER_PROMETHEUS_HOST` | str | `127.0.0.1` | Tier 3 bind host. Loopback by default (the OTel spec says localhost); a non-loopback value logs one warning at setup. |
+| `OTEL_EXPORTER_PROMETHEUS_PORT` | int | `9464` | Tier 3 bind port. |
+| `PROVIDE_METRICS_PROMETHEUS_LISTEN` | str | `false` | Start the Tier 3 listener: false, true, or auto (start it whenever prometheus is in OTEL_METRICS_EXPORTER). |
+| `PROVIDE_METRICS_PROMETHEUS_PATH` | str | `/metrics` | Tier 3 path. Ignored by Tier 2, where the host picks the mount path. |
+| `PROVIDE_METRICS_PROMETHEUS_TRANSLATION` | str | `UnderscoreEscapingWithSuffixes` | Metric and label name translation strategy; one of translation.strategies. |
+| `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS` | bool | `false` | Add otel_scope_name / otel_scope_version labels to every series. |
+| `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO` | bool | `true` | Emit the target_info series carrying resource attributes. |
+| `PROVIDE_METRICS_HEALTH_OTLP` | bool | `false` | Also export the health metrics over OTLP as observable instruments. |
+| `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` | str | `""` | Path to a Prometheus web config file (the --web.config.file format) enabling TLS and/or basic auth on the Tier 3 listener. Empty means plain HTTP, no auth. |
 <!-- END GENERATED CONFIG: metrics -->
+
+### `OTEL_METRICS_EXPORTER` values
+
+Entries are split on commas, trimmed and lowercased, and empty entries are
+dropped. `otlp` and `prometheus` can be combined in any order. `none` on its
+own turns metrics export off. An empty or unset value means `otlp`.
+
+As the OpenTelemetry spec asks for an enum value an SDK does not recognise, any
+other entry is ignored with a warning rather than failing setup:
+
+| Value | Result |
+|-------|--------|
+| `console`, `logging` | OTel values this SDK does not implement: ignored, with a warning |
+| anything else, e.g. `statsd` | ignored, with a warning |
+| `none` next to another entry, e.g. `none,prometheus` | `none` is ignored, with a warning; the other entries apply |
+| nothing usable left, e.g. `console` | the default `otlp` applies, with a warning |
+
+Every SDK reports the same messages, for example
+`OTEL_METRICS_EXPORTER: unknown exporter statsd, ignored`. Setup logs each one
+once as `config.metrics_exporter.value_ignored`, and the health snapshot's
+setup error lists them, joined with `; `. Setup itself succeeds.
+
+Set `PROVIDE_TELEMETRY_STRICT_CONFIG=true` (see [Core](#core)) to make any of
+these cases a `ConfigurationError` from config parsing instead, for example in
+CI or tests. It currently applies only to `OTEL_METRICS_EXPORTER`; values that
+are already errors stay errors whatever it is set to, and it does not affect
+event-name strictness. The rules are `prometheus_metrics.metrics_exporter_warnings`
+in `spec/telemetry-api.yaml`.
 
 ## OTLP Endpoints and Headers
 
@@ -69,8 +126,6 @@ specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/) for
 environment-based configuration. Per-signal variables take precedence over the
 shared fallback.
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
 <!-- BEGIN GENERATED CONFIG: otlp -->
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -83,6 +138,24 @@ shared fallback.
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | str | `""` | Per-signal OTLP endpoint for metrics |
 | `OTEL_EXPORTER_OTLP_METRICS_HEADERS` | str | `""` | Per-signal OTLP headers for metrics |
 <!-- END GENERATED CONFIG: otlp -->
+
+TLS for OTLP push is read by each signal's exporter builder rather than by
+config parsing (`push_tls_env` under `prometheus_metrics` in
+`spec/telemetry-api.yaml`), in every SDK. Each takes a PEM file path, and a
+per-signal variable, when set, overrides the shared one for that signal:
+
+| Variable | Per-signal overrides | Description |
+|----------|----------------------|-------------|
+| `OTEL_EXPORTER_OTLP_CERTIFICATE` | `OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE`, `OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE`, `OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE` | CA certificates trusted for the OTLP endpoint |
+| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` | `OTEL_EXPORTER_OTLP_LOGS_CLIENT_CERTIFICATE`, `OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE`, `OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE` | Client certificate for mutual TLS |
+| `OTEL_EXPORTER_OTLP_CLIENT_KEY` | `OTEL_EXPORTER_OTLP_LOGS_CLIENT_KEY`, `OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY`, `OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY` | Private key for the client certificate |
+
+A configured file that cannot be read or loaded (a CA file with no PEM
+certificate; a client certificate and key that do not form a pair) leaves that
+signal's OTLP exporter unbuilt, logs `otlp.tls_file_unreadable` and records the
+health snapshot's setup error naming the variable and path. Setup itself does
+not fail, the other signals are unaffected, and the file is never silently
+replaced by the system trust store.
 
 ## Sampling
 
@@ -193,6 +266,153 @@ scripts and E2E tests.
 | `OPENOBSERVE_USER` | str | — | OpenObserve basic auth username |
 | `OPENOBSERVE_PASSWORD` | str | — | OpenObserve basic auth password |
 | `OPENOBSERVE_REQUIRED_SIGNALS` | str | `logs` | Comma-separated signals to verify in E2E tests |
+
+## Sending Metrics to Prometheus
+
+Prometheus 3 accepts OTLP directly, so the ordinary OTLP metrics exporter works
+with it in every SDK; no Prometheus-specific setting is needed. Start
+Prometheus with `--web.enable-otlp-receiver` (the `prometheus` service in
+`docker-compose.yml` does) and point the metrics endpoint at it:
+
+```bash
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://localhost:9090/api/v1/otlp/v1/metrics
+# or, with the shared endpoint, the SDK appends /v1/metrics itself:
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:9090/api/v1/otlp
+```
+
+What to expect on the Prometheus side:
+
+- `job` is the service name and `instance` is `service.instance.id`. Other
+  resource attributes land on the `target_info` series unless they are listed
+  under `otlp.promote_resource_attributes` (see `infra/prometheus/prometheus.yml`).
+- Names are translated by Prometheus according to `otlp.translation_strategy`.
+  With the default, `UnderscoreEscapingWithSuffixes`, dots become underscores,
+  counters gain `_total` and units become suffixes: a histogram
+  `http.request.duration` with unit `ms` is stored as
+  `http_request_duration_milliseconds_bucket`, `_sum` and `_count`.
+- Prometheus rejects delta temporality by default. The SDKs export cumulative
+  metrics, which is what it expects.
+- Units reach Prometheus from every SDK. In Rust the first
+  `counter()`/`gauge()`/`histogram()` to record under a name fixes its unit and
+  description until teardown; a later one with the same name and a different
+  unit reuses the first instrument rather than exporting a second stream.
+
+For a Prometheus that requires TLS or basic auth (its `--web.config.file`),
+use the standard OTLP variables:
+
+```bash
+OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=https://prom.example:9090/api/v1/otlp/v1/metrics
+OTEL_EXPORTER_OTLP_METRICS_HEADERS="Authorization=Basic%20<base64 of user:password>"
+OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE=/etc/ssl/private-ca.crt   # only for a private CA
+```
+
+Python, TypeScript, Go, C# and Rust honour all three, and the
+`_CLIENT_CERTIFICATE` / `_CLIENT_KEY` variables for mutual TLS (see
+[OTLP Endpoints and Headers](#otlp-endpoints-and-headers)). A file that cannot
+be read or loaded leaves that signal's exporter unbuilt with the health
+snapshot's setup error set, so check `get_health_snapshot()` when nothing
+arrives.
+
+The `prometheus-push` job in `.github/workflows/ci-contracts.yml` pushes from
+all five SDKs to real Prometheus instances (plain, basic auth, and TLS with a
+private CA plus basic auth) and checks every series it reads back.
+
+## Serving Metrics for Prometheus to Scrape (Go, Python, TypeScript, C#, Rust)
+
+The Go, Python, TypeScript (Node only; the browser build has no pull support),
+C# and Rust SDKs can also serve metrics for Prometheus to pull; see
+`docs/plans/2026-10-10-prometheus-metrics-design.md`.
+
+Add `prometheus` to `OTEL_METRICS_EXPORTER` (`prometheus` alone, or
+`otlp,prometheus` to push as well), then either mount the handler on a server
+you already run:
+
+```go
+import provideotel "github.com/provide-io/provide-telemetry/go/otel"
+
+mux.Handle("/metrics", provideotel.MetricsHandler())
+```
+
+```python
+from provide.telemetry import metrics_handler
+
+app.mount("/metrics", metrics_handler())  # any ASGI framework; render_prometheus() for others
+```
+
+```typescript
+import { metricsHandler } from '@provide-io/telemetry/prometheus';
+
+app.get('/metrics', metricsHandler()); // node:http, Express or Connect; renderPrometheus() for others
+```
+
+(In TypeScript the reader is attached by `registerOtelProviders()`, which also
+starts the listener described next.)
+
+```csharp
+using Provide.Telemetry.OpenTelemetry;
+
+// MetricsHandler is framework-neutral: copy its status, headers and body onto
+// your server's response. RenderPrometheus(accept) returns just body and content type.
+app.MapMethods("/metrics", ["GET", "HEAD"], (HttpContext ctx) =>
+{
+    var r = PrometheusMetrics.MetricsHandler(ctx.Request.Method, ctx.Request.Headers.Accept);
+    foreach (var (name, value) in r.Headers) ctx.Response.Headers[name] = value;
+    ctx.Response.StatusCode = r.Status;
+    return ctx.Response.Body.WriteAsync(r.Body).AsTask();
+});
+```
+
+```rust
+// Framework-neutral: pass the request's method and Accept header, write back
+// the status, headers and body. render_prometheus(accept) returns (body, content type).
+let response = provide_telemetry::metrics_handler(method, accept);
+```
+
+or let the SDK run its own listener with `PROVIDE_METRICS_PROMETHEUS_LISTEN=true`.
+It binds `127.0.0.1:9464` and serves `/metrics` unless
+`OTEL_EXPORTER_PROMETHEUS_HOST`, `OTEL_EXPORTER_PROMETHEUS_PORT` and
+`PROVIDE_METRICS_PROMETHEUS_PATH` say otherwise. To require TLS or basic auth,
+point `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` at a file in the format
+Prometheus itself takes as `--web.config.file` (Python needs the
+`provide-telemetry[prometheus]` extra to read it, TypeScript the optional
+`yaml` and `bcryptjs` packages; Rust needs the `prometheus-listener` cargo
+feature for the listener at all):
+
+```yaml
+tls_server_config:
+  cert_file: server.crt        # relative paths resolve against this file
+  key_file: server.key
+  client_ca_file: clients.crt  # optional: require client certificates
+  min_version: TLS12           # or TLS13
+basic_auth_users:
+  scraper: $2a$10$...          # bcrypt hash, e.g. htpasswd -nBC 10 scraper
+```
+
+Only those keys are accepted. If the file or a certificate it names has a
+problem, the listener does not start (it never falls back to plain HTTP); the
+reason is logged (`otel.prometheus_listener_failed` in Go,
+`metrics.prometheus_listener.failed` in Python, TypeScript, C# and Rust) and
+appears as the health snapshot's setup error. Certificates are re-read when
+they change.
+
+The scrape also carries the SDK's own health as `provide_telemetry_*` series
+(`provide_telemetry_export_failures_total{signal}`,
+`provide_telemetry_circuit_state{signal}` and so on), which stay visible when
+OTLP export is failing. Set `PROVIDE_METRICS_HEALTH_OTLP=true` to export the
+same series over OTLP as well; a scrape still carries each one once.
+Callback-reported values use observable instruments,
+whose callbacks run on each scrape: `NewObservableGauge`,
+`NewObservableCounter` and `NewObservableUpDownCounter` in Go;
+`observable_gauge`, `observable_counter` and `observable_up_down_counter` in
+Python and Rust, each taking a zero-argument callback that returns
+`Observation`s and returning a handle with `unregister()`; `observableGauge`, `observableCounter`
+and `observableUpDownCounter` in TypeScript, whose callback returns (or
+resolves to) `{ value, attributes }` observations; `ObservableGauge`,
+`ObservableCounter` and `ObservableUpDownCounter` on `ProvideTelemetry` in C#,
+whose `Func<IEnumerable<Observation>>` callback returns an
+`ObservableInstrument` with `Unregister()`. In C# the listener and the handler
+live in `Provide.Telemetry.OpenTelemetry`; the core package stays
+OpenTelemetry-free.
 
 ## Resource Attributes
 

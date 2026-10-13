@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"regexp"
@@ -84,7 +85,13 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyTraceFields(ctx, r)
 
 	// Consent gate: block before any processing when consent level forbids logs.
+	// The refusal is a drop like any other admission refusal: dropped_logs
+	// names consent alongside sampling and backpressure, and the canonical
+	// order (spec/pipeline_fixtures.yaml) records health on this path too.
+	_pipelineStage(_stageConsent)
 	if !ShouldAllow(signalLogs, levelcore.SlogName(r.Level)) {
+		_incLogsDropped()
+		_closeRefusedLog()
 		return nil
 	}
 
@@ -96,17 +103,24 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		r.AddAttrs(slog.String("_schema_error", err.Error()))
 	}
 
+	// ShouldSample and TryAcquire each count their own refusal as a drop.
+	_pipelineStage(_stageSampling)
 	if sampled := _shouldSampleFailOpen(signalLogs, r.Message); !sampled {
+		_closeRefusedLog()
 		return nil
 	}
 
 	// Backpressure gate: drop when the log queue is full.
+	_pipelineStage(_stageBackpressure)
 	ticket := TryAcquire(signalLogs)
 	if ticket == nil {
+		_closeRefusedLog()
 		return nil
 	}
-	defer Release(ticket)
-	_incLogsEmitted()
+	defer func() {
+		_pipelineStage(_stageRelease)
+		Release(ticket)
+	}()
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
@@ -118,14 +132,19 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 
 	// log/slog discards whatever a handler returns, so a destination that
 	// refuses the write is invisible to the caller: the record is gone and
-	// LogsEmitted has already counted it. Recording the failure is what keeps
+	// LogsEmitted counts it all the same. Recording the failure is what keeps
 	// the health snapshot from asserting a delivery that never happened.
 	//
 	// export_failures is the canonical bucket for "an export attempt returned
 	// an error"; dropped is reserved for records refused before export, by
 	// consent, sampling or backpressure, and a record must never count as both
 	// emitted and dropped.
+	//
+	// Health is the stage after the sinks in the canonical order, so both
+	// counters move only once the local writer and the backend have run.
 	err := h.next.Handle(ctx, r)
+	_pipelineStage(_stageHealth)
+	_incLogsEmitted()
 	if err != nil {
 		_incLogsExportErrors()
 	}
@@ -209,43 +228,90 @@ func (h *_telemetryHandler) applyContextFields(ctx context.Context, r slog.Recor
 // applyStandardFields adds service.name, service.env, and service.version from config.
 func (h *_telemetryHandler) applyStandardFields(r slog.Record) slog.Record {
 	cfg := h.cfg
-	if cfg.ServiceName == "" && cfg.Environment == "" && cfg.Version == "" {
-		return r
-	}
-	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
-	r.Attrs(func(a slog.Attr) bool {
-		nr.AddAttrs(a)
-		return true
-	})
+	stamped := make([]slog.Attr, 0, 3)
 	if cfg.ServiceName != "" {
-		nr.AddAttrs(slog.String("service.name", cfg.ServiceName))
+		stamped = append(stamped, slog.String("service.name", cfg.ServiceName))
 	}
 	if cfg.Environment != "" {
-		nr.AddAttrs(slog.String("service.env", cfg.Environment))
+		stamped = append(stamped, slog.String("service.env", cfg.Environment))
 	}
 	if cfg.Version != "" {
-		nr.AddAttrs(slog.String("service.version", cfg.Version))
+		stamped = append(stamped, slog.String("service.version", cfg.Version))
 	}
-	return nr
+	return _stampRootFields(r, stamped)
 }
 
 // applyTraceFields adds trace.id and span.id if available in context.
 func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record) slog.Record {
 	traceID, spanID := _getTraceSpanFromContext(ctx)
-	if traceID == "" && spanID == "" {
+	stamped := make([]slog.Attr, 0, 2)
+	if traceID != "" {
+		stamped = append(stamped, slog.String(_attrTraceID, traceID))
+	}
+	if spanID != "" {
+		stamped = append(stamped, slog.String(_attrSpanID, spanID))
+	}
+	return _stampRootFields(r, stamped)
+}
+
+// Root attribute names the library stamps on every record, and the
+// cross-language wire names of the fields it stamps.
+const (
+	_attrTraceID = "trace.id"
+	_attrSpanID  = "span.id"
+	_wireService = "service"
+	_wireEnv     = "env"
+	_wireVersion = "version"
+	_wireTraceID = "trace_id"
+	_wireSpanID  = "span_id"
+)
+
+// _reservedWireNames maps each root field the library stamps to the name the
+// other SDKs, and the cross-language log record, give the same field.
+var _reservedWireNames = map[string]string{
+	"service.name":    _wireService,
+	"service.env":     _wireEnv,
+	"service.version": _wireVersion,
+	_attrTraceID:      _wireTraceID,
+	_attrSpanID:       _wireSpanID,
+}
+
+// _stampRootFields sets the library's own root fields on r, replacing any
+// root attribute the caller supplied under the same key.
+//
+// Appending alone left both: a record carried the caller's "trace.id" and the
+// real one, the PII stage deliberately keeps duplicate keys, and which of the
+// two a backend believed depended on how it resolved the collision. A request
+// payload logged as attributes could therefore correlate a record to a trace
+// of the sender's choosing. Every SDK resolves this the same way for the trace
+// fields — the live context wins, and with no live context the caller's value
+// stands, since nothing better is known — and the service identity follows the
+// same rule here: what the library stamps is authoritative, what it does not
+// stamp is left alone.
+//
+// Only root keys are compared. A "trace.id" nested inside a group is a
+// different field, and the caller's to name.
+//
+// Each stamped key also displaces its cross-language wire name — "service"
+// for "service.name", "trace_id" for "trace.id" — because that is the name
+// the record is normalised to when compared or shipped alongside the other
+// SDKs (spec/telemetry-api.yaml reserved_root_fields), and a caller's
+// "trace_id" next to a stamped "trace.id" is the same duplicate by another
+// spelling.
+func _stampRootFields(r slog.Record, stamped []slog.Attr) slog.Record {
+	if len(stamped) == 0 {
 		return r
 	}
 	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
-		nr.AddAttrs(a)
+		if !slices.ContainsFunc(stamped, func(s slog.Attr) bool {
+			return s.Key == a.Key || _reservedWireNames[s.Key] == a.Key
+		}) {
+			nr.AddAttrs(a)
+		}
 		return true
 	})
-	if traceID != "" {
-		nr.AddAttrs(slog.String("trace.id", traceID))
-	}
-	if spanID != "" {
-		nr.AddAttrs(slog.String("span.id", spanID))
-	}
+	nr.AddAttrs(stamped...)
 	return nr
 }
 
@@ -467,13 +533,21 @@ func _baseLogHandler(cfg *TelemetryConfig) slog.Handler {
 		},
 	}
 	out := _logOutput()
-	if cfg.Logging.Format == LogFormatJSON {
-		return slog.NewJSONHandler(out, opts)
+	render := func(w io.Writer) slog.Handler {
+		if cfg.Logging.Format == LogFormatJSON {
+			return slog.NewJSONHandler(w, opts)
+		}
+		if cfg.Logging.Format == LogFormatPretty {
+			return newPrettyHandlerWithColors(w, cfg, _prettyColors(out))
+		}
+		return slog.NewTextHandler(w, opts)
 	}
-	if cfg.Logging.Format == LogFormatPretty {
-		return newPrettyHandler(out, cfg)
+	// A host's writer is rendered into and written separately, so no renderer
+	// lock is held while it runs (see _sinkHandler).
+	if sink, ok := out.(*_logSink); ok {
+		return _newSinkHandler(sink, render)
 	}
-	return slog.NewTextHandler(out, opts)
+	return render(out)
 }
 
 // _attachTraceContext adds trace.id / span.id from ctx to logger when present.
@@ -484,10 +558,10 @@ func _attachTraceContext(logger *slog.Logger, ctx context.Context) *slog.Logger 
 	}
 	var attrs []any
 	if traceID != "" {
-		attrs = append(attrs, slog.String("trace.id", traceID))
+		attrs = append(attrs, slog.String(_attrTraceID, traceID))
 	}
 	if spanID != "" {
-		attrs = append(attrs, slog.String("span.id", spanID))
+		attrs = append(attrs, slog.String(_attrSpanID, spanID))
 	}
 	return logger.With(attrs...)
 }

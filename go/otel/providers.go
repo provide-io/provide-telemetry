@@ -10,7 +10,6 @@ import (
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/otel"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -64,7 +63,7 @@ func _warnIfLoggerProviderConflict() {
 	if _otelLoggerProvider != nil {
 		return
 	}
-	existing := logglobal.GetLoggerProvider()
+	existing := otel.GetLoggerProvider()
 	existingType := fmt.Sprintf("%T", existing)
 	if strings.Contains(existingType, "global") || strings.Contains(existingType, "noop") {
 		return
@@ -113,25 +112,48 @@ func _setupMeterProvider(state telemetry.BackendSetupState, cfg *telemetry.Telem
 	defer _providersMu.Unlock()
 
 	if !cfg.Metrics.Enabled {
+		_setPromState(_promMetricsDisabled, nil)
 		return
 	}
 	provider := state.MeterProvider()
-	if provider == nil && cfg.Metrics.OTLPEndpoint != "" {
-		mp, err := _buildDefaultMeterProvider(cfg)
+	hostOwned := provider != nil
+	var registry _promRegistryLike
+	buildFailed := false
+	if !hostOwned && _wantsDefaultMeterProvider(cfg) {
+		mp, reg, err := _buildDefaultMeterProvider(cfg)
 		if err != nil {
+			buildFailed = true
 			if logger := telemetry.Logger(); logger != nil {
 				logger.Warn("otel.meter_provider_init_failed", slog.String("error", err.Error()))
 			}
 		} else {
 			provider = mp
+			registry = reg
 		}
 	}
+	_setPromState(_promStatusAfterSetup(hostOwned, buildFailed, registry), registry)
 	if mp, ok := provider.(*sdkmetric.MeterProvider); ok {
 		_warnIfMeterProviderConflict()
 		_otelMeterProvider = mp
 		otel.SetMeterProvider(mp)
 		_weSetMeterGlobal = true
 	}
+}
+
+// _promStatusAfterSetup decides what the Prometheus endpoint reports once
+// metrics setup has run with metrics enabled. A build that succeeded without a
+// registry is one that never asked for the Prometheus reader.
+func _promStatusAfterSetup(hostOwned, buildFailed bool, registry _promRegistryLike) _promStatus {
+	if hostOwned {
+		return _promHostProvider
+	}
+	if buildFailed {
+		return _promSetupFailed
+	}
+	if registry == nil {
+		return _promNotSelected
+	}
+	return _promReady
 }
 
 func _setupLoggerProvider(state telemetry.BackendSetupState, cfg *telemetry.TelemetryConfig) {
@@ -156,7 +178,7 @@ func _setupLoggerProvider(state telemetry.BackendSetupState, cfg *telemetry.Tele
 	if lp, ok := provider.(*sdklog.LoggerProvider); ok {
 		_warnIfLoggerProviderConflict()
 		_otelLoggerProvider = lp
-		logglobal.SetLoggerProvider(lp)
+		otel.SetLoggerProvider(lp)
 		_weSetLoggerGlobal = true
 	}
 }

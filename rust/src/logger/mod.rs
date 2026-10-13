@@ -12,7 +12,7 @@ use crate::backpressure::{release, try_acquire, QueueTicket};
 use crate::config::TelemetryConfig;
 use crate::consent::{load_consent_from_env, should_allow};
 use crate::context::get_context;
-use crate::health::increment_emitted;
+use crate::health::{increment_dropped, increment_emitted, record_export_failure};
 use crate::runtime::get_runtime_config;
 use crate::sampling::{set_sampling_policy, should_sample, SamplingPolicy, Signal};
 use crate::tracer::get_trace_context;
@@ -22,6 +22,7 @@ pub mod levels;
 mod pretty;
 mod processors;
 pub mod sink;
+mod stages;
 pub(crate) mod windows_console;
 
 use emit::{emit_if_console, emit_if_json, emit_if_otel, emit_if_pretty};
@@ -35,6 +36,13 @@ pub use emit::{
 };
 use levels::{effective_level_threshold, level_order};
 pub use levels::{parse_level, try_parse_level, LogSeverity};
+pub use stages::set_pipeline_stage_hook;
+use stages::{
+    close_refused, pipeline_stage, STAGE_BACKPRESSURE, STAGE_CONSENT, STAGE_HEALTH, STAGE_RELEASE,
+    STAGE_SAMPLING,
+};
+#[cfg(feature = "otel")]
+pub(crate) use stages::{pipeline_stage as report_pipeline_stage, STAGE_BACKEND};
 
 /// Normalise a caller-supplied level string to its canonical spelling.
 fn canonical_level(level: &str) -> &'static str {
@@ -122,16 +130,24 @@ fn apply_lazy_logger_policies_from_env() {
     );
 }
 
+/// Stamp the service identity, replacing any caller field of the same name.
+///
+/// The identity is the SDK's to state: a caller who logs `service` or `env`
+/// has either made a mistake or is describing some other service, which is
+/// what `peer.service` is for, and a record carrying a forged identity would
+/// be filed under the wrong service by every backend. An empty config value
+/// is not stamped, and then the caller's field stands, since nothing better
+/// is known — the same rule `trace_id` and `span_id` follow.
 fn inject_identity_fields(context: &mut BTreeMap<String, Value>, cfg: TelemetryConfig) {
-    context
-        .entry("service".to_string())
-        .or_insert(Value::String(cfg.service_name));
-    context
-        .entry("env".to_string())
-        .or_insert(Value::String(cfg.environment));
-    context
-        .entry("version".to_string())
-        .or_insert(Value::String(cfg.version));
+    for (key, value) in [
+        ("service", cfg.service_name),
+        ("env", cfg.environment),
+        ("version", cfg.version),
+    ] {
+        if !value.is_empty() {
+            context.insert(key.to_string(), Value::String(value));
+        }
+    }
 }
 
 fn inject_runtime_identity_fields(context: &mut BTreeMap<String, Value>) {
@@ -143,17 +159,20 @@ fn inject_runtime_identity_fields(context: &mut BTreeMap<String, Value>) {
 }
 
 /// Shared emit path: run processors, emit, buffer.
-fn emit_event(mut event: LogEvent) {
+///
+/// Reports whether the local write failed — the host's writer refused the
+/// record, panicked, or was re-entered — so the health stage can count it.
+fn emit_event(mut event: LogEvent) -> Result<(), sink::WriteFailure> {
     process_event(&mut event);
-    emit_if_json(&event);
-    emit_if_pretty(&event);
-    emit_if_console(&event);
+    let local = emit_if_json(&event)
+        .and(emit_if_pretty(&event))
+        .and(emit_if_console(&event));
     emit_if_otel(&event);
     let mut buf = crate::_lock::lock(events());
-    if buf.len() >= MAX_FALLBACK_EVENTS {
-        return;
+    if buf.len() < MAX_FALLBACK_EVENTS {
+        buf.push(event);
     }
-    buf.push(event);
+    local
 }
 
 fn acquire_log_ticket(level: &str, target: &str, sample_key: Option<&str>) -> Option<QueueTicket> {
@@ -161,13 +180,40 @@ fn acquire_log_ticket(level: &str, target: &str, sample_key: Option<&str>) -> Op
     if level_order(level) < effective_level_threshold(target, &config) {
         return None;
     }
+    pipeline_stage(STAGE_CONSENT);
     if !consent_allows_logs(level) {
+        // A drop like any other admission refusal: dropped_logs names consent
+        // alongside sampling and backpressure, which count their own.
+        increment_dropped(Signal::Logs, 1);
+        close_refused();
         return None;
     }
+    pipeline_stage(STAGE_SAMPLING);
     if !should_sample(Signal::Logs, sample_key).unwrap_or(true) {
+        close_refused();
         return None;
     }
-    try_acquire(Signal::Logs)
+    pipeline_stage(STAGE_BACKPRESSURE);
+    let ticket = try_acquire(Signal::Logs);
+    if ticket.is_none() {
+        close_refused();
+    }
+    ticket
+}
+
+/// The health and release stages of an admitted record, after every sink.
+///
+/// A record the local writer did not take is still emitted — it passed every
+/// admission gate, and the sinks ran — and is an export failure as well, the
+/// same split Go's handler makes.
+fn finish_log(ticket: QueueTicket, local: Result<(), sink::WriteFailure>) {
+    pipeline_stage(STAGE_HEALTH);
+    increment_emitted(Signal::Logs, 1);
+    if local.is_err() {
+        record_export_failure(Signal::Logs);
+    }
+    pipeline_stage(STAGE_RELEASE);
+    release(ticket);
 }
 
 /// Like `log_event` but merges extra caller-supplied fields into the event context.
@@ -180,11 +226,8 @@ fn log_event_with_fields(
     let Some(ticket) = acquire_log_ticket(level, target, Some(message)) else {
         return;
     };
-    let mut event = new_event(target, level, message);
-    event.context.extend(extra.clone());
-    emit_event(event);
-    increment_emitted(Signal::Logs, 1);
-    release(ticket);
+    let local = emit_event(build_event(target, level, message, extra));
+    finish_log(ticket, local);
 }
 
 /// Shared core: gate, build, process, emit, count.
@@ -192,9 +235,8 @@ fn log_event(level: &str, target: &str, message: &str) {
     let Some(ticket) = acquire_log_ticket(level, target, Some(message)) else {
         return;
     };
-    emit_event(new_event(target, level, message));
-    increment_emitted(Signal::Logs, 1);
-    release(ticket);
+    let local = emit_event(new_event(target, level, message));
+    finish_log(ticket, local);
 }
 
 /// Like `log_event` but attaches DARS metadata from an `Event`.
@@ -209,9 +251,8 @@ fn log_event_with_event(level: &str, target: &str, ev: &crate::schema::Event) {
         resource: ev.resource.clone(),
         status: ev.status.clone(),
     });
-    emit_event(event);
-    increment_emitted(Signal::Logs, 1);
-    release(ticket);
+    let local = emit_event(event);
+    finish_log(ticket, local);
 }
 
 /// DARS metadata extracted from an `Event` when the caller uses the
@@ -271,16 +312,42 @@ fn logger_target(target: Option<&str>) -> String {
 }
 
 fn new_event(target: &str, level: &str, message: &str) -> LogEvent {
+    build_event(target, level, message, &BTreeMap::new())
+}
+
+/// Build a record from bound context, then the caller's fields, then the
+/// fields the SDK stamps — in that order, so each layer overrides the last.
+///
+/// The live trace context is carried beside the context map and rendered over
+/// it, so a caller's `trace_id` or `span_id` is removed here when a live one
+/// exists: otherwise the OTel bridge would forward the forged key as an
+/// attribute next to the real trace context. With no live span the caller's
+/// value stands, since nothing better is known.
+fn build_event(
+    target: &str,
+    level: &str,
+    message: &str,
+    extra: &BTreeMap<String, Value>,
+) -> LogEvent {
     let trace = get_trace_context();
     let mut context = get_context();
+    context.extend(extra.clone());
     inject_runtime_identity_fields(&mut context);
+    let trace_id = trace.get("trace_id").and_then(Clone::clone);
+    let span_id = trace.get("span_id").and_then(Clone::clone);
+    if trace_id.is_some() {
+        context.remove("trace_id");
+    }
+    if span_id.is_some() {
+        context.remove("span_id");
+    }
     LogEvent {
         level: level.to_string(),
         target: target.to_string(),
         message: message.to_string(),
         context,
-        trace_id: trace.get("trace_id").and_then(Clone::clone),
-        span_id: trace.get("span_id").and_then(Clone::clone),
+        trace_id,
+        span_id,
         event_metadata: None,
     }
 }

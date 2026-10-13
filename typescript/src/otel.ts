@@ -40,6 +40,10 @@ import { installContextManager } from './otel-context-manager.js';
 import { _isNodeLike } from './config.js';
 import { getHealthSnapshot, setSetupError } from './health.js';
 import { wrapResilientExporter } from './resilient-exporter.js';
+import { prometheusReaderEnabled } from './config-prometheus.js';
+import { recordPullStatusWithoutProvider, setupOtelMeterProvider } from './otel-metrics.js';
+import { syncPrometheusListener } from './prom-setup.js';
+import { beginTlsChecks, SEPARATOR, takeTlsProblems, tlsReady } from './otlp-tls.js';
 
 // No default endpoint — when otlpEndpoint is unset, OTLP export is skipped
 // entirely (safe no-export path per docs/internal/architecture.md).
@@ -58,15 +62,40 @@ function normalizeEndpoint(endpoint: string | undefined): string | undefined {
 }
 
 function appendSignalPath(endpoint: string, signalPath: string): string {
-  return `${endpoint.replace(/\/+$/, '')}${signalPath}`;
+  // A loop, not /\/+$/: that regex backtracks quadratically on a long run of
+  // slashes that is not at the end.
+  let end = endpoint.length;
+  while (endpoint.endsWith('/', end)) end--;
+  return `${endpoint.slice(0, end)}${signalPath}`;
 }
 
 /**
- * Register OTEL TracerProvider and MeterProvider using OTLP HTTP exporters.
- * Safe to call multiple times — subsequent calls are no-ops if already registered.
+ * Register OTEL TracerProvider and MeterProvider using OTLP HTTP exporters,
+ * plus the Prometheus pull reader and listener when the config asks for them.
+ * Safe to call multiple times — subsequent calls are no-ops if already
+ * registered, except that the Prometheus listener is brought in line with cfg.
  */
 export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void> {
-  if (!cfg.otelEnabled) return;
+  // Clearing the TLS problems leaves the ignored exporter entries, which
+  // setupTelemetry() reported and which still describe this config.
+  beginTlsChecks(
+    () => getHealthSnapshot().setupError,
+    () => setSetupError(cfg.metricsExporterWarnings.join(SEPARATOR) || null),
+  );
+  await registerProviders(cfg);
+  // An unreadable OTLP TLS file kept that signal's exporter unbuilt; say which.
+  const tlsProblems = takeTlsProblems(cfg.metricsExporterWarnings);
+  if (tlsProblems !== null) setSetupError(tlsProblems);
+  // After the providers, so the listener serves the reader just attached; on
+  // every path, since a listener with nothing to serve still answers 503s.
+  await syncPrometheusListener(cfg);
+}
+
+async function registerProviders(cfg: TelemetryConfig): Promise<void> {
+  if (!cfg.otelEnabled) {
+    recordPullStatusWithoutProvider(cfg);
+    return;
+  }
   if (_areProvidersRegistered()) return;
 
   const headers = cfg.otlpHeaders ?? {};
@@ -85,7 +114,8 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
     (sharedEndpoint ? appendSignalPath(sharedEndpoint, '/v1/metrics') : undefined);
   const hasAnyEndpoint =
     logsEndpoint !== undefined || tracesEndpoint !== undefined || metricsEndpoint !== undefined;
-  if (!hasAnyEndpoint) {
+  if (!hasAnyEndpoint && !prometheusReaderEnabled(cfg)) {
+    recordPullStatusWithoutProvider(cfg);
     // No OTLP endpoint configured for any signal — skip export entirely
     // (safe no-export path).
     // Do NOT mark providers as registered: no real providers exist, so
@@ -135,7 +165,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
       } = traceBase;
       const { OTLPTraceExporter } = otlpTrace;
 
-      if (tracesEndpoint) {
+      if (tracesEndpoint && (await tlsReady('traces'))) {
         validateOtlpEndpoint(tracesEndpoint);
         const traceHeaders = cfg.otlpTracesHeaders ?? headers;
         const rawTraceExporter = new OTLPTraceExporter({
@@ -169,37 +199,11 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────────────
-  if (cfg.metricsEnabled) {
-    try {
-      const sdkMetrics = await dynImportOtel('@opentelemetry/sdk-metrics');
-      const otlpMetrics = await dynImportOtel('@opentelemetry/exporter-metrics-otlp-http');
-      const res = await dynImportOtel('@opentelemetry/resources');
-      const { metrics } = await import('@opentelemetry/api');
-      const { MeterProvider, PeriodicExportingMetricReader } = sdkMetrics;
-      const { OTLPMetricExporter } = otlpMetrics;
-
-      if (metricsEndpoint) {
-        validateOtlpEndpoint(metricsEndpoint);
-        const metricsHeaders = cfg.otlpMetricsHeaders ?? headers;
-        const rawMetricExporter = new OTLPMetricExporter({
-          url: metricsEndpoint,
-          headers: metricsHeaders,
-          timeoutMillis: cfg.exporterMetricsTimeoutMs,
-        });
-        // Wrap so every batch export applies retry/timeout/circuit-breaker policy.
-        const metricExporter = wrapResilientExporter('metrics', rawMetricExporter);
-
-        const meterProvider = new MeterProvider({
-          resource: buildOtelResource(res, cfg),
-          readers: [new PeriodicExportingMetricReader({ exporter: metricExporter })],
-        });
-        metrics.setGlobalMeterProvider(meterProvider);
-        registered.push(meterProvider as ShutdownableProvider);
-        signals.push('metrics');
-      }
-    } catch (err) {
-      console.warn('[provide/telemetry] OTEL metrics setup failed (missing peer deps?):', err);
-    }
+  // OTLP push and/or the Prometheus pull reader; see otel-metrics.ts.
+  const meterProvider = await setupOtelMeterProvider(cfg, metricsEndpoint, headers);
+  if (meterProvider !== undefined) {
+    registered.push(meterProvider);
+    signals.push('metrics');
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────────────
@@ -207,7 +211,7 @@ export async function registerOtelProviders(cfg: TelemetryConfig): Promise<void>
   // the trace/metrics flags. When disabled, no OTLP log handler is attached
   // even if the endpoint is configured — useful to escape shutdown hangs
   // against unreachable collectors without unsetting OTEL_EXPORTER_OTLP_ENDPOINT.
-  if (logsEndpoint && cfg.otlpLogsEnabled) {
+  if (logsEndpoint && cfg.otlpLogsEnabled && (await tlsReady('logs'))) {
     try {
       registered.push(await setupOtelLogProvider(cfg));
       signals.push('logs');

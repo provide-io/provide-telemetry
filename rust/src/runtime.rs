@@ -64,7 +64,8 @@ fn tracing_provider_config_changed(current: &TelemetryConfig, target: &Telemetry
         || current.exporter.traces_timeout_seconds != target.exporter.traces_timeout_seconds
 }
 
-/// Metrics-signal fields baked into the metric exporter/PeriodicReader at construction.
+/// Metrics-signal fields baked into the metric exporter/PeriodicReader, the
+/// Prometheus pull reader and the listener at construction.
 #[cfg(any(feature = "otel", test))]
 fn metrics_provider_config_changed(current: &TelemetryConfig, target: &TelemetryConfig) -> bool {
     current.metrics.enabled != target.metrics.enabled
@@ -72,6 +73,9 @@ fn metrics_provider_config_changed(current: &TelemetryConfig, target: &Telemetry
         || current.metrics.otlp_headers != target.metrics.otlp_headers
         || current.metrics.otlp_protocol != target.metrics.otlp_protocol
         || current.metrics.metric_export_interval_ms != target.metrics.metric_export_interval_ms
+        // The readers, render options and listener are fixed when setup builds them.
+        || current.metrics.exporters != target.metrics.exporters
+        || current.metrics.prometheus != target.metrics.prometheus
         || current.exporter.metrics_timeout_seconds != target.exporter.metrics_timeout_seconds
 }
 

@@ -109,6 +109,13 @@ fn runtime_test_provider_config_changed_detects_each_provider_field() {
     assert!(provider_config_changed(&current, &changed));
 
     let mut changed = current.clone();
+    changed.metrics.exporters = vec!["prometheus".to_string()];
+    assert!(provider_config_changed(&current, &changed));
+    let mut changed = current.clone();
+    changed.metrics.prometheus.port = 9100;
+    assert!(provider_config_changed(&current, &changed));
+
+    let mut changed = current.clone();
     changed.exporter.logs_timeout_seconds = 5.0;
     assert!(provider_config_changed(&current, &changed));
 

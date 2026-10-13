@@ -1,3 +1,10 @@
+# Hooks with no `stages:` of their own default to running at EVERY stage,
+# commit-msg included -- so with a commit-msg hook type installed, a single
+# `git commit` ran this whole battery twice. This scopes them to the two stages
+# that matter; the commit-msg and manual hooks declare their own and are
+# unaffected.
+default_stages: [pre-commit, pre-push]
+
 repos:
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
@@ -24,7 +31,9 @@ repos:
     hooks:
       - id: codespell
         additional_dependencies: ["tomli"]
-        exclude: "package-lock\\.json"
+        # pyproject's codespell skip lists ./rust/Cargo.lock and friends, but
+        # pre-commit passes paths without the ./ so those never match here.
+        exclude: "(package-lock\\.json|Cargo\\.lock|uv\\.lock)$"
 
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
     rev: v9.18.0
@@ -37,7 +46,11 @@ repos:
     hooks:
       - id: max-loc
         name: python max loc
-        entry: uv run python scripts/check_max_loc.py --max-lines 500
+        # 777 to match ci-python.yml. The cap was raised there and in the
+        # allowlist by ca9853c6 but missed here, so the hook rejected 14 files
+        # CI accepts -- unnoticed for a month because the hooks were never
+        # installed. Keep the two in step.
+        entry: uv run python scripts/check_max_loc.py --max-lines 777
         language: system
         pass_filenames: false
         always_run: true
@@ -100,9 +113,14 @@ repos:
         always_run: true
         types: [python]
 
+      # The same audit as CI's dependency-audit job: the committed lock, with
+      # pip-audit from a tool environment. `python -m pip_audit` needed
+      # pip-audit in the project venv, which no dependency group declares, so
+      # any `uv sync` removed it and the hook failed with "No module named
+      # pip_audit".
       - id: pip-audit
         name: pip-audit (vulnerability scan)
-        entry: uv run python -m pip_audit --path .
+        entry: uv run python ci/audit_python.py
         language: system
         pass_filenames: false
         always_run: true
@@ -153,7 +171,7 @@ repos:
       # ── TypeScript package (typescript/) ───────────────────────────────────
       - id: ts-typecheck
         name: typescript type check
-        entry: bash -c 'cd typescript && npm run typecheck'
+        entry: bash -c 'cd typescript && npm run typecheck && npm run typecheck:examples'
         language: system
         pass_filenames: false
         always_run: true

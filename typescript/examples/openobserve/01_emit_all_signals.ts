@@ -50,19 +50,36 @@ function authHeader(user: string, password: string): string {
 async function sendJsonLog(baseUrl: string, auth: string, runId: string): Promise<void> {
   const parsed = new URL(`${baseUrl}/default/_json`);
   const payload = Buffer.from(
-    JSON.stringify([{ _timestamp: Date.now() * 1000, event: 'example.openobserve.jsonlog', run_id: runId, message: 'openobserve json log ingestion' }]),
+    JSON.stringify([
+      {
+        _timestamp: Date.now() * 1000,
+        event: 'example.openobserve.jsonlog',
+        run_id: runId,
+        message: 'openobserve json log ingestion',
+      },
+    ]),
   );
   const mod = parsed.protocol === 'https:' ? https : http;
   await new Promise<void>((resolve, reject) => {
     const req = mod.request(
-      { hostname: parsed.hostname, port: parsed.port, path: parsed.pathname, method: 'POST',
-        headers: { Authorization: auth, 'Content-Type': 'application/json', 'Content-Length': payload.length } },
+      {
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname,
+        method: 'POST',
+        headers: {
+          Authorization: auth,
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length,
+        },
+      },
       (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => {
           const body = Buffer.concat(chunks).toString('utf8');
-          if ((res.statusCode ?? 0) >= 400) reject(new Error(`JSON log POST failed ${res.statusCode}: ${body}`));
+          if ((res.statusCode ?? 0) >= 400)
+            reject(new Error(`JSON log POST failed ${res.statusCode}: ${body}`));
           else resolve();
         });
       },

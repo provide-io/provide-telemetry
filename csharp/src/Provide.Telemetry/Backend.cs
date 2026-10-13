@@ -43,6 +43,18 @@ public interface ITelemetryBackend : IDisposable
 
     /// <summary>Drain and tear down every owned provider against one absolute deadline.</summary>
     void Shutdown(DateTimeOffset deadline);
+
+    /// <summary>
+    /// Apply a published configuration and report what failed to start.
+    /// </summary>
+    /// <remarks>
+    /// Called after setup, a lazy start, or a reconfiguration has published a
+    /// generation using this backend, so it may log. A backend starts what
+    /// follows the live config here (the Prometheus listener) and returns a
+    /// failure message for the health snapshot's <c>setup_error</c>, or "" when
+    /// everything started. It must not throw: such failures never fail setup.
+    /// </remarks>
+    string Configure(TelemetryConfig config) => "";
 }
 
 /// <summary>

@@ -23,6 +23,7 @@ fn parity_lock() -> &'static Mutex<()> {
 
 #[test]
 fn parity_test_event_dars_matches_fixture() {
+    let _guard = parity_lock().lock().expect("parity lock");
     let evt = event(&["db", "query", "users", "ok"]).expect("event should build");
     assert_eq!(evt.event, "db.query.users.ok");
     assert_eq!(evt.domain, "db");
@@ -290,6 +291,7 @@ fn parity_test_fingerprint_differs_by_error_type() {
 
 #[test]
 fn parity_test_backpressure_queue_policy_roundtrip() {
+    let _guard = parity_lock().lock().expect("parity lock");
     let policy = QueuePolicy {
         logs_maxsize: 42,
         traces_maxsize: 10,
@@ -298,10 +300,15 @@ fn parity_test_backpressure_queue_policy_roundtrip() {
     set_queue_policy(policy);
     let got = get_queue_policy();
     assert_eq!(got.logs_maxsize, 42);
+    set_queue_policy(QueuePolicy::default());
 }
 
 #[test]
 fn parity_test_sampling_policy_roundtrip() {
+    // Every test here that sets the Logs policy holds the lock: they run in
+    // parallel, and another's policy landing between this set and get failed
+    // the assertion below.
+    let _guard = parity_lock().lock().expect("parity lock");
     let policy = SamplingPolicy {
         default_rate: 0.5,
         overrides: Default::default(),
@@ -309,6 +316,7 @@ fn parity_test_sampling_policy_roundtrip() {
     set_sampling_policy(Signal::Logs, policy).expect("set ok");
     let got = get_sampling_policy(Signal::Logs).expect("get ok");
     assert!((got.default_rate - 0.5).abs() < 1e-9);
+    set_sampling_policy(Signal::Logs, SamplingPolicy::default()).expect("reset ok");
 }
 
 #[test]

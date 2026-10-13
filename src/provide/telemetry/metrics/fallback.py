@@ -99,9 +99,10 @@ class Gauge:
         self._resolved = otel_gauge is not None
         self._lock = threading.Lock()
         self.value = 0
-        # Per-attribute last-seen value for set() delta computation.
-        # Without this, set() with different attribute sets computes deltas against
-        # a shared scalar, sending incorrect deltas to the OTel UpDownCounter.
+        # Per-attribute current value. The OTel instrument is a synchronous Gauge,
+        # which records absolute values, so add() needs each attribute set's
+        # running total to report the new absolute value, and set() needs it to
+        # keep self.value (the sum across attribute sets) correct.
         self._attr_values: dict[tuple[tuple[str, str], ...], int] = {}
 
     def _resolve_otel(self) -> Any | None:
@@ -119,7 +120,7 @@ class Gauge:
             if self._resolved:
                 return self._otel_gauge
             try:
-                self._otel_gauge = meter.create_up_down_counter(name=self.name)
+                self._otel_gauge = meter.create_gauge(name=self.name)
             except Exception:
                 self._otel_gauge = None
             self._resolved = True
@@ -138,10 +139,13 @@ class Gauge:
         try:
             otel_gauge = self._resolve_otel()
             attrs = guard_attributes(attributes or {})
+            attrs_key = tuple(sorted(attrs.items()))
             with self._lock:
+                current = self._attr_values.get(attrs_key, 0) + amount
+                self._store_attr_value(attrs_key, current)
                 self.value += amount
                 if otel_gauge is not None:
-                    otel_gauge.add(amount, attrs)
+                    otel_gauge.set(current, attrs)
             increment_emitted("metrics")
         finally:
             release(ticket)
@@ -162,18 +166,21 @@ class Gauge:
             attrs_key = tuple(sorted(attrs.items()))
             with self._lock:
                 prev = self._attr_values.get(attrs_key, 0)
-                delta = value - prev
-                self._attr_values[attrs_key] = value
-                if len(self._attr_values) > _ATTR_VALUES_MAX:
-                    # Evict oldest half — dict preserves insertion order (Python 3.7+)
-                    to_keep = list(self._attr_values.items())[_ATTR_VALUES_MAX // 2 :]
-                    self._attr_values = dict(to_keep)
-                self.value += delta
+                self._store_attr_value(attrs_key, value)
+                self.value += value - prev
                 if otel_gauge is not None:
-                    otel_gauge.add(delta, attrs)
+                    otel_gauge.set(value, attrs)
             increment_emitted("metrics")
         finally:
             release(ticket)
+
+    def _store_attr_value(self, attrs_key: tuple[tuple[str, str], ...], value: int) -> None:
+        """Record an attribute set's value, evicting the oldest half past the cap. Caller holds the lock."""
+        self._attr_values[attrs_key] = value
+        if len(self._attr_values) > _ATTR_VALUES_MAX:
+            # Evict oldest half — dict preserves insertion order (Python 3.7+)
+            to_keep = list(self._attr_values.items())[_ATTR_VALUES_MAX // 2 :]
+            self._attr_values = dict(to_keep)
 
 
 class Histogram:

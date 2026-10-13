@@ -22,7 +22,10 @@ export PROVIDE_TRACE_ENABLED=true
 Behavior:
 
 - Enforces 3-5 segment event names.
-- Enforces required keys on events.
+- Enforces required keys on events (a missing key annotates the record with
+  `_schema_error`; it is not dropped). `service` and `env` are stamped onto
+  the record only in JSON output (`PROVIDE_LOG_FORMAT=json`); with the console
+  or pretty renderer every record would be flagged as missing them.
 - Keeps full tracing and metrics signal volume.
 
 ## Compat Profile
@@ -95,9 +98,10 @@ Recommended procedure:
 2. If provider changes are needed, restart the process with the new env/config
    and call `setup_telemetry()` during startup. `reconfigure_telemetry()` only
    hot-applies runtime policy changes; for provider-changing config after OTel
-   providers are installed it raises `RuntimeError` and tells the caller to
-   restart.
-3. Monitor health snapshot counters (drops, retries, export failures).
+   providers are installed it raises `ProviderImmutableError` (a
+   `RuntimeError`) and tells the caller to restart.
+3. Monitor health snapshot counters (drops, retries, export failures, and
+   `setup_error`).
 
 ## Async Exporter Safety
 

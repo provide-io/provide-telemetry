@@ -21,6 +21,9 @@ import { _resetRootLogger } from './logger.js';
 import { _resetOtelLogProviderForTests } from './otel-logs.js';
 import { _resetTraceContext } from './tracing.js';
 import { _resetRuntimeForTests } from './runtime.js';
+import { _resetPullForTests } from './prom-pull.js';
+import { _resetExporterWarningsForTests } from './config-prometheus.js';
+import { _resetTlsChecksForTests } from './otlp-tls.js';
 
 function resetInstalledOtelGlobalsForTests(): void {
   trace.disable();
@@ -28,7 +31,10 @@ function resetInstalledOtelGlobalsForTests(): void {
   context.disable();
 }
 
-/** Reset all telemetry state (config, context, PII rules, health, queues, sampling, resilience, SLO). */
+/**
+ * Reset all telemetry state (config, context, PII rules, health, queues, sampling,
+ * resilience, SLO, and what setup last reported as setupError).
+ */
 export function resetTelemetryState(): void {
   _resetConfig();
   _resetContext();
@@ -44,6 +50,9 @@ export function resetTelemetryState(): void {
   _resetRootLogger();
   _resetOtelLogProviderForTests();
   _resetRuntimeForTests();
+  _resetPullForTests();
+  _resetExporterWarningsForTests();
+  _resetTlsChecksForTests();
 }
 
 /** Clear manual trace context (traceId / spanId set via setTraceContext). */

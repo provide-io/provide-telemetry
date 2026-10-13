@@ -68,6 +68,13 @@ public sealed record CanonicalLogRecord(
         string? errorFingerprint = null)
     {
         var attributes = new Dictionary<string, object?>(fields, StringComparer.Ordinal);
+        // A stamped identity field also displaces its wire name, which is the
+        // spelling the envelope and every other SDK give it: a caller's
+        // "service" beside a stamped "service_name" would reach the OTel
+        // bridge as two answers to one question (reserved_root_fields).
+        Displace(attributes, "service", config.ServiceName);
+        Displace(attributes, "env", config.Environment);
+        Displace(attributes, "version", config.Version);
         Put(attributes, ServiceNameKey, config.ServiceName);
         Put(attributes, EnvironmentKey, config.Environment);
         Put(attributes, TraceIdKey, traceId);
@@ -121,17 +128,29 @@ public sealed record CanonicalLogRecord(
 
         foreach (var (key, value) in Attributes)
         {
-            if (IsEnvelopeIdentityKey(key) || output.ContainsKey(key)) continue;
+            if (IsStampedIdentityKey(key) || output.ContainsKey(key)) continue;
             output[key] = value;
         }
         return output;
     }
 
-    // The identity attributes are already carried by the envelope under their
-    // terser names; re-emitting them from Attributes would put both spellings
-    // on one line, which is exactly the drift this record exists to end.
-    private static bool IsEnvelopeIdentityKey(string key) =>
-        key is ServiceNameKey or EnvironmentKey or TraceIdKey or SpanIdKey;
+    // A stamped identity attribute is already carried by the envelope under its
+    // terser name; re-emitting it from Attributes would put both spellings on
+    // one line, which is exactly the drift this record exists to end. One the
+    // SDK did not stamp is the caller's own field, and stands like any other —
+    // the reserved_root_fields rule in spec/telemetry-api.yaml. trace_id and
+    // span_id share their envelope name, so the ContainsKey test covers them.
+    private bool IsStampedIdentityKey(string key) => key switch
+    {
+        ServiceNameKey => !string.IsNullOrEmpty(ServiceName),
+        EnvironmentKey => Environment is not null,
+        _ => false,
+    };
+
+    private static void Displace(Dictionary<string, object?> target, string key, string? stamped)
+    {
+        if (!string.IsNullOrEmpty(stamped)) target.Remove(key);
+    }
 
     private static void Put(Dictionary<string, object?> target, string key, string? value)
     {

@@ -24,6 +24,11 @@ type BackendSetupState struct {
 	loggerProvider any
 }
 
+// ReportSetupError records a failure a backend recovered from without failing
+// setup, such as a Prometheus listener that could not bind. It surfaces as
+// HealthSnapshot.SetupError until the next setup.
+func (s BackendSetupState) ReportSetupError(msg string) { _setSetupError(msg) }
+
 // TracerProvider returns the caller-supplied tracer provider, if any.
 func (s BackendSetupState) TracerProvider() any { return s.tracerProvider }
 
@@ -105,7 +110,8 @@ func _backendOptionsSupplied(state *_setupState) bool {
 }
 
 func _backendConfigured(cfg *TelemetryConfig) bool {
-	return cfg.Tracing.OTLPEndpoint != "" || cfg.Metrics.OTLPEndpoint != "" || cfg.Logging.OTLPEndpoint != ""
+	return cfg.Tracing.OTLPEndpoint != "" || cfg.Metrics.OTLPEndpoint != "" || cfg.Logging.OTLPEndpoint != "" ||
+		cfg.Metrics.PrometheusReaderEnabled()
 }
 
 // _backendTracerName is the instrumentation name handed to the backend when the

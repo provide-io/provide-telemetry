@@ -21,6 +21,15 @@ import { setSetupError } from './health.js';
 import { awaitPropagationInit, isFallbackMode, isPropagationInitDone } from './propagation.js';
 import { _setActiveConfig } from './runtime.js';
 import { configFromEnv } from './config-env.js';
+import {
+  DEFAULT_HOST,
+  DEFAULT_PATH,
+  DEFAULT_PORT,
+  DEFAULT_TRANSLATION,
+  EXPORTER_OTLP,
+  reportExporterWarnings,
+  validatePrometheusSettings,
+} from './config-prometheus.js';
 export { configFromEnv } from './config-env.js';
 export { parseOtlpHeaders, redactConfig } from './config-redact.js';
 export interface TelemetryConfig {
@@ -70,6 +79,12 @@ export interface TelemetryConfig {
   strictSchema: boolean;
   /** Enforce strict event-name validation even when strictSchema is false. */
   strictEventName: boolean;
+  /**
+   * Fail config parsing on a value that would otherwise be warned about and
+   * ignored. Today that is OTEL_METRICS_EXPORTER only; it applies when the
+   * environment is parsed. Env: `PROVIDE_TELEMETRY_STRICT_CONFIG`.
+   */
+  strictConfig: boolean;
   /** Keys required on every log record. */
   requiredLogKeys: string[];
 
@@ -98,6 +113,31 @@ export interface TelemetryConfig {
 
   /** Enable metrics collection. */
   metricsEnabled: boolean;
+  /** Metric exporters: otlp and/or prometheus; empty means none. Env: `OTEL_METRICS_EXPORTER`. */
+  metricsExporters: string[];
+  /**
+   * What OTEL_METRICS_EXPORTER asked for that was ignored, one message each;
+   * setupTelemetry() logs them and reports them as setupError.
+   */
+  metricsExporterWarnings: string[];
+  /** Also export the health metrics over OTLP (parsed; not yet acted on). Env: `PROVIDE_METRICS_HEALTH_OTLP`. */
+  metricsHealthOtlp: boolean;
+  /** Start the Tier 3 listener: 'false', 'true' or 'auto'. Env: `PROVIDE_METRICS_PROMETHEUS_LISTEN`. */
+  prometheusListen: string;
+  /** Tier 3 bind host. Env: `OTEL_EXPORTER_PROMETHEUS_HOST`. */
+  prometheusHost: string;
+  /** Tier 3 bind port; 0 picks a free one. Env: `OTEL_EXPORTER_PROMETHEUS_PORT`. */
+  prometheusPort: number;
+  /** Tier 3 path. Env: `PROVIDE_METRICS_PROMETHEUS_PATH`. */
+  prometheusPath: string;
+  /** Metric and label name translation strategy. Env: `PROVIDE_METRICS_PROMETHEUS_TRANSLATION`. */
+  prometheusTranslation: string;
+  /** Add otel_scope_name / otel_scope_version labels. Env: `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS`. */
+  prometheusScopeLabels: boolean;
+  /** Emit the target_info series. Env: `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO`. */
+  prometheusTargetInfo: boolean;
+  /** Prometheus web config file securing the listener; '' means plain HTTP. Env: `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`. */
+  prometheusWebConfig: string;
 
   /** Probabilistic sampling rate for logs (0.0–1.0). */
   samplingLogsRate: number;
@@ -227,6 +267,7 @@ export const DEFAULTS: TelemetryConfig = {
   consoleOutput: true,
   strictSchema: false,
   strictEventName: false,
+  strictConfig: false,
   requiredLogKeys: [],
   logIncludeTimestamp: true,
   logIncludeCaller: true,
@@ -239,6 +280,17 @@ export const DEFAULTS: TelemetryConfig = {
   traceSampleRate: 1.0,
   tracingEnabled: true,
   metricsEnabled: true,
+  metricsExporters: [EXPORTER_OTLP],
+  metricsExporterWarnings: [],
+  metricsHealthOtlp: false,
+  prometheusListen: 'false',
+  prometheusHost: DEFAULT_HOST,
+  prometheusPort: DEFAULT_PORT,
+  prometheusPath: DEFAULT_PATH,
+  prometheusTranslation: DEFAULT_TRANSLATION,
+  prometheusScopeLabels: false,
+  prometheusTargetInfo: true,
+  prometheusWebConfig: '',
   samplingLogsRate: 1.0,
   samplingTracesRate: 1.0,
   samplingMetricsRate: 1.0,
@@ -265,7 +317,7 @@ export const DEFAULTS: TelemetryConfig = {
   securityMaxAttrCount: 64,
 };
 
-let _config: TelemetryConfig = { ...DEFAULTS };
+let _config: TelemetryConfig = { ...DEFAULTS, metricsExporters: [...DEFAULTS.metricsExporters] };
 
 /** Incremented on every setupTelemetry() call so getRootLogger() knows to rebuild. */
 let _configVersion = 0;
@@ -350,10 +402,19 @@ function _applySetupBody(overrides?: Partial<TelemetryConfig>): void {
   // caller that caught the error kept emitting under a config it had been told
   // was invalid.
   const candidate = { ...configFromEnv(), ...overrides };
+  // An exporter list given in code replaces the environment's, so the
+  // environment's complaints about it no longer apply.
+  if (
+    overrides?.metricsExporters !== undefined &&
+    overrides.metricsExporterWarnings === undefined
+  ) {
+    candidate.metricsExporterWarnings = [];
+  }
   _validateConfig(candidate);
   _config = candidate;
   _configVersion++;
   _setActiveConfig(_config);
+  reportExporterWarnings(_config.metricsExporterWarnings);
   // Consent comes from the environment at setup time, like every other SDK:
   // PROVIDE_CONSENT_LEVEL=NONE must silence a process that calls setup, and
   // an unset variable leaves a programmatic setConsentLevel() alone.
@@ -447,14 +508,15 @@ function _validateConfig(cfg: TelemetryConfig): void {
   requireNonNegInt('securityMaxAttrValueLength', cfg.securityMaxAttrValueLength);
   requireNonNegInt('securityMaxAttrCount', cfg.securityMaxAttrCount);
   requireNonNegInt('piiMaxDepth', cfg.piiMaxDepth);
+  validatePrometheusSettings(cfg);
 }
 
 /** Reset to defaults (used in tests). */
 export function _resetConfig(): void {
-  _config = { ...DEFAULTS };
+  _config = { ...DEFAULTS, metricsExporters: [...DEFAULTS.metricsExporters] };
   _configVersion = 0;
 }
 
 /** Package version — mirrors Python __version__. */
-export const version = '0.10.0';
+export const version = '0.11.0';
 export const __version__ = version;

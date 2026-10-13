@@ -235,15 +235,19 @@ func opCaptureLog(s step, variables map[string]any) {
 	logBuffer = nil
 
 	record := extractJSONRecord(string(data))
-	// Normalise Go field names to cross-language contract names:
-	// trace.id -> trace_id, span.id -> span_id
-	if v, ok := record["trace.id"]; ok {
-		record["trace_id"] = v
-		delete(record, "trace.id")
-	}
-	if v, ok := record["span.id"]; ok {
-		record["span_id"] = v
-		delete(record, "span.id")
+	// Normalise Go field names to cross-language contract names — the
+	// renames log_output_format in spec/behavioral_fixtures.yaml lists.
+	for raw, contract := range map[string]string{
+		"trace.id":        "trace_id",
+		"span.id":         "span_id",
+		"service.name":    "service",
+		"service.env":     "env",
+		"service.version": "version",
+	} {
+		if v, ok := record[raw]; ok {
+			record[contract] = v
+			delete(record, raw)
+		}
 	}
 	// Ensure message key exists.
 	if _, ok := record["message"]; !ok {

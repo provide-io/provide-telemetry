@@ -73,15 +73,32 @@ async function main(): Promise<void> {
   // ── 🩺 Full health snapshot ──────────────────────────────
   console.log('\n🩺 Full HealthSnapshot:');
   const s = getHealthSnapshot();
-  console.log(`  📉 Dropped:         logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`);
-  console.log(`  📦 Emitted:         logs=${s.logsEmitted}  traces=${s.tracesEmitted}  metrics=${s.metricsEmitted}`);
-  console.log(`  🔄 retries:         logs=${s.retriesLogs}  traces=${s.retriesTraces}  metrics=${s.retriesMetrics}`);
-  console.log(`  ❌ exportFailures:  logs=${s.exportFailuresLogs}  traces=${s.exportFailuresTraces}  metrics=${s.exportFailuresMetrics}`);
-  console.log(`  ⚠️  asyncBlockingRisk: logs=${s.asyncBlockingRiskLogs}  traces=${s.asyncBlockingRiskTraces}  metrics=${s.asyncBlockingRiskMetrics}`);
-  console.log(`  🔌 circuitState:    logs=${s.circuitStateLogs}  traces=${s.circuitStateTraces}  metrics=${s.circuitStateMetrics}`);
-  console.log(`  🔢 circuitOpenCount: logs=${s.circuitOpenCountLogs}  traces=${s.circuitOpenCountTraces}  metrics=${s.circuitOpenCountMetrics}`);
-  console.log(`  ⏱️  exportLatencyMs: logs=${s.exportLatencyMsLogs}  traces=${s.exportLatencyMsTraces}  metrics=${s.exportLatencyMsMetrics}`);
+  console.log(
+    `  📉 Dropped:         logs=${s.logsDropped}  traces=${s.tracesDropped}  metrics=${s.metricsDropped}`,
+  );
+  console.log(
+    `  📦 Emitted:         logs=${s.logsEmitted}  traces=${s.tracesEmitted}  metrics=${s.metricsEmitted}`,
+  );
+  console.log(
+    `  🔄 retries:         logs=${s.retriesLogs}  traces=${s.retriesTraces}  metrics=${s.retriesMetrics}`,
+  );
+  console.log(
+    `  ❌ exportFailures:  logs=${s.exportFailuresLogs}  traces=${s.exportFailuresTraces}  metrics=${s.exportFailuresMetrics}`,
+  );
+  console.log(
+    `  ⚠️  asyncBlockingRisk: logs=${s.asyncBlockingRiskLogs}  traces=${s.asyncBlockingRiskTraces}  metrics=${s.asyncBlockingRiskMetrics}`,
+  );
+  console.log(
+    `  🔌 circuitState:    logs=${s.circuitStateLogs}  traces=${s.circuitStateTraces}  metrics=${s.circuitStateMetrics}`,
+  );
+  console.log(
+    `  🔢 circuitOpenCount: logs=${s.circuitOpenCountLogs}  traces=${s.circuitOpenCountTraces}  metrics=${s.circuitOpenCountMetrics}`,
+  );
+  console.log(
+    `  ⏱️  exportLatencyMs: logs=${s.exportLatencyMsLogs}  traces=${s.exportLatencyMsTraces}  metrics=${s.exportLatencyMsMetrics}`,
+  );
   console.log(`  🚨 setupError:      ${s.setupError}`);
+  console.log(`  🧾 receiptFailures: ${s.receiptFailures}`);
 
   console.log('\n🏁 Done!');
   await shutdownTelemetry();

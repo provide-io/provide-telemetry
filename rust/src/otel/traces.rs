@@ -18,7 +18,7 @@ use opentelemetry::global;
 use opentelemetry::trace::{Span, Tracer};
 #[cfg(feature = "otel-grpc")]
 use opentelemetry_otlp::WithTonicConfig;
-use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{Protocol, RetryPolicy, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
@@ -33,6 +33,9 @@ use super::endpoint::{resolve_protocol, validate_optional_endpoint, OtlpProtocol
 use super::grpc::metadata_from_headers;
 use super::map_exporter_build;
 use super::resilient::ResilientSpanExporter;
+#[cfg(feature = "otel-grpc")]
+use super::tls::tonic_tls;
+use super::tls::{exporter_tls, http_client};
 
 #[derive(Clone)]
 pub(super) struct InstalledTracerProvider {
@@ -70,7 +73,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
             let mut builder = SpanExporter::builder()
                 .with_http()
                 .with_protocol(http_protocol)
-                .with_timeout(timeout);
+                .with_timeout(timeout)
+                // Retries belong to the SDK's resilience policy; the exporter's own would stack on them.
+                .with_retry_policy(RetryPolicy::disabled());
             let endpoint = validate_optional_endpoint(cfg.tracing.otlp_endpoint.as_ref())?;
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
@@ -78,17 +83,26 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<SpanExporter, TelemetryError>
             if trace_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.tracing.otlp_headers.clone());
             }
+            if let Some(tls) = exporter_tls("TRACES")? {
+                builder = builder.with_http_client(http_client(&tls, timeout)?);
+            }
             map_exporter_build(builder.build(), "traces")
         }
         #[cfg(feature = "otel-grpc")]
         OtlpProtocol::Grpc => {
-            let mut builder = SpanExporter::builder().with_tonic().with_timeout(timeout);
+            let mut builder = SpanExporter::builder()
+                .with_tonic()
+                .with_timeout(timeout)
+                .with_retry_policy(RetryPolicy::disabled());
             let endpoint = validate_optional_endpoint(cfg.tracing.otlp_endpoint.as_ref())?;
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
             }
             if trace_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.tracing.otlp_headers)?);
+            }
+            if let Some(tls) = exporter_tls("TRACES")? {
+                builder = builder.with_tls_config(tonic_tls(&tls));
             }
             map_exporter_build(builder.build(), "traces")
         }
@@ -141,10 +155,16 @@ pub(super) fn install_tracer_provider(
         return Ok(false);
     }
 
+    // TLS files that cannot be loaded leave the exporter unbuilt without
+    // failing setup; setup reports them as setup_error.
+    if !super::tls::ready("TRACES") {
+        return Ok(false);
+    }
     let exporter_result = build_exporter(cfg);
     let exporter = match exporter_result {
         Ok(e) => e,
         Err(err) => {
+            crate::health::set_setup_error(Some(err.message.clone()));
             if cfg.exporter.traces_fail_open {
                 eprintln!("provide_telemetry: traces exporter init failed (fail_open=true): {err}");
                 return Ok(false);

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 provide.io llc
+# SPDX-License-Identifier: Apache-2.0
+#
+# Prometheus 3 for the local stack and the Prometheus E2E test.
+# Started with --web.enable-otlp-receiver, so SDKs push to
+#   http://localhost:9090/api/v1/otlp/v1/metrics
+# (or set OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:9090/api/v1/otlp and let
+# the SDK append /v1/metrics).
+
+global:
+  scrape_interval: 15s
+
+otlp:
+  # Must match PROVIDE_METRICS_PROMETHEUS_TRANSLATION on SDKs that are also
+  # scraped, so pushed and scraped series carry the same names.
+  translation_strategy: UnderscoreEscapingWithSuffixes
+  # job and instance come from service.name and service.instance.id; promote
+  # the rest of the service identity so queries can filter without target_info.
+  promote_resource_attributes:
+    - service.version
+    - deployment.environment
+
+storage:
+  tsdb:
+    # OTLP pushes from several processes can arrive slightly out of order.
+    out_of_order_time_window: 30m

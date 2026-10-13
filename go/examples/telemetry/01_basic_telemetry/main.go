@@ -75,7 +75,7 @@ func main() {
 			log.ErrorContext(ctx, "work failed", "err", err)
 		}
 		time.Sleep(50 * time.Millisecond)
-		fmt.Printf("  Iteration %d: counter +1, histogram %.1fms, gauge +1\n", i, float64(i)*12.5)
+		fmt.Printf("  Iteration %d: counter +1, histogram %.1fms, gauge set to 1\n", i, float64(i)*12.5)
 	}
 
 	// Context cleanup

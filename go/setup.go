@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -77,6 +79,14 @@ func WithLoggerProvider(lp any) SetupOption {
 // pretty renderer emits ANSI only when w is a terminal: an *os.File is probed,
 // and any other writer is asked, if it implements IsTerminal() bool.
 //
+// A writer that panics costs only the record it was writing: the panic is
+// recovered and counted as a log export failure. A writer that logs through
+// this SDK from inside Write or Flush — through slog.Default, Logger or
+// GetLogger alike — does not deadlock: that nested record is dropped rather
+// than written to w, and counted as a log export failure. Writes from other
+// goroutines still wait their turn and are never dropped. A writer that needs
+// its own trouble seen should report it somewhere else, such as os.Stderr.
+//
 // ShutdownTelemetry flushes w when it implements Flush() error, so a bufio.Writer
 // does not lose its tail. A nil writer — including a nil pointer in a non-nil
 // interface — is a configuration error rather than a silent fall back to
@@ -108,6 +118,8 @@ func cloneTelemetryConfig(cfg *TelemetryConfig) *TelemetryConfig {
 	clone.Tracing.OTLPHeaders = maps.Clone(cfg.Tracing.OTLPHeaders)
 	clone.Metrics = cfg.Metrics
 	clone.Metrics.OTLPHeaders = maps.Clone(cfg.Metrics.OTLPHeaders)
+	clone.Metrics.Exporters = append([]string(nil), cfg.Metrics.Exporters...)
+	clone.Metrics.ExporterWarnings = append([]string(nil), cfg.Metrics.ExporterWarnings...)
 	clone.EventSchema = cfg.EventSchema
 	clone.EventSchema.RequiredKeys = append([]string(nil), cfg.EventSchema.RequiredKeys...)
 	return &clone
@@ -177,15 +189,19 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	}
 
 	// Reject a nil writer here rather than panicking on the first log line.
-	// Installation waits until the config resolves, so a setup that fails
-	// leaves logging where it found it.
+	// Installation waits until the config resolves, and a setup that fails
+	// after it is rolled back, so either way logging is left where it was.
 	if state.logOutputSet && _writerIsNil(state.logOutput) {
 		return nil, NewConfigurationError("WithLogOutput: writer is nil")
 	}
 
 	var cfg *TelemetryConfig
 	if state.config != nil {
-		if err := validateTelemetryConfig(state.config); err != nil {
+		// The full reconfigure-target check, not just rates/format/level:
+		// WithConfig is the same in-memory input ReconfigureTelemetry takes,
+		// and a NaN timeout or a negative queue size refused there must not be
+		// installable here simply by arriving first.
+		if err := validateReconfigureTarget(state.config); err != nil {
 			return nil, err
 		}
 		cfg = state.config
@@ -196,6 +212,11 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 			return nil, err
 		}
 	}
+
+	// Everything from here to backend wiring writes process-wide state the
+	// backend needs in place. Remember what was there, so a failed setup hands
+	// the host back the runtime it had rather than half of the one it asked for.
+	prior := _captureProcessState()
 
 	// Ready the console before the sink is built: the sink decides once, at
 	// install, whether its destination renders ANSI, and on Windows that answer
@@ -226,18 +247,35 @@ func SetupTelemetry(opts ...SetupOption) (*TelemetryConfig, error) {
 	_setupDone = true
 	_publishRuntimeGatesLocked()
 
+	// Clears a stale error from an earlier setup, or names the ignored
+	// OTEL_METRICS_EXPORTER entries; a backend appends its own problems.
+	_setSetupError(strings.Join(cfg.Metrics.ExporterWarnings, _configWarningSeparator))
+
 	// Wire any registered optional backend (for example go/otel).
 	if err := _setupBackendLocked(state, cfg); err != nil {
 		_setupDone = false
 		_clearGenerationLocked()
+		prior._restoreProcessState()
 		return nil, err
 	}
+	_logIgnoredConfig(cfg)
 
 	// Publish last: backend wiring can wrap Logger with a bridge handler, and a
 	// generation must never become visible while its logger is still being
 	// assembled.
 	_publishGenerationLocked(cfg)
 	return cloneTelemetryConfig(cfg), nil
+}
+
+// _logIgnoredConfig logs each ignored OTEL_METRICS_EXPORTER entry once.
+func _logIgnoredConfig(cfg *TelemetryConfig) {
+	logger := Logger()
+	if logger == nil {
+		return
+	}
+	for _, warning := range cfg.Metrics.ExporterWarnings {
+		logger.Warn("config.metrics_exporter.value_ignored", slog.String("reason", warning))
+	}
 }
 
 // validateTelemetryConfig checks rates, log format/level and exporter retries

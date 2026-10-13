@@ -29,7 +29,7 @@ is safe on the no-op span returned when tracing is disabled.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
@@ -37,7 +37,7 @@ from provide.telemetry.tracing.decorators import _open_span
 
 
 @contextmanager
-def span(name: str, /, **attrs: Any) -> Iterator[Any]:
+def span(name: str, /, **attrs: Any) -> Generator[Any]:
     """Open a span named ``name`` as a context manager, yielding the span.
 
     Exceptions propagate (the span records them and is marked ERROR before

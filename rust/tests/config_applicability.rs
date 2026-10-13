@@ -38,7 +38,7 @@ struct Expected {
 fn spec_document() -> Value {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../spec/telemetry-api.yaml");
     let text = std::fs::read_to_string(path).expect("spec/telemetry-api.yaml should be readable");
-    serde_yaml::from_str(&text).expect("spec/telemetry-api.yaml should parse")
+    serde_saphyr::from_str(&text).expect("spec/telemetry-api.yaml should parse")
 }
 
 /// Render a YAML scalar the way a probe reports it: an absent default is the

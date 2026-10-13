@@ -57,8 +57,15 @@ fastapi = [
   "fastapi>=0.115.0",
   "starlette>=0.40.0",
 ]
+# The Prometheus listener's web config (PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG):
+# YAML to read it, bcrypt to check its basic_auth_users. Without them a
+# configured web config keeps the listener from starting.
+prometheus = [
+  "bcrypt>=4.0.0",
+  "PyYAML>=6.0",
+]
 all = [
-  "provide-telemetry[otel,fastapi]>=0.4.3",
+  "provide-telemetry[otel,fastapi,prometheus]>=0.4.3",
 ]
 
 [tool.setuptools.dynamic]
@@ -83,12 +90,22 @@ where = ["src"]
 [dependency-groups]
 dev = [
   "bandit>=1.8.6",
+  "bcrypt>=4.0.0",
   "build>=1.2.2",
   "codespell>=2.4.1",
+  # Throwaway CA and certificates for the Prometheus listener's TLS tests.
+  "cryptography>=43.0.0",
   "hypothesis>=6.130.0",
   "mypy>=1.18.0",
   "types-PyYAML>=6.0.12",
-  "mutmut>=3.3.1",
+  # Held below 3.8: scripts/run_mutation_gate.py refuses a run whose output
+  # shows BadTestExecutionCommandsException, kills no test earned. In 3.8's
+  # default process_isolation = "fork", the mutant child sends stdout and
+  # stderr to /dev/null and lets that exception exit it with status 1, which
+  # counts as killed and prints nothing (workers/isolation.py, ForkRunner).
+  # Under "forkserver" it exits 255 and counts as a timeout, which the gate
+  # does fail; adopting 3.8 means switching to that and validating it in CI.
+  "mutmut>=3.3.1,<3.8",
   "pip-licenses>=5.0.0",
   "playwright>=1.50.0",
   "pre-commit>=4.0.1",
@@ -192,15 +209,28 @@ module = [
 ]
 ignore_missing_imports = true
 
-# context_runtime subclasses a concrete OTel runtime-context class. When the
-# `otel` extra isn't installed (the gated mypy run), that base resolves to Any
-# and strict mode rejects subclassing it; allow it only for this otel-only
-# module (a no-op when otel is installed and the base has a real type).
+# context_runtime subclasses a concrete OTel runtime-context class, and its test
+# module subclasses the abstract one. When the `otel` extra isn't installed (the
+# gated mypy run), those bases resolve to Any and strict mode rejects
+# subclassing them; allow it only for these otel-only modules (a no-op when otel
+# is installed and the bases have real types).
 [[tool.mypy.overrides]]
 module = [
   "provide.telemetry.tracing.context_runtime",
+  "tests.tracing.test_context_runtime",
 ]
 disallow_subclassing_any = false
+
+# An otel-only test that calls InMemoryLogRecordExporter(), whose constructor the
+# OTel SDK leaves unannotated. With the `otel` extra that is an untyped call;
+# without it the class is Any and an ignore on the call would be unused, so the
+# module allows untyped calls instead of carrying an ignore that is wrong in one
+# of the two environments.
+[[tool.mypy.overrides]]
+module = [
+  "tests.logger.test_foreign_record_sanitization",
+]
+disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
 module = [
@@ -246,6 +276,9 @@ max_average = "A"
 
 [tool.mutmut]
 source_paths = ["src/provide/telemetry/"]
+# The parity tests read spec/*.yaml relative to the repo root; mutmut copies
+# only src and tests into its mutants/ sandbox unless told otherwise.
+also_copy = ["spec/"]
 # context_runtime.py subclasses a concrete OTel runtime-context class, so it
 # cannot be imported or exercised without the optional otel extra (the gated
 # mutation run omits it) — same rationale as the coverage `omit` above. span.py

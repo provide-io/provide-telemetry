@@ -16,27 +16,39 @@ use crate::sampling::{should_sample, Signal};
 static METRICS_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "otel")]
-fn maybe_record_counter_add(name: &str, value: f64, attributes: Option<&BTreeMap<String, String>>) {
+fn maybe_record_counter_add(
+    meta: crate::otel::metrics::InstrumentMeta<'_>,
+    value: f64,
+    attributes: Option<&BTreeMap<String, String>>,
+) {
     if !crate::otel::metrics::meter_provider_installed() {
         return;
     }
-    crate::otel::metrics::record_counter_add(name, value, attributes);
+    crate::otel::metrics::record_counter_add(meta, value, attributes);
 }
 
 #[cfg(feature = "otel")]
-fn maybe_record_gauge_set(name: &str, value: f64, attributes: Option<&BTreeMap<String, String>>) {
+fn maybe_record_gauge_set(
+    meta: crate::otel::metrics::InstrumentMeta<'_>,
+    value: f64,
+    attributes: Option<&BTreeMap<String, String>>,
+) {
     if !crate::otel::metrics::meter_provider_installed() {
         return;
     }
-    crate::otel::metrics::record_gauge_set(name, value, attributes);
+    crate::otel::metrics::record_gauge_set(meta, value, attributes);
 }
 
 #[cfg(feature = "otel")]
-fn maybe_record_histogram(name: &str, value: f64, attributes: Option<&BTreeMap<String, String>>) {
+fn maybe_record_histogram(
+    meta: crate::otel::metrics::InstrumentMeta<'_>,
+    value: f64,
+    attributes: Option<&BTreeMap<String, String>>,
+) {
     if !crate::otel::metrics::meter_provider_installed() {
         return;
     }
-    crate::otel::metrics::record_histogram(name, value, attributes);
+    crate::otel::metrics::record_histogram(meta, value, attributes);
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,14 +70,23 @@ struct CounterState {
 #[derive(Clone, Debug)]
 pub struct Counter {
     name: String,
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "otel"), allow(dead_code))]
     description: Option<String>,
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "otel"), allow(dead_code))]
     unit: Option<String>,
     state: Arc<Mutex<CounterState>>,
 }
 
 impl Counter {
+    #[cfg(feature = "otel")]
+    fn otel_meta(&self) -> crate::otel::metrics::InstrumentMeta<'_> {
+        crate::otel::metrics::InstrumentMeta {
+            name: &self.name,
+            description: self.description.as_deref(),
+            unit: self.unit.as_deref(),
+        }
+    }
+
     pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
             return;
@@ -84,7 +105,7 @@ impl Counter {
         crate::_lock::lock(&self.state).value += value;
         #[cfg(feature = "otel")]
         {
-            maybe_record_counter_add(&self.name, value, attributes.as_ref());
+            maybe_record_counter_add(self.otel_meta(), value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;
@@ -105,14 +126,23 @@ struct GaugeState {
 #[derive(Clone, Debug)]
 pub struct Gauge {
     name: String,
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "otel"), allow(dead_code))]
     description: Option<String>,
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "otel"), allow(dead_code))]
     unit: Option<String>,
     state: Arc<Mutex<GaugeState>>,
 }
 
 impl Gauge {
+    #[cfg(feature = "otel")]
+    fn otel_meta(&self) -> crate::otel::metrics::InstrumentMeta<'_> {
+        crate::otel::metrics::InstrumentMeta {
+            name: &self.name,
+            description: self.description.as_deref(),
+            unit: self.unit.as_deref(),
+        }
+    }
+
     pub fn add(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
             return;
@@ -136,7 +166,7 @@ impl Gauge {
         };
         #[cfg(feature = "otel")]
         {
-            maybe_record_gauge_set(&self.name, new_absolute, attributes.as_ref());
+            maybe_record_gauge_set(self.otel_meta(), new_absolute, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;
@@ -162,7 +192,7 @@ impl Gauge {
         crate::_lock::lock(&self.state).last_value = value;
         #[cfg(feature = "otel")]
         {
-            maybe_record_gauge_set(&self.name, value, attributes.as_ref());
+            maybe_record_gauge_set(self.otel_meta(), value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;
@@ -184,14 +214,23 @@ struct HistogramState {
 #[derive(Clone, Debug)]
 pub struct Histogram {
     name: String,
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "otel"), allow(dead_code))]
     description: Option<String>,
-    #[allow(dead_code)]
+    #[cfg_attr(not(feature = "otel"), allow(dead_code))]
     unit: Option<String>,
     state: Arc<Mutex<HistogramState>>,
 }
 
 impl Histogram {
+    #[cfg(feature = "otel")]
+    fn otel_meta(&self) -> crate::otel::metrics::InstrumentMeta<'_> {
+        crate::otel::metrics::InstrumentMeta {
+            name: &self.name,
+            description: self.description.as_deref(),
+            unit: self.unit.as_deref(),
+        }
+    }
+
     pub fn record(&self, value: f64, attributes: Option<BTreeMap<String, String>>) {
         if !metrics_enabled() {
             return;
@@ -213,7 +252,7 @@ impl Histogram {
         drop(state);
         #[cfg(feature = "otel")]
         {
-            maybe_record_histogram(&self.name, value, attributes.as_ref());
+            maybe_record_histogram(self.otel_meta(), value, attributes.as_ref());
         }
         #[cfg(not(feature = "otel"))]
         let _ = &attributes;

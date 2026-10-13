@@ -44,6 +44,9 @@ Use `provide.telemetry.event(*segments)` when composing structured events.
   - Security hardening: input sanitization, secret detection.
 - `telemetry/14_data_governance.py`
   - Consent levels, data classification, and cryptographic redaction receipts.
+- `telemetry/15_prometheus_metrics.py`
+  - `OTEL_METRICS_EXPORTER=prometheus` plus the `metrics_handler()` ASGI scrape endpoint.
+  - Counter/histogram with units and an observable gauge, scraped in-process to show Prometheus names.
 
 Run:
 
@@ -62,6 +65,7 @@ uv run --group dev --extra otel python examples/telemetry/11_lazy_loading_proof.
 uv run --group dev --extra otel python examples/telemetry/12_error_fingerprint_and_sessions.py
 uv run --group dev --extra otel python examples/telemetry/13_security_hardening.py
 uv run --group dev --extra otel python examples/telemetry/14_data_governance.py
+uv run --group dev --extra otel python examples/telemetry/15_prometheus_metrics.py
 ```
 
 ## Rust
@@ -94,6 +98,8 @@ uv run --group dev --extra otel python examples/telemetry/14_data_governance.py
   - Secret redaction and nested-payload sanitization.
 - `rust/examples/telemetry_14_data_governance.rs`
   - Consent gating, classification labels, and redaction receipts.
+- `rust/examples/telemetry_15_prometheus_metrics.rs`
+  - Prometheus pull reader and `metrics_handler(method, accept)` scrape (needs `--features otel`).
 - `rust/examples/e2e_cross_language_client.rs`
   - Rust OTLP client example used by the cross-language tracing E2E.
 - `rust/examples/e2e_cross_language_server.rs`
@@ -116,6 +122,7 @@ cargo run --manifest-path rust/Cargo.toml --example telemetry_11_lazy_loading_pr
 cargo run --manifest-path rust/Cargo.toml --example telemetry_12_error_fingerprint_and_sessions
 cargo run --manifest-path rust/Cargo.toml --example telemetry_13_security_hardening
 cargo run --manifest-path rust/Cargo.toml --example telemetry_14_data_governance
+cargo run --manifest-path rust/Cargo.toml --features otel --example telemetry_15_prometheus_metrics
 cargo run --manifest-path rust/Cargo.toml --features otel --example e2e_cross_language_client
 cargo run --manifest-path rust/Cargo.toml --features otel --example e2e_cross_language_server -- --port 18765
 ```

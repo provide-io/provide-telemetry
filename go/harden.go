@@ -196,21 +196,41 @@ func _containerIdentity(v reflect.Value) (visit, bool) {
 // yields an empty map, losing the message entirely. fmt.Stringer is
 // deliberately NOT in this set: it is implemented widely enough that honoring
 // it would swallow exactly the typed structs this file exists to traverse.
+//
+// Both methods are the caller's code, run inside a log call. One that panics —
+// a nil field dereferenced in Error(), a MarshalText that assumes it was
+// constructed properly — is caught here and the value becomes Redacted, so a
+// broken attribute costs the record that one value rather than the whole log
+// call and, unrecovered, the host's goroutine.
 func _hardenAsText(v reflect.Value, limits Limits) (any, bool) {
 	switch typed := v.Interface().(type) {
 	case error:
-		return hardenString(typed.Error(), limits), true
+		return _guardedText(limits, func() (string, error) { return typed.Error(), nil }), true
 	case encoding.TextMarshaler:
-		text, err := typed.MarshalText()
-		if err != nil {
-			// A type that cannot describe itself gets no second guess:
-			// exporting whatever half-formed bytes it returned is worse.
-			return Redacted, true
-		}
-		return hardenString(string(text), limits), true
+		return _guardedText(limits, func() (string, error) {
+			text, err := typed.MarshalText()
+			return string(text), err
+		}), true
 	default:
 		return nil, false
 	}
+}
+
+// _guardedText runs a caller-supplied rendering and hardens what it returns.
+// A rendering that errors or panics yields Redacted: a type that cannot
+// describe itself gets no second guess, and exporting whatever half-formed
+// text it produced is worse.
+func _guardedText(limits Limits, render func() (string, error)) (result any) {
+	defer func() {
+		if recover() != nil {
+			result = Redacted
+		}
+	}()
+	text, err := render()
+	if err != nil {
+		return Redacted
+	}
+	return hardenString(text, limits)
 }
 
 // hardenKind dispatches on the reflected kind once pointers, interfaces and

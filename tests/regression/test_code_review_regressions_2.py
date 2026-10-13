@@ -55,13 +55,13 @@ class TestFallbackLazyResolve:
 
         mock_gauge = Mock()
         mock_meter = Mock()
-        mock_meter.create_up_down_counter.return_value = mock_gauge
+        mock_meter.create_gauge.return_value = mock_gauge
         monkeypatch.setattr("provide.telemetry.metrics.provider.get_meter", lambda: mock_meter)
 
         result = g._resolve_otel()
         assert result is mock_gauge
         assert g._resolved is True
-        mock_meter.create_up_down_counter.assert_called_once_with(name="test.gauge")
+        mock_meter.create_gauge.assert_called_once_with(name="test.gauge")
 
     def test_histogram_resolves_otel_after_provider_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from provide.telemetry.metrics.fallback import Histogram
@@ -120,7 +120,7 @@ class TestFallbackLazyResolve:
         # Now test exception path
         g2 = Gauge("test.gauge2")
         mock_meter = Mock()
-        mock_meter.create_up_down_counter.side_effect = RuntimeError("oops")
+        mock_meter.create_gauge.side_effect = RuntimeError("oops")
         monkeypatch.setattr("provide.telemetry.metrics.provider.get_meter", lambda: mock_meter)
         assert g2._resolve_otel() is None
         assert g2._resolved is True

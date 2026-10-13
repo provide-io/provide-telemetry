@@ -25,6 +25,7 @@ public static class ConfigEnv
         cfg.Environment = Env("PROVIDE_TELEMETRY_ENV", cfg.Environment);
         cfg.Version = Env("PROVIDE_TELEMETRY_VERSION", cfg.Version);
         cfg.StrictSchema = EnvBool("PROVIDE_TELEMETRY_STRICT_SCHEMA", cfg.StrictSchema);
+        cfg.StrictConfig = EnvBool("PROVIDE_TELEMETRY_STRICT_CONFIG", cfg.StrictConfig);
 
         cfg.EventSchema.StrictEventName =
             EnvBool("PROVIDE_TELEMETRY_STRICT_EVENT_NAME", cfg.EventSchema.StrictEventName);
@@ -48,17 +49,21 @@ public static class ConfigEnv
         var sharedEndpoint = Env("OTEL_EXPORTER_OTLP_ENDPOINT", "");
         var sharedHeaders = ParseHeaders(Env("OTEL_EXPORTER_OTLP_HEADERS", ""));
         cfg.Logging.OtlpEndpoint = Env("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", sharedEndpoint);
-        cfg.Logging.OtlpHeaders = CopyHeaders(sharedHeaders);
+        cfg.Logging.OtlpHeaders = SignalHeaders("LOGS", sharedHeaders);
+        ApplyTls(cfg.Logging, "LOGS");
 
         cfg.Tracing.Enabled = EnvBool("PROVIDE_TRACE_ENABLED", cfg.Tracing.Enabled);
         cfg.Tracing.SampleRate = ValidateRate(
             EnvDouble("PROVIDE_TRACE_SAMPLE_RATE", cfg.Tracing.SampleRate), "PROVIDE_TRACE_SAMPLE_RATE");
         cfg.Tracing.OtlpEndpoint = Env("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", sharedEndpoint);
-        cfg.Tracing.OtlpHeaders = CopyHeaders(sharedHeaders);
+        cfg.Tracing.OtlpHeaders = SignalHeaders("TRACES", sharedHeaders);
+        ApplyTls(cfg.Tracing, "TRACES");
 
         cfg.Metrics.Enabled = EnvBool("PROVIDE_METRICS_ENABLED", cfg.Metrics.Enabled);
         cfg.Metrics.OtlpEndpoint = Env("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT", sharedEndpoint);
-        cfg.Metrics.OtlpHeaders = CopyHeaders(sharedHeaders);
+        cfg.Metrics.OtlpHeaders = SignalHeaders("METRICS", sharedHeaders);
+        ApplyTls(cfg.Metrics, "METRICS");
+        ApplyPrometheus(cfg.Metrics, cfg.StrictConfig);
 
         cfg.Sampling.LogsRate = ValidateRate(
             EnvDouble("PROVIDE_SAMPLING_LOGS_RATE", cfg.Sampling.LogsRate), "PROVIDE_SAMPLING_LOGS_RATE");
@@ -180,8 +185,57 @@ public static class ConfigEnv
     private static string MaskHeaderValue(string v) =>
         v.Length < 8 ? "****" : v[..4] + "****";
 
-    private static Dictionary<string, string> CopyHeaders(Dictionary<string, string> source) =>
-        new(source, StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// The per-signal header list when it is set, else a copy of the shared one.
+    /// </summary>
+    /// <remarks>
+    /// The per-signal variable replaces the shared list rather than merging into
+    /// it, as Python and the OTel specification do: a signal pointed at another
+    /// backend must not leak the shared credentials to it.
+    /// </remarks>
+    private static Dictionary<string, string> SignalHeaders(string signal, Dictionary<string, string> shared)
+    {
+        var own = Env($"OTEL_EXPORTER_OTLP_{signal}_HEADERS", "");
+        return own.Length > 0 ? ParseHeaders(own) : new(shared, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void ApplyTls(LoggingConfig c, string signal) =>
+        (c.OtlpCertificate, c.OtlpClientCertificate, c.OtlpClientKey) = TlsFiles(signal);
+
+    private static void ApplyTls(TracingConfig c, string signal) =>
+        (c.OtlpCertificate, c.OtlpClientCertificate, c.OtlpClientKey) = TlsFiles(signal);
+
+    private static void ApplyTls(MetricsConfig c, string signal) =>
+        (c.OtlpCertificate, c.OtlpClientCertificate, c.OtlpClientKey) = TlsFiles(signal);
+
+    /// <summary>The CA, client certificate and client key files for one signal, per-signal winning.</summary>
+    private static (string Ca, string Cert, string Key) TlsFiles(string signal) => (
+        SignalEnv(signal, "CERTIFICATE"),
+        SignalEnv(signal, "CLIENT_CERTIFICATE"),
+        SignalEnv(signal, "CLIENT_KEY"));
+
+    private static string SignalEnv(string signal, string name) =>
+        Env($"OTEL_EXPORTER_OTLP_{signal}_{name}", Env($"OTEL_EXPORTER_OTLP_{name}", ""));
+
+    private static void ApplyPrometheus(MetricsConfig m, bool strict)
+    {
+        var p = m.Prometheus;
+        (m.Exporters, m.ExporterWarnings) = PrometheusSettings.ParseExporters(Env("OTEL_METRICS_EXPORTER", ""), strict);
+        m.HealthOtlp = EnvBool("PROVIDE_METRICS_HEALTH_OTLP", m.HealthOtlp);
+        p.Listen = Trimmed("PROVIDE_METRICS_PROMETHEUS_LISTEN", p.Listen);
+        p.Host = Trimmed("OTEL_EXPORTER_PROMETHEUS_HOST", p.Host);
+        p.Port = PrometheusSettings.ParsePort(Env("OTEL_EXPORTER_PROMETHEUS_PORT", ""));
+        p.Path = Trimmed("PROVIDE_METRICS_PROMETHEUS_PATH", p.Path);
+        p.Translation = Trimmed("PROVIDE_METRICS_PROMETHEUS_TRANSLATION", p.Translation);
+        p.ScopeLabels = EnvBool("PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS", p.ScopeLabels);
+        p.TargetInfo = EnvBool("PROVIDE_METRICS_PROMETHEUS_TARGET_INFO", p.TargetInfo);
+        p.WebConfig = Trimmed("PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG", p.WebConfig);
+        PrometheusSettings.Validate(m);
+    }
+
+    /// <summary>A trimmed string setting; empty, blank or unset means the default.</summary>
+    private static string Trimmed(string key, string fallback) =>
+        System.Environment.GetEnvironmentVariable(key)?.Trim() is { Length: > 0 } v ? v : fallback;
 
     /// <summary>
     /// Parse the OTLP header list: comma-separated <c>name=value</c>, percent-decoded.

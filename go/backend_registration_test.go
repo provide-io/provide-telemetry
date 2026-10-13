@@ -277,3 +277,12 @@ func TestGetLoggerWithoutRegisteredBackendDoesNotRequireBridge(t *testing.T) {
 	}
 	logger.Info("core-only")
 }
+
+func TestBackendSetupState_ReportSetupErrorSurfacesInHealth(t *testing.T) {
+	ResetForTests()
+	t.Cleanup(ResetForTests)
+	BackendSetupState{}.ReportSetupError("listener: address in use")
+	if got := GetHealthSnapshot().SetupError; got != "listener: address in use" {
+		t.Fatalf("SetupError = %q", got)
+	}
+}

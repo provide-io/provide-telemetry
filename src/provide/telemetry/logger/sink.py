@@ -33,6 +33,7 @@ from typing import TextIO
 from provide.telemetry.exceptions import ConfigurationError
 
 __all__ = [
+    "WRITER_FRAME",
     "clear_log_output",
     "installed_writer",
     "log_destination",
@@ -47,6 +48,30 @@ __all__ = [
 # telemetry.
 _LOG_OUTPUT: TextIO | None = None
 _LOG_OUTPUT_LOCK = threading.Lock()
+
+
+class _WriterFrame(threading.local):
+    """Whether this thread is running inside a host writer's ``write`` or ``flush``.
+
+    A writer that logs through this SDK from inside its own ``write`` re-enters
+    the handler on the thread already writing. The stdlib's handler lock is an
+    ``RLock``, so that call does not deadlock -- it recurses, each nested record
+    calling the writer again, until ``RecursionError`` escapes the outermost log
+    call. The handler that wraps a host writer reads this before it calls the
+    writer and refuses a record that arrives while it is set.
+
+    Thread-local because a thread is exactly the unit that can re-enter: a writer
+    is synchronous, so nothing else runs on its thread until it returns, while a
+    record from any other thread is a concurrent caller that waits for the
+    handler's lock as before and is never refused. One flag for every writer
+    rather than one per handler, the same as Go's stack check: a writer that, in
+    the middle of a swap, logs into the next writer is refused too.
+    """
+
+    active = False
+
+
+WRITER_FRAME = _WriterFrame()
 
 
 def _validate_writer(writer: TextIO) -> None:
@@ -101,6 +126,12 @@ def set_log_output(writer: TextIO) -> None:
     installs a writer is asking for the records it has not seen yet, not for the
     ones after some later reconfiguration. Colour follows the writer, so a file
     or a pipe receives no ANSI even from a process whose stderr is a terminal.
+
+    A record the writer logs through this SDK -- or through stdlib ``logging``
+    -- from inside its own ``write`` is not written. It is counted as a log
+    export failure, and the record being written is unaffected. Records from
+    other threads wait their turn and are never dropped. A writer that raises
+    costs only the record it was writing, and that is counted the same way.
 
     Raises ``ConfigurationError`` for a writer that cannot be written to.
     """

@@ -261,12 +261,19 @@ def _build_kind_overrides(
 # — so there is no feature-stripped build to special-case here.
 _GOVERNANCE_LANGUAGES: frozenset[str] = frozenset({"python", "typescript", "go", "rust", "csharp"})
 
+# A capability that stages new symbols gets its own set here, starting empty and
+# gaining a language in the PR that ships them, so from then on a missing export
+# is a conformance error. Once every language has shipped, the symbols become
+# required: true in the spec and the capability is removed (observable_metrics
+# and prometheus went this way).
+_CAPABILITY_LANGUAGES: dict[str, frozenset[str]] = {
+    "governance": _GOVERNANCE_LANGUAGES,
+}
+
 
 def _language_has_capability(lang: str, capability: str) -> bool:
     """Return True if *lang* is expected to export symbols gated on *capability*."""
-    if capability == "governance":
-        return lang in _GOVERNANCE_LANGUAGES
-    return False
+    return lang in _CAPABILITY_LANGUAGES.get(capability, frozenset())
 
 
 def _check_language(
@@ -323,9 +330,10 @@ def _check_language(
             if required:
                 errors.append(f"  MISSING: {lang} does not export '{expected}' (spec: {spec_name})")
             else:
-                # capability-gated only: missing governance export is an error
+                # capability-gated only: a missing export the language has
+                # committed to through its capability set is an error
                 errors.append(
-                    f"  MISSING [governance]: {lang} does not export '{expected}'"
+                    f"  MISSING [{capability}]: {lang} does not export '{expected}'"
                     f" (spec: {spec_name}, capability: {capability})"
                 )
             continue

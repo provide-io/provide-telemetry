@@ -22,7 +22,9 @@ from collections.abc import Callable
 # same state, so they all take coordinator.operations. Two independent locks
 # were the defect: neither waited on the other, so a shutdown could tear down
 # providers a concurrent setup had just installed.
+from provide.telemetry._config_prometheus import WARNING_SEPARATOR
 from provide.telemetry._lifecycle import coordinator
+from provide.telemetry._otlp_tls import take_problems as take_tls_problems
 from provide.telemetry._runtime_types import SignalDrainOutcome
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.consent import _load_consent_from_env
@@ -49,6 +51,15 @@ def _rollback(completed: list[str]) -> None:
             _logger.warning(
                 "setup.rollback.step_failed", exc_info=True
             )  # pragma: no mutate — warning log string is non-semantic; rollback proceeds regardless
+
+
+def _ignored_config_problems(cfg: TelemetryConfig, tls_problems: str | None) -> str | None:
+    """Log each ignored OTEL_METRICS_EXPORTER entry once; return them and tls_problems, joined, or None."""
+    ignored = cfg.metrics.exporter_warnings
+    for message in ignored:
+        _logger.warning("config.metrics_exporter.value_ignored", extra={"reason": message})
+    problems = [*ignored, *([tls_problems] if tls_problems else [])]
+    return WARNING_SEPARATOR.join(problems) or None
 
 
 def _quiet_otel_sdk_loggers() -> None:
@@ -87,6 +98,7 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
         apply_runtime_config(cfg)
         from provide.telemetry.health import set_setup_error
 
+        take_tls_problems()  # drop anything left from an earlier attempt
         completed: list[str] = []
         try:
             configure_logging(cfg, force=True)
@@ -109,7 +121,14 @@ def setup_telemetry(config: TelemetryConfig | None = None) -> TelemetryConfig:
             # Always restore logging — rollback may have torn it down above.
             configure_logging(cfg, force=True)
         else:
-            set_setup_error(None)  # clear any stale error from a prior failed attempt
+            # Clears any stale error from a prior failed attempt, or names the
+            # OTEL_METRICS_EXPORTER entries ignored and the OTLP TLS files that
+            # kept an exporter from being built.
+            set_setup_error(_ignored_config_problems(cfg, take_tls_problems()))
+            # After the clear, so a listener that cannot start stays visible in health.
+            from provide.telemetry.metrics._prom_listener import sync as sync_prometheus_listener
+
+            sync_prometheus_listener(cfg, set_setup_error)
             # Published last, once every provider is installed: the generation
             # that says setup_done is the generation whose providers exist.
             coordinator.publish_setup_state(setup_done=True)

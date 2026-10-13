@@ -18,6 +18,7 @@ from typing import Any, cast
 import structlog
 
 from provide.telemetry._lifecycle import coordinator
+from provide.telemetry._record_marker import PIPELINE_RECORD_KEY, PIPELINE_RECORD_MARKER
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.levels import _TABLE as _LEVEL_TABLE
 from provide.telemetry.levels import LogSeverity, parse_level
@@ -42,9 +43,28 @@ _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _CONTROL_CHAR_KEY_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
-def _clean_key(key: object) -> str:
-    """Strip every control character from an attribute key."""
-    return _CONTROL_CHAR_KEY_RE.sub("", str(key))
+def _key_text(key: object) -> str | None:
+    """``str(key)``, or None when the key's own ``__str__`` raises.
+
+    Keys reach here from caller data -- a nested dict, a ``**payload`` -- and
+    a key object whose ``__str__`` raises (or returns something that is not a
+    string, which ``str()`` turns into a TypeError) must not take the log call
+    down with it.
+    """
+    try:
+        return str(key)
+    except Exception:
+        return None
+
+
+def _clean_key(text: str | None) -> str:
+    """Strip every control character from an attribute key's text.
+
+    A key with no usable text becomes the placeholder.
+    """
+    if text is None:
+        return _HARDENED_PLACEHOLDER
+    return _CONTROL_CHAR_KEY_RE.sub("", text)
 
 
 def _harden_keys(event_dict: dict[str, Any]) -> dict[str, Any]:
@@ -66,9 +86,14 @@ def _harden_keys(event_dict: dict[str, Any]) -> dict[str, Any]:
     resolved: dict[str, Any] = {}
     verbatim: set[str] = set()
     for key, value in event_dict.items():
-        text = str(key)
+        text = _key_text(key)
         name = _clean_key(text)
         untouched = name == text
+        if text is None:
+            # Its name is the placeholder and its value is masked with it: a
+            # value whose key cannot be named is not one to export under
+            # another name.
+            value = _HARDENED_PLACEHOLDER
         if name in resolved and not (untouched and name not in verbatim):
             continue
         # Re-assigning an existing name keeps its original insertion position,
@@ -146,6 +171,13 @@ def inject_das_fields(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, 
 
 
 def merge_runtime_context(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Merge bound context, then stamp the live trace and span ids.
+
+    ``trace_id``/``span_id`` are reserved root fields: a live span's ids
+    replace whatever the caller passed, and with no live span the caller's
+    values stand -- the same rule ``add_standard_fields`` applies to
+    ``service``/``env``/``version``.
+    """
     event_dict.update(get_context())
     trace_id = get_trace_id()
     span_id = get_span_id()
@@ -265,6 +297,11 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 
         # `>=` is equivalent: at exactly the limit the rebuild keeps every key,
         # and dict equality ignores the reordering it introduces.
+        # Hardening runs after admission, so the record already holds its
+        # backpressure ticket. The ticket is ours, not the caller's: it is set
+        # aside so it neither spends the attribute budget nor gets truncated
+        # away -- a dropped ticket is queue capacity leaked for good.
+        ticket = event_dict.pop(_BACKPRESSURE_TICKET_KEY, None)
         over_budget = _max_attr_count > 0 and len(event_dict) > _max_attr_count  # pragma: no mutate — see above
         if over_budget:
             # Preserve control/telemetry fields first, then fill with user payload.
@@ -281,7 +318,10 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
         # of defence, and also covers keys a caller passes directly. _harden_keys
         # rather than a plain comprehension because cleaning is many-to-one: see
         # its docstring for the trace_id-shadowing vector that opens up otherwise.
-        return {k: _clean_value(v, 0) for k, v in _harden_keys(event_dict).items()}
+        hardened_dict = {k: _clean_value(v, 0) for k, v in _harden_keys(event_dict).items()}
+        if ticket is not None:
+            hardened_dict[_BACKPRESSURE_TICKET_KEY] = ticket
+        return hardened_dict
 
     return _processor
 
@@ -293,14 +333,30 @@ def harden_input(max_value_length: int, max_attr_count: int, max_depth: int) -> 
 _HUMAN_RENDERERS = frozenset({"console", "pretty"})
 
 
+def _stamp(event_dict: dict[str, Any], key: str, value: str) -> None:
+    """Stamp a reserved root field: the SDK's value wins over the caller's.
+
+    ``service``/``env``/``version`` say which process wrote the record, and a
+    caller passing ``service="billing"`` as an ordinary keyword must not make
+    one service's records read as another's. Only a value the SDK actually
+    has replaces the caller's: with an empty config value the SDK has nothing
+    to say, so a caller-supplied value stands (and an absent one is still
+    filled with the empty string, as before).
+    """
+    if value:
+        event_dict[key] = value
+    else:
+        event_dict.setdefault(key, value)
+
+
 def add_standard_fields(config: TelemetryConfig) -> Any:
     stamp_identity = config.logging.fmt not in _HUMAN_RENDERERS
 
     def _processor(_: Any, __: str, event_dict: dict[str, Any]) -> dict[str, Any]:
         if stamp_identity:
-            event_dict.setdefault("service", config.service_name)
-            event_dict.setdefault("env", config.environment)
-            event_dict.setdefault("version", config.version)
+            _stamp(event_dict, "service", config.service_name)
+            _stamp(event_dict, "env", config.environment)
+            _stamp(event_dict, "version", config.version)
         live = _get_active_config()
         include_error_taxonomy = (
             live.slo.include_error_taxonomy if live is not None else config.slo.include_error_taxonomy
@@ -318,27 +374,45 @@ def add_standard_fields(config: TelemetryConfig) -> Any:
 
 _BACKPRESSURE_TICKET_KEY = "__provide_telemetry_backpressure_ticket__"
 
+# Marks the rendered record as already hardened and sanitized; see _record_marker.
+_PIPELINE_RECORD_KEY = PIPELINE_RECORD_KEY
+_PIPELINE_RECORD_MARKER = PIPELINE_RECORD_MARKER
+
 
 def apply_sampling(_: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
-    from provide.telemetry.backpressure import try_acquire
+    """Admission: the consent, sampling and backpressure stages, in that order.
+
+    This runs before any payload work (hardening, PII, receipts), so a record
+    refused here costs nothing beyond the decision. Every refusal ends the way
+    spec/pipeline_fixtures.yaml ends it: the drop is counted (the health
+    stage) and then the release stage runs. A refused record never took a
+    ticket, so what it releases is None -- a no-op that keeps the stage on
+    every path. An admitted record is counted as emitted only at the handler
+    boundary, after the local and backend sinks.
+    """
+    from provide.telemetry.backpressure import release, try_acquire
     from provide.telemetry.consent import should_allow
-    from provide.telemetry.health import increment_emitted
+    from provide.telemetry.health import increment_dropped
     from provide.telemetry.sampling import should_sample
 
     if not should_allow("logs", method_name):
+        # Consent is the one gate that does not count its own drop.
+        increment_dropped("logs")
+        release(None)
         raise structlog.DropEvent()
     event_name = str(
         event_dict.get("event", "")
     )  # pragma: no mutate — empty-string default is fed into sampler which treats "" as unnamed; cosmetic vs any empty sentinel
     if not should_sample("logs", event_name):
+        release(None)  # the sampler already counted the drop
         raise structlog.DropEvent()
     ticket = try_acquire("logs")
     if ticket is None:
-        raise structlog.DropEvent()  # backpressure full; dropped counter already incremented
-    increment_emitted("logs")
+        release(None)  # backpressure full; try_acquire already counted the drop
+        raise structlog.DropEvent()
     # Stash the ticket. The final renderer processor moves it onto the
-    # LogRecord via logging `extra`, and the stdlib handler boundary releases
-    # it once all configured child handlers return from emit().
+    # LogRecord via logging `extra`, and the stdlib handler boundary counts the
+    # record emitted and releases it once all child handlers return from emit().
     event_dict[_BACKPRESSURE_TICKET_KEY] = ticket
     return event_dict
 
@@ -349,9 +423,10 @@ def render_with_backpressure_extra(renderer: Any) -> Any:
     def _processor(logger: Any, method_name: str, event_dict: dict[str, Any]) -> tuple[tuple[Any, ...], dict[str, Any]]:
         ticket = event_dict.pop(_BACKPRESSURE_TICKET_KEY, None)
         rendered = renderer(logger, method_name, event_dict)
-        if ticket is None:
-            return (rendered,), {}
-        return (rendered,), {"extra": {_BACKPRESSURE_TICKET_KEY: ticket}}
+        extra: dict[str, Any] = {_PIPELINE_RECORD_KEY: _PIPELINE_RECORD_MARKER}
+        if ticket is not None:
+            extra[_BACKPRESSURE_TICKET_KEY] = ticket
+        return (rendered,), {"extra": extra}
 
     return _processor
 

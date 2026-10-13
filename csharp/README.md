@@ -7,7 +7,7 @@ Idiomatic C# implementation of provide-telemetry at API parity with Python, Type
 | Package | Dependencies | What it gives you |
 | --- | --- | --- |
 | `Provide.Telemetry` | BCL only | The whole facade: logging, tracing, metrics, governance, health. Signals render locally. |
-| `Provide.Telemetry.OpenTelemetry` | `Provide.Telemetry` + OpenTelemetry + `Microsoft.Extensions.*` | OTLP delivery for all three signals. |
+| `Provide.Telemetry.OpenTelemetry` | `Provide.Telemetry` + OpenTelemetry + `Microsoft.Extensions.*` + YamlDotNet + BCrypt.Net-Next | OTLP delivery for all three signals, and the Prometheus pull handler and listener. |
 
 The core package has no exporter dependency, so an application that does not want
 OpenTelemetry on its dependency graph installs it alone and every call still works.
@@ -48,7 +48,85 @@ ProvideTelemetry.FlushTelemetry();
 ProvideTelemetry.ShutdownTelemetry();
 ```
 
-Configuration is env-driven (`PROVIDE_*` / `OTEL_*`), matching the polyglot contract.
+Configuration is env-driven (`PROVIDE_*` / `OTEL_*`), matching the polyglot contract;
+see [`docs/guide/configuration.md`](../docs/guide/configuration.md).
+
+### Metrics
+
+`Counter`, `Gauge` and `Histogram` take an optional description and unit:
+
+```csharp
+ProvideTelemetry.Histogram("http.request.duration", "Request latency", "ms").Record(14.2);
+```
+
+Observable instruments report through a callback that runs at each collection
+(every Prometheus scrape, every OTLP export interval). Create them after setup;
+without a provider the callback never runs.
+
+```csharp
+var depth = ProvideTelemetry.ObservableGauge("queue.depth",
+    () => [new Observation(queue.Count)]);
+// ... later ...
+depth.Unregister();
+```
+
+`ObservableCounter` and `ObservableUpDownCounter` take the same arguments.
+
+### Prometheus
+
+With the integration package registered, add `prometheus` to
+`OTEL_METRICS_EXPORTER` (`prometheus` alone, or `otlp,prometheus` to push as
+well). `PrometheusMetrics.MetricsHandler(method, accept)` is framework-neutral:
+copy its status, headers and body onto your server's response.
+
+```csharp
+using Provide.Telemetry.OpenTelemetry;
+
+app.MapMethods("/metrics", ["GET", "HEAD"], (HttpContext ctx) =>
+{
+    var r = PrometheusMetrics.MetricsHandler(ctx.Request.Method, ctx.Request.Headers.Accept);
+    foreach (var (name, value) in r.Headers) ctx.Response.Headers[name] = value;
+    ctx.Response.StatusCode = r.Status;
+    return ctx.Response.Body.WriteAsync(r.Body).AsTask();
+});
+```
+
+It answers 405 to methods other than GET and HEAD, and 503 with a one-line
+reason before setup, after shutdown, with metrics disabled, or without the
+Prometheus reader. `PrometheusMetrics.RenderPrometheus(accept)` returns just
+the body and content type, and throws `TelemetryError` naming the reason when
+there is nothing to serve.
+
+`PROVIDE_METRICS_PROMETHEUS_LISTEN=true` (or `auto`) starts a standalone
+listener on `127.0.0.1:9464/metrics` instead (`OTEL_EXPORTER_PROMETHEUS_HOST`,
+`OTEL_EXPORTER_PROMETHEUS_PORT`, `PROVIDE_METRICS_PROMETHEUS_PATH`), with TLS
+and basic auth from `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG`. A listener that
+cannot start logs `metrics.prometheus_listener.failed` and sets the health
+snapshot's setup error; setup still succeeds. Every scrape also carries the
+SDK's own health as `provide_telemetry_*` series, and
+`PROVIDE_METRICS_HEALTH_OTLP=true` exports them over OTLP as well.
+
+### OTLP over TLS
+
+`OTEL_EXPORTER_OTLP_CERTIFICATE`, `_CLIENT_CERTIFICATE` and `_CLIENT_KEY`
+(each with per-signal `OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_*` forms that
+win) configure the CA and mutual TLS. A file that cannot be read or loaded
+leaves that signal's exporter unbuilt, logs `otlp.tls_file_unreadable` and sets
+the health snapshot's setup error; setup still succeeds and the other signals
+are unaffected.
+
+### Health and reserved fields
+
+A log record counts as emitted once the local sink and the backend have run,
+even when the backend throws (that also counts as an export failure). One
+refused before export — by consent, sampling or backpressure — counts as
+dropped instead, never as both.
+
+The SDK stamps the service identity and, while a span is live, the trace and
+span IDs on every record. A caller attribute under one of those names
+(`service`, `env`, `version`, `trace_id`, `span_id`, or C#'s `service_name`
+and `environment`) is replaced by the stamped value rather than duplicated; to
+name a remote service, use `peer.service`.
 
 ### Event names
 

@@ -32,14 +32,12 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// Acquire an [`RwLock`] read guard, recovering from poison.
 #[inline]
-#[allow(dead_code)] // Not currently used in src/; retained as part of the helper API.
 pub(crate) fn rwlock_read<T>(m: &RwLock<T>) -> RwLockReadGuard<'_, T> {
     m.read().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Acquire an [`RwLock`] write guard, recovering from poison.
 #[inline]
-#[allow(dead_code)] // Not currently used in src/; retained as part of the helper API.
 pub(crate) fn rwlock_write<T>(m: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
     m.write().unwrap_or_else(|e| e.into_inner())
 }

@@ -50,7 +50,9 @@ async function run(): Promise<void> {
   setSamplingPolicy('metrics', { defaultRate: 1.0 });
 
   const logsPolicy = getSamplingPolicy('logs');
-  console.log(`  📋 defaultRate=${logsPolicy.defaultRate}, overrides=${JSON.stringify(logsPolicy.overrides)}`);
+  console.log(
+    `  📋 defaultRate=${logsPolicy.defaultRate}, overrides=${JSON.stringify(logsPolicy.overrides)}`,
+  );
 
   // ── 🎯 shouldSample with overrides ─────────────────────
   console.log('\n🎯 shouldSample() decisions:');
@@ -67,14 +69,18 @@ async function run(): Promise<void> {
   console.log('\n🚧 Setting queue policy (maxTraces=1)...');
   setQueuePolicy({ maxLogs: 0, maxMetrics: 0, maxTraces: 1 });
   const qp = getQueuePolicy();
-  console.log(`  📋 Queue policy: logs=${qp.maxLogs}, traces=${qp.maxTraces}, metrics=${qp.maxMetrics}`);
+  console.log(
+    `  📋 Queue policy: logs=${qp.maxLogs}, traces=${qp.maxTraces}, metrics=${qp.maxMetrics}`,
+  );
 
   // ── tryAcquire / release demo ───────────────────────────
   console.log('\n🔑 tryAcquire / release demo (maxTraces=1):');
   const ticket1 = tryAcquire('traces');
   const ticket2 = tryAcquire('traces'); // should be null — at capacity
   console.log(`  ticket1=${ticket1 !== null ? `token=${ticket1.token}` : 'null'}`);
-  console.log(`  ticket2=${ticket2 !== null ? `token=${ticket2.token}` : 'null (backpressure applied)'}`);
+  console.log(
+    `  ticket2=${ticket2 !== null ? `token=${ticket2.token}` : 'null (backpressure applied)'}`,
+  );
   if (ticket1) release(ticket1);
   console.log('  released ticket1');
   const ticket3 = tryAcquire('traces'); // should succeed now

@@ -75,6 +75,17 @@ MODULE_EXPORTS: dict[str, tuple[str, ...]] = {
         "gauge",
         "histogram",
     ),
+    "provide.telemetry.metrics.observable": (
+        "ObservableInstrument",
+        "Observation",
+        "observable_counter",
+        "observable_gauge",
+        "observable_up_down_counter",
+    ),
+    "provide.telemetry.metrics.prometheus": (
+        "metrics_handler",
+        "render_prometheus",
+    ),
     "provide.telemetry.pii": (
         "PIIRule",
         "get_pii_rules",

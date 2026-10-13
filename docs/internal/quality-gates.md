@@ -267,7 +267,7 @@ _logger.debug("otel.import.not_installed")  # pragma: no mutate — logs a debug
 
 ### Current exemption footprint
 
-The Python tree carries roughly 220 `# pragma: no mutate` annotations. They
+The Python tree carries roughly 230 `# pragma: no mutate` annotations. They
 cluster around four buckets:
 
 | Bucket | Representative files | Typical reason |
@@ -305,7 +305,7 @@ VMs). That is *not* Google OSS-Fuzz cloud.
 | Trigger | Duration (per target) |
 |---------|------------------------|
 | Pull request (Go paths) | `2m` |
-| Nightly schedule | `15m` |
+| Nightly schedule | `12m` |
 | `workflow_dispatch` | configurable (default `10m`) |
 
 Targets: `FuzzParseOTLPHeaders`, `FuzzMaskEndpointURL`, `FuzzValidateRate`,

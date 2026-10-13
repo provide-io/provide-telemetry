@@ -11,6 +11,7 @@ use std::sync::{LazyLock, Mutex};
 use serde_json::{json, Value};
 
 use super::pretty::format_pretty_line;
+use super::sink::WriteFailure;
 use super::{active_logging_config, LogEvent};
 
 // ---------------------------------------------------------------------------
@@ -85,7 +86,7 @@ fn iso8601_from_unix_parts(ts: u64, ms: u32) -> String {
 // JSON emit
 // ---------------------------------------------------------------------------
 
-fn emit_json_line(event: &LogEvent, include_timestamp: bool) {
+fn emit_json_line(event: &LogEvent, include_timestamp: bool) -> Result<(), WriteFailure> {
     let mut record = if include_timestamp {
         json!({
             "message": event.message,
@@ -113,15 +114,18 @@ fn emit_json_line(event: &LogEvent, include_timestamp: bool) {
         Value::String(event.target.clone()),
     );
     let line = serde_json::to_string(obj).unwrap_or_default();
-    let mut capture = crate::_lock::lock(&JSON_CAPTURE);
-    super::sink::write_line(capture.as_mut(), &line);
+    super::sink::write_line(&JSON_CAPTURE, &line)
 }
 
-pub(super) fn emit_if_json(event: &LogEvent) {
+/// Each `emit_if_*` renders and writes the record when its format is the active
+/// one, and reports whether the local write failed. Formats are exclusive, so
+/// at most one of them writes and the others answer `Ok`.
+pub(super) fn emit_if_json(event: &LogEvent) -> Result<(), WriteFailure> {
     let logging = active_logging_config();
     if logging.fmt.eq_ignore_ascii_case("json") {
-        emit_json_line(event, logging.include_timestamp);
+        return emit_json_line(event, logging.include_timestamp);
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -145,24 +149,22 @@ fn format_console_line(event: &LogEvent, include_timestamp: bool) -> String {
     s
 }
 
-pub(super) fn emit_if_console(event: &LogEvent) {
+pub(super) fn emit_if_console(event: &LogEvent) -> Result<(), WriteFailure> {
     let logging = active_logging_config();
     if logging.fmt.eq_ignore_ascii_case("json") || logging.fmt.eq_ignore_ascii_case("pretty") {
-        return;
+        return Ok(());
     }
     let line = format_console_line(event, logging.include_timestamp);
-    let mut capture = crate::_lock::lock(&CONSOLE_CAPTURE);
-    super::sink::write_line(capture.as_mut(), &line);
+    super::sink::write_line(&CONSOLE_CAPTURE, &line)
 }
 
-pub(super) fn emit_if_pretty(event: &LogEvent) {
+pub(super) fn emit_if_pretty(event: &LogEvent) -> Result<(), WriteFailure> {
     let logging = active_logging_config();
     if !logging.fmt.eq_ignore_ascii_case("pretty") {
-        return;
+        return Ok(());
     }
     let line = format_pretty_line(event, &logging);
-    let mut capture = crate::_lock::lock(&PRETTY_CAPTURE);
-    super::sink::write_line(capture.as_mut(), &line);
+    super::sink::write_line(&PRETTY_CAPTURE, &line)
 }
 
 #[cfg(feature = "otel")]

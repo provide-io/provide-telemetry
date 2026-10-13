@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime};
 use opentelemetry::logs::{AnyValue, LogRecord, Logger, LoggerProvider as _, Severity};
 #[cfg(feature = "otel-grpc")]
 use opentelemetry_otlp::WithTonicConfig;
-use opentelemetry_otlp::{LogExporter, Protocol, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{LogExporter, Protocol, RetryPolicy, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::logs::log_processor_with_async_runtime::BatchLogProcessor;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::Resource;
@@ -37,6 +37,9 @@ use super::endpoint::{resolve_protocol, validate_optional_endpoint, OtlpProtocol
 use super::grpc::metadata_from_headers;
 use super::map_exporter_build;
 use super::resilient::ResilientLogExporter;
+#[cfg(feature = "otel-grpc")]
+use super::tls::tonic_tls;
+use super::tls::{exporter_tls, http_client};
 
 #[derive(Clone)]
 pub(super) struct InstalledLoggerProvider {
@@ -75,7 +78,9 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             let mut builder = LogExporter::builder()
                 .with_http()
                 .with_protocol(http_protocol)
-                .with_timeout(timeout);
+                .with_timeout(timeout)
+                // Retries belong to the SDK's resilience policy; the exporter's own would stack on them.
+                .with_retry_policy(RetryPolicy::disabled());
             let endpoint = validate_optional_endpoint(cfg.logging.otlp_endpoint.as_ref())?;
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
@@ -83,17 +88,26 @@ fn build_exporter(cfg: &TelemetryConfig) -> Result<LogExporter, TelemetryError> 
             if log_headers_configured(cfg) {
                 builder = builder.with_headers(cfg.logging.otlp_headers.clone());
             }
+            if let Some(tls) = exporter_tls("LOGS")? {
+                builder = builder.with_http_client(http_client(&tls, timeout)?);
+            }
             map_exporter_build(builder.build(), "logs")
         }
         #[cfg(feature = "otel-grpc")]
         OtlpProtocol::Grpc => {
-            let mut builder = LogExporter::builder().with_tonic().with_timeout(timeout);
+            let mut builder = LogExporter::builder()
+                .with_tonic()
+                .with_timeout(timeout)
+                .with_retry_policy(RetryPolicy::disabled());
             let endpoint = validate_optional_endpoint(cfg.logging.otlp_endpoint.as_ref())?;
             if let Some(endpoint) = endpoint {
                 builder = builder.with_endpoint(endpoint);
             }
             if log_headers_configured(cfg) {
                 builder = builder.with_metadata(metadata_from_headers(&cfg.logging.otlp_headers)?);
+            }
+            if let Some(tls) = exporter_tls("LOGS")? {
+                builder = builder.with_tls_config(tonic_tls(&tls));
             }
             map_exporter_build(builder.build(), "logs")
         }
@@ -128,10 +142,16 @@ pub(super) fn install_logger_provider(
         return Ok(false);
     }
 
+    // TLS files that cannot be loaded leave the exporter unbuilt without
+    // failing setup; setup reports them as setup_error.
+    if !super::tls::ready("LOGS") {
+        return Ok(false);
+    }
     let exporter_result = build_exporter(cfg);
     let exporter = match exporter_result {
         Ok(e) => e,
         Err(err) => {
+            crate::health::set_setup_error(Some(err.message.clone()));
             if cfg.exporter.logs_fail_open {
                 eprintln!("provide_telemetry: logs exporter init failed (fail_open=true): {err}");
                 return Ok(false);
@@ -262,6 +282,7 @@ pub(crate) fn emit_log(event: &LogEvent) {
         Some(provider) => provider,
         None => return,
     };
+    crate::logger::report_pipeline_stage(crate::logger::STAGE_BACKEND);
     let logger = provider.logger(LOGGER_NAME);
     let mut record = logger.create_log_record();
 

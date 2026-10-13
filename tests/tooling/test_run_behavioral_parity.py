@@ -373,6 +373,8 @@ def test_contract_fixtures_contain_all_expected_cases() -> None:
     expected = [
         "propagation_to_logger_correlation",
         "trace_field_precedence",
+        "reserved_root_fields_sdk_wins",
+        "reserved_root_fields_unstamped_caller_stands",
         "setup_invalid_overrides",
         "flush_drains_without_teardown",
         "flush_after_shutdown_reports_success",

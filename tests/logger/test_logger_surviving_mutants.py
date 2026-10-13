@@ -311,7 +311,12 @@ class TestApplySamplingFallbackAndRelease:
             )
 
         assert args == ("test.event.ok",)
-        assert kwargs == {"extra": {proc_mod._BACKPRESSURE_TICKET_KEY: ticket}}
+        assert kwargs == {
+            "extra": {
+                proc_mod._PIPELINE_RECORD_KEY: proc_mod._PIPELINE_RECORD_MARKER,
+                proc_mod._BACKPRESSURE_TICKET_KEY: ticket,
+            }
+        }
 
     def test_apply_sampling_stashes_ticket_for_deferred_release(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """apply_sampling MUST NOT release immediately — the ticket bounds the
@@ -348,8 +353,8 @@ class TestApplySamplingFallbackAndRelease:
             "the final renderer processor to move onto the LogRecord."
         )
 
-    def test_render_with_backpressure_extra_omits_extra_when_ticket_absent(self) -> None:
-        """The renderer handoff must not invent logging `extra` when no ticket exists."""
+    def test_render_with_backpressure_extra_omits_ticket_when_absent(self) -> None:
+        """The renderer handoff must not invent a ticket when none exists; it still marks the record."""
         from provide.telemetry.logger import processors as proc_mod
 
         args, kwargs = proc_mod.render_with_backpressure_extra(lambda _l, _m, event_dict: event_dict["event"])(
@@ -357,7 +362,7 @@ class TestApplySamplingFallbackAndRelease:
         )
 
         assert args == ("no.ticket.here",)
-        assert kwargs == {}
+        assert kwargs == {"extra": {proc_mod._PIPELINE_RECORD_KEY: proc_mod._PIPELINE_RECORD_MARKER}}
 
     def test_apply_sampling_consent_check_uses_logs_signal(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """apply_sampling must call should_allow("logs", method_name).

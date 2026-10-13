@@ -14,6 +14,7 @@ from typing import Any, Protocol, cast
 
 from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
+from provide.telemetry._otlp_tls import tls_ready
 from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
 from provide.telemetry.tracing.context import get_trace_context, set_trace_context
@@ -181,7 +182,7 @@ def setup_tracing(config: TelemetryConfig) -> None:
     provider = (
         provider_cls(resource=resource, sampler=sampler) if sampler is not None else provider_cls(resource=resource)
     )
-    if config.tracing.otlp_endpoint:
+    if config.tracing.otlp_endpoint and tls_ready("traces"):
         from provide.telemetry.resilience import run_with_resilience
         from provide.telemetry.resilient_exporter import wrap_exporter
 

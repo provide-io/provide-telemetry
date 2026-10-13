@@ -33,5 +33,8 @@ pub fn compute_error_fingerprint(error_name: &str, stack: Option<&str>) -> Strin
 
     let mut hasher = Sha256::new();
     hasher.update(parts.join(":").as_bytes());
-    format!("{:x}", hasher.finalize())[..12].to_string()
+    hasher.finalize()[..6]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }

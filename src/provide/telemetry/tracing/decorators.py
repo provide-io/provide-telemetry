@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import functools
 import inspect
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any, ParamSpec, TypeVar, cast
 
@@ -30,7 +30,7 @@ R = TypeVar("R")
 
 
 @contextmanager
-def _open_span(name: str, scope: str | None = None) -> Iterator[Any]:
+def _open_span(name: str, scope: str | None = None) -> Generator[Any]:
     """Run the shared span lifecycle, yielding the active span.
 
     When consent, sampling, or backpressure denies the span, yields a

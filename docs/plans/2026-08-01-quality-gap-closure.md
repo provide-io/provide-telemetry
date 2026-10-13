@@ -85,6 +85,15 @@ exactly the failure mode this checklist exists to prevent. Add the row — with
 its real threshold and what the threshold actually enforces — when the job
 blocks.
 
+> **Status (2026-10-11):** superseded in two places. The `csharp-mutation` job
+> in `ci-mutation.yml` now blocks: Stryker.NET fails below the `break` score in
+> `csharp/stryker-config.json` (85), a floor rather than a zero-survivor rule.
+> Go's gremlins gate now covers six surfaces — the root package, the four
+> `internal/` packages (`piicore`, `fingerprintcore`, `schemacore`,
+> `levelcore`) and the `otel` module — and is enforced by
+> `scripts/run_gremlins_gate.sh`, since gremlins' own threshold flags do not
+> fail the run.
+
 ## Closure rule
 
 All boxes above must be checked, the ordinary language quality suites must still

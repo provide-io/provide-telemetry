@@ -13,6 +13,7 @@ use super::parse::{
     env_value, nonempty_env_value, parse_bool, parse_module_levels, parse_non_negative_float,
     parse_otlp_headers, parse_rate, parse_retries, parse_usize,
 };
+use super::prometheus::{parse_exporters, RawPrometheus};
 use super::{
     BackpressureConfig, EventSchemaConfig, ExporterPolicyConfig, LoggingConfig, MetricsConfig,
     SLOConfig, SamplingConfig, SecurityConfig, TelemetryConfig, TracingConfig,
@@ -37,6 +38,14 @@ impl TelemetryConfig {
             shared_endpoint.map(|base| format!("{}/{}", base.trim_end_matches('/'), signal_path))
         };
 
+        let strict_config = parse_bool(
+            env_value(env, &["PROVIDE_TELEMETRY_STRICT_CONFIG"]),
+            false,
+            "PROVIDE_TELEMETRY_STRICT_CONFIG",
+        )?;
+        let (exporters, exporter_warnings) =
+            parse_exporters(env_value(env, &["OTEL_METRICS_EXPORTER"]), strict_config)?;
+
         Ok(Self {
             service_name: env_value(env, &["PROVIDE_TELEMETRY_SERVICE_NAME"])
                 .unwrap_or("provide-service")
@@ -52,6 +61,7 @@ impl TelemetryConfig {
                 false,
                 "PROVIDE_TELEMETRY_STRICT_SCHEMA",
             )?,
+            strict_config,
             pii_max_depth: parse_usize(
                 env_value(env, &["PROVIDE_LOG_PII_MAX_DEPTH"]),
                 8,
@@ -134,6 +144,32 @@ impl TelemetryConfig {
                     60_000,
                     "OTEL_METRIC_EXPORT_INTERVAL",
                 )? as u64,
+                exporters,
+                exporter_warnings,
+                health_otlp: parse_bool(
+                    env_value(env, &["PROVIDE_METRICS_HEALTH_OTLP"]),
+                    false,
+                    "PROVIDE_METRICS_HEALTH_OTLP",
+                )?,
+                prometheus: RawPrometheus {
+                    listen: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_LISTEN"]),
+                    host: env_value(env, &["OTEL_EXPORTER_PROMETHEUS_HOST"]),
+                    port: env_value(env, &["OTEL_EXPORTER_PROMETHEUS_PORT"]),
+                    path: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_PATH"]),
+                    translation: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_TRANSLATION"]),
+                    scope_labels: parse_bool(
+                        env_value(env, &["PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS"]),
+                        false,
+                        "PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS",
+                    )?,
+                    target_info: parse_bool(
+                        env_value(env, &["PROVIDE_METRICS_PROMETHEUS_TARGET_INFO"]),
+                        true,
+                        "PROVIDE_METRICS_PROMETHEUS_TARGET_INFO",
+                    )?,
+                    web_config: env_value(env, &["PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG"]),
+                }
+                .parse()?,
             },
             event_schema: EventSchemaConfig {
                 strict_event_name: parse_bool(

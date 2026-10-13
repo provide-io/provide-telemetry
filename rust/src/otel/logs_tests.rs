@@ -330,3 +330,25 @@ fn emit_log_accepts_valid_trace_ids_and_context_attributes() {
     shutdown_logger_provider(None);
     assert!(!logger_provider_installed());
 }
+
+#[cfg(feature = "otel-grpc")]
+#[tokio::test(flavor = "current_thread")]
+async fn build_exporter_carries_client_tls_over_grpc() {
+    let _guard = reset_logs_test_state();
+    let certs = crate::test_certs::TestCerts::generate();
+    let mut env = crate::test_certs::EnvGuard::default();
+    env.set("OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE", &certs.ca);
+    env.set("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", &certs.client_cert);
+    env.set("OTEL_EXPORTER_OTLP_CLIENT_KEY", &certs.client_key);
+    let mut cfg = test_config();
+    cfg.logging.otlp_endpoint = Some("https://127.0.0.1:4317".to_string());
+    cfg.logging.otlp_protocol = "grpc".to_string();
+    build_exporter(&cfg).expect("grpc exporter with client TLS should build");
+
+    env.set("OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE", "/nonexistent/ca.crt");
+    let err = build_exporter(&cfg).expect_err("an unreadable CA must fail the build");
+    assert_eq!(
+        err.message,
+        "OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE=/nonexistent/ca.crt: No such file or directory"
+    );
+}

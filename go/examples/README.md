@@ -24,7 +24,7 @@ cd go && go run ./otel/examples/openobserve/01_emit_all_signals
 - **`04_runtime_reconfigure`** — hot-swap sampling/exporter policies at runtime without restart.
 - **`05_pii_and_cardinality_policy`** — PII masking rules (`redact`, `hash`, `drop`) and cardinality guardrails.
 - **`06_exporter_resilience_modes`** — retries, timeouts, circuit breaker, and fail-open/fail-closed policies.
-- **`07_slo_and_health_snapshot`** — RED/USE SLO metric helpers and full 25-field health snapshot inspection.
+- **`07_slo_and_health_snapshot`** — RED/USE SLO metric helpers and full 26-field health snapshot inspection.
 - **`08_full_hardening_profile`** — all guardrails active simultaneously: PII, cardinality, backpressure, resilience.
 - **`09_error_handling_and_degradation`** — structured error hierarchy and graceful no-OTel degradation.
 - **`10_performance_metrics`** — benchmark key telemetry operations (setup, log emit, span start).
@@ -32,6 +32,7 @@ cd go && go run ./otel/examples/openobserve/01_emit_all_signals
 - **`12_error_fingerprint_and_sessions`** — SHA-256 error fingerprinting and session correlation across spans.
 - **`13_security_hardening`** — input sanitization, secret detection, and W3C protocol size guards.
 - **`14_data_governance`** — consent levels, data classification with sensitivity labels, and cryptographic redaction receipts.
+- **`otel/examples/telemetry/15_prometheus_metrics`** — `OTEL_METRICS_EXPORTER=prometheus`, `MetricsHandler()` mounted on a `ServeMux`, and one in-process scrape showing Prometheus names. Lives in the `go/otel` module: `cd go && go run ./otel/examples/telemetry/15_prometheus_metrics`.
 
 ## OpenObserve Integration
 

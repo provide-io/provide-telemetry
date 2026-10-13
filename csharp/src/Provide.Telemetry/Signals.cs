@@ -186,15 +186,29 @@ internal static class SignalPipeline
             observer?.OnStage(PipelineStages.Local);
             dispatch.EmitLocal(record);
 
+            // A backend that throws still reaches the caller — that is a bug,
+            // not a dropped record — but the health stage after it runs first,
+            // as spec/pipeline_fixtures.yaml's backend_failure path requires:
+            // the record counts as emitted and its export as a failure.
             var backend = dispatch.Backend;
-            if (backend is not null)
+            try
             {
-                observer?.OnStage(PipelineStages.Backend);
-                backend(record);
+                if (backend is not null)
+                {
+                    observer?.OnStage(PipelineStages.Backend);
+                    backend(record);
+                }
             }
-
-            observer?.OnStage(PipelineStages.Health);
-            Health.RecordEmitted(dispatch.Signal);
+            catch
+            {
+                Health.RecordExportFailure(dispatch.Signal);
+                throw;
+            }
+            finally
+            {
+                observer?.OnStage(PipelineStages.Health);
+                Health.RecordEmitted(dispatch.Signal);
+            }
             return true;
         }
         finally

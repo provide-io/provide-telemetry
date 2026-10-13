@@ -5,6 +5,7 @@ package otel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -156,10 +157,15 @@ func _buildDefaultTracerProvider(cfg *telemetry.TelemetryConfig) (*sdktrace.Trac
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := _newOTLPTraceExporter(context.Background(),
-		otlptracehttp.WithEndpointURL(traceURL),
-		otlptracehttp.WithHeaders(cfg.Tracing.OTLPHeaders),
-	)
+	tlsConfig, err := _otlpTLSFor("TRACES")
+	if err != nil {
+		return nil, err
+	}
+	opts := []otlptracehttp.Option{otlptracehttp.WithEndpointURL(traceURL), otlptracehttp.WithHeaders(cfg.Tracing.OTLPHeaders)}
+	if tlsConfig != nil {
+		opts = append(opts, otlptracehttp.WithTLSClientConfig(tlsConfig))
+	}
+	exporter, err := _newOTLPTraceExporter(context.Background(), opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,22 +176,66 @@ func _buildDefaultTracerProvider(cfg *telemetry.TelemetryConfig) (*sdktrace.Trac
 	), nil
 }
 
-func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.MeterProvider, error) {
+// _wantsDefaultMeterProvider reports whether setup should build a meter
+// provider of its own: an OTLP endpoint with otlp selected, or the Prometheus
+// reader.
+func _wantsDefaultMeterProvider(cfg *telemetry.TelemetryConfig) bool {
+	return (cfg.Metrics.OTLPReaderEnabled() && cfg.Metrics.OTLPEndpoint != "") || cfg.Metrics.PrometheusReaderEnabled()
+}
+
+// _buildDefaultMeterProvider builds the provider with the readers cfg selects:
+// a periodic OTLP reader, the Prometheus pull reader, or both. The returned
+// registry is the Prometheus reader's, or nil when it is not attached.
+func _buildDefaultMeterProvider(cfg *telemetry.TelemetryConfig) (*sdkmetric.MeterProvider, _promRegistryLike, error) {
+	opts := []sdkmetric.Option{sdkmetric.WithResource(_buildResource(cfg))}
+	if cfg.Metrics.OTLPReaderEnabled() && cfg.Metrics.OTLPEndpoint != "" {
+		reader, err := _newOTLPMetricsReader(cfg)
+		var tlsErr *_tlsFileError
+		if errors.As(err, &tlsErr) {
+			reader = nil // noted for setup_error; the pull reader, if any, still serves
+		} else if err != nil {
+			return nil, nil, err
+		}
+		if reader != nil {
+			opts = append(opts, sdkmetric.WithReader(reader))
+		}
+	}
+	var registry _promRegistryLike
+	if cfg.Metrics.PrometheusReaderEnabled() {
+		reader, reg, err := _newPrometheusReader(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		opts = append(opts, sdkmetric.WithReader(reader), sdkmetric.WithView(_prometheusLabelView(cfg.Metrics.Prometheus)))
+		registry = reg
+	}
+	provider := sdkmetric.NewMeterProvider(opts...)
+	if cfg.Metrics.HealthOTLP {
+		if err := _registerHealth(provider.Meter("provide.telemetry"), telemetry.GetHealthSnapshot); err != nil {
+			return nil, nil, err
+		}
+	}
+	return provider, registry, nil
+}
+
+func _newOTLPMetricsReader(cfg *telemetry.TelemetryConfig) (sdkmetric.Reader, error) {
 	metricsURL, err := _validatedSignalEndpointURL(cfg.Metrics.OTLPEndpoint, "/v1/metrics")
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := _newOTLPMetricsExporter(context.Background(),
-		otlpmetrichttp.WithEndpointURL(metricsURL),
-		otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders),
-	)
+	tlsConfig, err := _otlpTLSFor("METRICS")
 	if err != nil {
 		return nil, err
 	}
-	return sdkmetric.NewMeterProvider(
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(_wrapMetricsExporter(exporter))),
-		sdkmetric.WithResource(_buildResource(cfg)),
-	), nil
+	opts := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpointURL(metricsURL), otlpmetrichttp.WithHeaders(cfg.Metrics.OTLPHeaders)}
+	if tlsConfig != nil {
+		opts = append(opts, otlpmetrichttp.WithTLSClientConfig(tlsConfig))
+	}
+	exporter, err := _newOTLPMetricsExporter(context.Background(), opts...)
+	if err != nil {
+		return nil, err
+	}
+	return sdkmetric.NewPeriodicReader(_wrapMetricsExporter(exporter)), nil
 }
 
 func _buildLoggerProvider(cfg *telemetry.TelemetryConfig) (*sdklog.LoggerProvider, error) {
@@ -193,10 +243,15 @@ func _buildLoggerProvider(cfg *telemetry.TelemetryConfig) (*sdklog.LoggerProvide
 	if err != nil {
 		return nil, err
 	}
-	exporter, err := _newOTLPLogExporter(context.Background(),
-		otlploghttp.WithEndpointURL(logsURL),
-		otlploghttp.WithHeaders(cfg.Logging.OTLPHeaders),
-	)
+	tlsConfig, err := _otlpTLSFor("LOGS")
+	if err != nil {
+		return nil, err
+	}
+	opts := []otlploghttp.Option{otlploghttp.WithEndpointURL(logsURL), otlploghttp.WithHeaders(cfg.Logging.OTLPHeaders)}
+	if tlsConfig != nil {
+		opts = append(opts, otlploghttp.WithTLSClientConfig(tlsConfig))
+	}
+	exporter, err := _newOTLPLogExporter(context.Background(), opts...)
 	if err != nil {
 		return nil, err
 	}

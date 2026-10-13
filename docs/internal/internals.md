@@ -44,31 +44,39 @@ event dict and returns it (or raises `DropEvent` to discard).
    `domain` / `action` / `resource` / `status` parts onto the record and flatten
    the event back to its string name. Plain-string event names pass through
    untouched.
-5. **`add_log_level`** — Stamp the log level string.
+5. **`add_log_level`** + **`canonicalize_level`** — Stamp the log level
+   string and normalize it to the canonical ladder.
 6. **`TimeStamper(fmt="iso")`** *(conditional: `include_timestamp=true`)* — Add
    ISO-8601 timestamp.
-7. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`**
+7. **`make_level_filter(level, module_levels)`** *(conditional: when
+   `module_levels` is configured)* — Per-module log level filtering. Placed
+   **before** `apply_sampling`: filtered records must not acquire a
+   backpressure ticket, and the `DropEvent` path must not strand a ticket
+   between `apply_sampling` (acquire) and the renderer/handler boundary
+   (release). A filtered record is below its level, not refused: it is not
+   counted as dropped.
+8. **`apply_sampling`** — Admission: the consent, sampling and backpressure
+   stages of `spec/pipeline_fixtures.yaml`, in that order, before any payload
+   work. `should_allow("logs", level)`, then `should_sample("logs", event)`,
+   then `try_acquire("logs")`. Any refusal counts the record as dropped,
+   releases a `None` ticket, and raises `DropEvent`; an admitted record stashes
+   its ticket on the event dict.
+9. **`harden_input(max_attr_value_length, max_attr_count, max_nesting_depth)`**
    — Enforce security limits on attribute values, count, and nesting depth.
-8. **`add_standard_fields(config)`** — Set `service`, `env`, `version` defaults.
-   If `include_error_taxonomy` is enabled and `exc_name` is present,
-   auto-classify the error via `classify_error()`.
-9. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from the
-   exception type plus the top three stack frames when `exc_info` is present.
-10. **`enforce_event_schema(config)`** — Validate event name format (3-5
-    dot-separated segments) and required keys. Annotates `_schema_error` on
-    violation instead of dropping. Runs before sampling so `_schema_error` is
-    set when `apply_sampling` evaluates the record.
-11. **`make_level_filter(level, module_levels)`** *(conditional: when
-    `module_levels` is configured)* — Per-module log level filtering. Placed
-    **before** `apply_sampling`: filtered records must not acquire a
-    backpressure ticket, and the `DropEvent` path must not strand a ticket
-    between `apply_sampling` (acquire) and the renderer/handler boundary
-    (release).
-12. **`apply_sampling`** — Probabilistic sampling check via
-    `should_sample("logs", event)`. Raises `DropEvent` to discard below-rate
-    events.
-13. **`sanitize_sensitive_fields(sanitize, max_nesting_depth)`** — Run PII rules
-    then default sensitive-key redaction on the event dict.
+10. **`add_standard_fields(config)`** — Stamp `service`, `env`, `version` from
+    config (JSON output only). These are reserved root fields
+    (`reserved_root_fields` in `spec/telemetry-api.yaml`): a non-empty config
+    value replaces a caller-supplied one; an empty config value leaves the
+    caller's standing. If `include_error_taxonomy` is enabled and `exc_name` is
+    present, auto-classify the error via `classify_error()`.
+11. **`add_error_fingerprint`** — Compute a 12-char hex fingerprint from the
+    exception type plus the top three stack frames when `exc_info` is present.
+12. **`enforce_event_schema(config)`** — Validate the event name (strict: 3-5
+    dot-separated segments; relaxed: non-empty segments) and required keys.
+    Annotates `_schema_error` on violation instead of dropping.
+13. **`sanitize_sensitive_fields(sanitize, pii_max_depth)`** — Run PII rules,
+    default sensitive-key redaction and secret detection on the event dict;
+    redaction receipts are emitted from here when enabled.
 14. **`CallsiteParameterAdder`** *(conditional: `include_caller=true`)* — Add
     `filename` and `lineno` fields.
 15. **`rename_event_to_message`** *(conditional: `fmt=json`)* — Rename
@@ -78,16 +86,28 @@ event dict and returns it (or raises `DropEvent` to discard).
     `ConsoleRenderer` (default, with `plain_traceback` pinned so frame locals
     cannot leak), `JSONRenderer` (`fmt=json`), or `PrettyRenderer`
     (`fmt=pretty`). The wrapper moves any stashed backpressure ticket off the
-    event dict and onto the stdlib `logging` record's `extra`, so the handler
-    releases it once the record is actually emitted.
+    event dict and onto the stdlib `logging` record's `extra`, together with
+    the marker from `_record_marker.py` saying the record ran this chain.
+
+`merge_runtime_context` (step 2) stamps `trace_id`/`span_id` from a live span
+the same way: they are reserved root fields too.
+
+The stdlib handler boundary (`logger/handlers.py`) closes the pipeline: it runs
+the local and backend child handlers, then counts the record `emitted` (the
+health stage — still counted when the backend export failed), then releases the
+ticket. A record that arrives without the marker came from a plain stdlib
+logger and never ran the chain; `logger/_foreign_records.py` hands the children
+a hardened, sanitized copy of it instead, and it is not counted as emitted.
 
 ## Setup and Shutdown Coordinator
 
-`setup.py` orchestrates initialization through a lock-protected sequence:
+`setup.py` orchestrates initialization under the lifecycle coordinator's lock
+(`_lifecycle.py`):
 
 ### Initialization Sequence
 
-1. Suppress OTel SDK export loggers (noise handled by resilience layer).
+1. Load `PROVIDE_CONSENT_LEVEL` and suppress OTel SDK export loggers (noise
+   handled by resilience layer).
 2. `apply_runtime_config(cfg)` — snapshot config, push
    sampling/backpressure/exporter policies.
 3. `configure_logging(cfg, force=True)` — build structlog processor chain +
@@ -97,15 +117,21 @@ event dict and returns it (or raises `DropEvent` to discard).
 6. `setup_tracing(cfg)` — create `TracerProvider` with OTLP exporter if tracing
    is enabled and OTel is available; otherwise returns without action (no-op
    tracer is a runtime fallback in `get_tracer()`).
-7. `setup_metrics(cfg)` — create `MeterProvider` with OTLP exporter if metrics
-   are enabled and OTel is available; otherwise returns without action. The
-   in-process fallback lives in the `counter()` / `gauge()` / `histogram()`
-   wrappers.
+7. `setup_metrics(cfg)` — create `MeterProvider` with an OTLP periodic reader
+   and/or a Prometheus pull reader if metrics are enabled and OTel is
+   available (and, with `PROVIDE_METRICS_HEALTH_OTLP`, register the health
+   series as observable instruments on it); otherwise returns without action.
+   The in-process fallback lives in the `counter()` / `gauge()` / `histogram()`
+   wrappers. A per-signal OTLP TLS file that cannot be read leaves only that
+   signal's exporter unbuilt and is recorded as `setup_error`.
 8. `_rebind_slo_instruments()` — clear cached SLO counter/gauge/histogram so
    they rebind to new providers.
+9. On success: record any OTLP TLS problems as `setup_error`, start (or
+   restart) the standalone Prometheus listener, then publish `setup_done`.
 
 If any step after `configure_logging` fails, `_rollback()` tears down completed
-steps in reverse order.
+steps in reverse order, records `setup_error`, warns, and reconfigures logging
+so the process runs in degraded mode.
 
 ### State Machine
 
@@ -123,23 +149,36 @@ stateDiagram-v2
 actually reports; the enum carries seven for parity with the runtimes that
 surface intermediate states. See the architecture doc for the full vocabulary.
 
-The `_setup_done` flag and `_lock` mutex ensure:
+The lifecycle coordinator (`coordinator.operations` lock and the published
+`setup_done` generation in `_lifecycle.py`) ensures:
 - Concurrent `setup_telemetry()` calls are serialized; only the first performs
   work.
-- `shutdown_telemetry()` clears `_setup_done` before tearing down providers,
-  preventing races.
+- `shutdown_telemetry()` publishes `setup_done=False` before tearing down
+  providers, preventing races; the three per-signal teardowns then run
+  concurrently under one deadline.
 - After shutdown, package-local setup state is cleared. Reinstalling real OTel
   process-global providers still requires a full process restart.
 
 ## Signal Export Path
 
+Admission and accounting run per event, in the order of
+`spec/pipeline_fixtures.yaml`; the resilience wrapper runs per export call
+(`resilient_exporter.py`), inside the backend sink:
+
 ```mermaid
 flowchart TD
-    A["Application emits signal"] --> B{"Sampling check"}
-    B -->|dropped| Z["increment_dropped()"]
+    A["Application emits signal"] --> A1{"Consent check"}
+    A1 -->|refused| Z["increment_dropped()"]
+    A1 -->|allowed| B{"Sampling check"}
+    B -->|dropped| Z
     B -->|kept| C{"Backpressure queue"}
     C -->|full| Z
-    C -->|ticket acquired| D["Resilience wrapper"]
+    Z --> R["Release ticket (None)"]
+    C -->|ticket acquired| P["Hardening, PII, receipts"]
+    P --> S["Local + backend sinks"]
+    S --> HE["increment_emitted() (health stage)"]
+    HE --> O["Release backpressure ticket"]
+    S -.->|"backend export"| D["Resilience wrapper"]
     D --> E{"Circuit breaker"}
     E -->|open| F{"fail_open?"}
     E -->|closed/half-open| G["Attempt with timeout"]
@@ -152,7 +191,6 @@ flowchart TD
     L --> J
     F -->|true| M["Return None (drop silently)"]
     F -->|false| N["Raise exception"]
-    H --> O["Release backpressure ticket"]
 ```
 
 This flow applies to all three signals (logs, traces, metrics). Each signal has
@@ -214,7 +252,7 @@ flowchart TD
     A -->|yes| A2{"Tracing/metrics enabled?"}
     A2 -->|no| B
     A2 -->|yes| C{"OTLP endpoint configured?"}
-    C -->|no| D["OTel providers init without exporter"]
+    C -->|no| D["OTel providers init without OTLP exporter (a selected Prometheus pull reader is still attached)"]
     C -->|yes| E{"Exporter creation succeeds?"}
     E -->|"no — resilience fail-open"| D
     E -->|yes| F["Full OTLP export pipeline"]
@@ -229,8 +267,8 @@ flowchart TD
 Each signal degrades independently:
 - **Tracing**: `TracerProvider` with OTLP exporter → `TracerProvider` without
   exporter → no-op tracer objects.
-- **Metrics**: `MeterProvider` with OTLP exporter → `MeterProvider` without
-  exporter → in-process `Counter`/`Gauge`/`Histogram` wrappers.
+- **Metrics**: `MeterProvider` with OTLP and/or Prometheus readers → `MeterProvider` without
+  readers → in-process `Counter`/`Gauge`/`Histogram` wrappers.
 - **Logging**: Always functional via structlog. OTLP log export is additive — if
   the OTel logging handler fails to initialize, console/JSON output continues.
 
@@ -307,16 +345,18 @@ metrics:
 
 `health.py` maintains per-signal counters behind a single `threading.Lock`:
 
-- **Queue depth**: current backpressure queue occupancy.
-- **Dropped**: events rejected by sampling or full queues.
+- **Emitted**: events counted at the health stage, after the local and backend
+  sinks (never on a refused path).
+- **Dropped**: events refused by consent, sampling or a full queue (a
+  level-filtered event is not a drop).
 - **Retries**: exporter retry attempts.
 - **Async blocking risk**: calls where retry/backoff config was active inside an
   event loop.
-- **Export failures**: failed export attempts with last error message.
+- **Export failures**: failed export attempts (including circuit-breaker
+  rejections).
 - **Export latency**: last successful export round-trip in milliseconds.
-- **Last success**: epoch timestamp of the most recent successful export.
-- **Exemplar unsupported**: attempts to attach exemplars on instruments that
-  don't support them.
+- **Circuit state / circuit open count**: per-signal breaker state and trips.
+- **Globals**: `setup_error` and `receipt_failures`.
 
 Call `get_health_snapshot()` for a point-in-time frozen dataclass of all
 counters.
@@ -348,8 +388,9 @@ These are applied via `update_runtime_config()` or `reload_runtime_from_env()`.
 - Service name, environment, version
 
 `reconfigure_telemetry()` detects whether the config change affects providers.
-If so and providers are already installed, it raises `RuntimeError` rather than
-silently producing inconsistent state.
+If so and providers are already installed, it raises `ProviderImmutableError`
+(a `ConfigurationError` and `RuntimeError`) rather than silently producing
+inconsistent state.
 
 ## Rust Verification
 

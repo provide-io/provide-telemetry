@@ -63,11 +63,12 @@ let _initPromise: Promise<void> = Promise.resolve();
 // Four load environments must be supported, in this order:
 //   1. CJS Node (tsx default, transpiled CJS bundles): `require` is defined;
 //      load synchronously, no await needed.
-//   2. ESM Node >= 20.16 / 22.3 (the published artifact, .mjs entrypoints):
+//   2. ESM Node >= 22.3 (the published artifact, .mjs entrypoints):
 //      `require` is undefined, but `process.getBuiltinModule` resolves builtins
 //      synchronously. This branch is what makes the ESM path race-free —
 //      see the note below on why the async import alone is not enough.
-//   3. ESM Node < 20.16 (package.json still allows >= 18): fire off an async
+//   3. ESM Node 22.0-22.2 (engines allows >= 22, and process.getBuiltinModule
+//      arrived in 22.3), or a sync path that threw: fire off an async
 //      import WITHOUT awaiting it at module scope. A caller that asks before it
 //      settles gets `null` and uses its own no-ALS fallback for that call.
 //   4. Browsers / Workers / Deno: no path resolves `node:async_hooks`;
@@ -88,7 +89,7 @@ let _initPromise: Promise<void> = Promise.resolve();
 //   * the vitest loader hits the CJS sync-require branch;
 //   * tsx-as-ESM (every TS example, every parity probe) and the packed-artifact
 //     probe in ci/verify-npm-consumer-package.sh hit the getBuiltinModule branch;
-//   * Node < 20.16 hits the async import;
+//   * Node 22.0-22.2 hits the async import;
 //   * browsers/workers hit the catch on the require attempt.
 // No single test loader can enter all four, so the IIFE is excluded here and
 // correctness is asserted through the observable downstream state

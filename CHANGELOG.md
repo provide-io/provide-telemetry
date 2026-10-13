@@ -10,6 +10,342 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Breaking
+
+**The fields the SDK stamps now replace caller-supplied fields of the same
+name, in all five languages.** The reserved fields are `service`, `env`,
+`version`, `trace_id` and `span_id`, plus each SDK's raw spelling of them:
+Go's `service.name`, `service.env`, `service.version`, `trace.id` and
+`span.id`, and C#'s `service_name` and `environment` attributes. When the SDK
+stamps one of these fields on a record, a bound or per-call value of the same
+name is replaced, not duplicated. When the SDK stamps nothing for that field,
+the caller's value stays. That covers `trace_id`/`span_id` when no span is
+live, and an identity field whose config value is empty.
+
+- Python, TypeScript and Rust used to let a caller's `service`, `env` or
+  `version` win. A record logged with `service="billing"` now carries
+  `PROVIDE_TELEMETRY_SERVICE_NAME` instead, and `PROVIDE_TELEMETRY_ENV` and
+  `PROVIDE_TELEMETRY_VERSION` work the same way.
+- Go wrote the stamped field next to the caller's, so a record could carry
+  both a forged value and the real one.
+- When a span is live, Rust drops a caller's `trace_id`/`span_id` instead of
+  forwarding it as an OTel attribute next to the real trace context.
+- C#'s local line dropped a caller's `trace_id`, `span_id`, `service_name`
+  and `environment` even when nothing was stamped. It now keeps them.
+
+To name a remote service, use `peer.service`, which is not reserved. The rule
+is `reserved_root_fields` in `spec/telemetry-api.yaml`, and two contract cases
+hold every SDK to it.
+
+**Python and TypeScript: `gauge()` is backed by an OTel Gauge instead of an
+UpDownCounter.** Go, Rust and C# already worked this way. Over OTLP these
+gauges now arrive as gauge data points rather than non-monotonic sums, and
+`set()` records the absolute value rather than a delta. Under Prometheus'
+suffix strategies a gauge with unit `1` gains `_ratio`. For example, a gauge
+pushed as `cpu_utilization` is now stored as `cpu_utilization_ratio`. Update
+any query on the old name or the old metric type.
+
+**Python: a receipt sink must return exactly `True`.** `emit_receipt` used to
+treat any truthy return as delivered. A sink returning a count, a status
+object or the receipt itself now adds to `receipt_failures`. `enable_receipts`
+raises `ConfigurationError` for a sink with no callable `emit`, including one
+whose `emit` property raises. Before this, such a sink was accepted and every
+later redaction failed. A mapping whose keys cannot be read, or two of whose
+keys render to the same name (`1` and `"1"`), now canonicalizes to `null`.
+
+**TypeScript: Node.js 22 or newer is required.** `engines.node` is now
+`>=22`, so installing on Node 18 or 20 prints an npm `EBADENGINE` warning, and
+fails outright with `engine-strict=true`. Node 18 reached end-of-life on
+2025-04-30 and Node 20 on 2026-04-30; CI has only tested Node 22 and newer.
+
+**Rust: move to OpenTelemetry Rust 0.33 and Rust 1.89.** The `otel`
+features now build on `opentelemetry`, `opentelemetry_sdk` and
+`opentelemetry-otlp` 0.33, up from 0.31. If your application uses OTel's API
+directly, move its own `opentelemetry*` crates to 0.33 as well. Otherwise
+Cargo builds both versions side by side, each with its own global providers,
+and spans or metrics made through 0.31 never reach this SDK's exporters. The
+minimum supported Rust version rises from 1.81 to 1.89.
+
+- 0.33 fixes GHSA-w9wp-h8wv-79jx, unbounded memory in the SDK's W3C Baggage
+  propagator. This SDK parses baggage itself and never used that propagator,
+  but an application that installed it was exposed.
+- The OTLP exporters' own retries, on by default since 0.33, are turned off.
+  The SDK's resilience policy stays the only retry layer.
+- aws-lc-rs replaces ring as the crate's only crypto provider: in reqwest
+  0.13's TLS, the gRPC exporter's TLS and the Prometheus listener's rustls
+  config. Building it needs a C compiler. On Windows x86-64 it also needs
+  NASM, or `AWS_LC_SYS_PREBUILT_NASM=1` to use the prebuilt objects
+  aws-lc-sys ships.
+- The Prometheus listener reads its web config with `serde-saphyr` instead of
+  the deprecated `serde_yaml`, which pulled in the unmaintained
+  `unsafe-libyaml`.
+
+### Added
+
+- **Prometheus scrape support in all five languages.** Add `prometheus` to
+  `OTEL_METRICS_EXPORTER` (alone, or `otlp,prometheus` to push as well) to
+  attach a cumulative pull reader. It sits next to the OTLP reader on the same
+  `MeterProvider`. The host can mount a handler on a server it already runs:
+  - Python: `metrics_handler()`, an ASGI app.
+  - Go: `MetricsHandler()`, an `http.Handler` in the `go/otel` module.
+  - TypeScript: `metricsHandler()`, a `node:http`/Express/Connect listener,
+    from the Node-only `@provide-io/telemetry/prometheus` entry. It is not in
+    the browser build.
+  - C#: `PrometheusMetrics.MetricsHandler(method, accept)` in
+    `Provide.Telemetry.OpenTelemetry`.
+  - Rust: `metrics_handler(method, accept)`.
+
+  C#'s and Rust's handlers are framework-neutral: they take the request's
+  method and `Accept` header. A host whose server fits none of these can call
+  `render_prometheus` in its language's spelling, which returns the body and
+  content type. Before setup, after shutdown, with metrics disabled, or when
+  the host owns the `MeterProvider`, the handler answers 503 and names the
+  reason, never an empty 200. Python adds a `process_locked` reason:
+  OpenTelemetry Python sets the global provider once per process, so a second
+  setup after shutdown cannot serve.
+
+- **`OTEL_METRICS_EXPORTER` is read in all five languages.** Every SDK
+  ignored it before. It takes a comma-separated list of `otlp` and
+  `prometheus`, or `none` alone, and the default is `otlp`. `none` turns
+  metrics export off, and a list without `otlp` no longer builds the OTLP
+  metrics reader. Any other entry is ignored with a warning, as the OTel
+  spec asks of an enum value an SDK does not recognise. That covers OTel
+  values this SDK does not implement, such as `console`, as well as typos.
+  `none` next to another entry is ignored too. If nothing usable is left,
+  the default `otlp` applies. Setup does not fail: each ignored entry logs
+  `config.metrics_exporter.value_ignored`, and the health snapshot's setup
+  error lists them. Set `PROVIDE_TELEMETRY_STRICT_CONFIG=true` to make any of
+  these a `ConfigurationError` instead, for CI or tests. For now that switch
+  covers only this variable. The resolution rules are
+  `metrics_exporter_warnings` in `spec/telemetry-api.yaml`, and shared cases
+  in `spec/prometheus_fixtures.yaml` hold every SDK to the same exporters and
+  the same warning text.
+
+- **An optional standalone listener.** `PROVIDE_METRICS_PROMETHEUS_LISTEN`
+  takes `false`, `true` or `auto`. `true` starts the listener. `auto` starts
+  it whenever `prometheus` is selected. The listener binds
+  `OTEL_EXPORTER_PROMETHEUS_HOST:OTEL_EXPORTER_PROMETHEUS_PORT` (default
+  `127.0.0.1:9464`) and serves only `PROVIDE_METRICS_PROMETHEUS_PATH` (default
+  `/metrics`). `PROVIDE_METRICS_PROMETHEUS_WEB_CONFIG` takes a file in the
+  format Prometheus reads with `--web.config.file`, limited to
+  `tls_server_config` (`cert_file`, `key_file`, `client_ca_file`,
+  `client_auth_type`, `min_version`) and bcrypt `basic_auth_users`.
+
+  The listener fails closed. If the file or a certificate it names has a
+  problem, the listener does not start, and the reason is logged and recorded
+  as the health snapshot's setup error. Setup itself does not fail.
+  Certificates are re-read when they change. A non-loopback bind, or basic
+  auth without TLS, logs a warning. Some languages need an extra package:
+  - Python: the `provide-telemetry[prometheus]` extra (`bcrypt`, `PyYAML`).
+  - TypeScript: the optional `yaml` and `bcryptjs` peers.
+  - Rust: the `prometheus-listener` cargo feature, which the listener needs at
+    all.
+
+- **Prometheus name translation follows `otlptranslator` v1.0.0.** Choose the
+  strategy with `PROVIDE_METRICS_PROMETHEUS_TRANSLATION`; the default is
+  `UnderscoreEscapingWithSuffixes`, as in Prometheus 3. The other strategies
+  are `UnderscoreEscapingWithoutSuffixes`, `NoUTF8EscapingWithSuffixes` and
+  `NoTranslation`. The UTF-8 strategies serve UTF-8 names only to a scraper
+  that negotiates them. Two more switches control the output:
+  - `PROVIDE_METRICS_PROMETHEUS_SCOPE_LABELS` (default `false`) adds
+    `otel_scope_name`/`otel_scope_version`.
+  - `PROVIDE_METRICS_PROMETHEUS_TARGET_INFO` (default `true`) emits
+    `target_info`.
+
+  An attribute whose label the translator rejects, or translates to a name
+  starting with `__`, is dropped from that sample, and the metric is kept. In
+  Go this is a provider-level attribute filter, so while the Prometheus reader
+  is attached those keys are missing from OTLP export too. Every SDK is
+  checked against the shared corpus in `spec/prometheus_fixtures.yaml`, and
+  `known_divergences` is empty.
+
+- **Observable instruments in all five languages.** These are
+  `observable_counter`, `observable_gauge` and `observable_up_down_counter`
+  in each language's spelling:
+  - Go: `NewObservableCounter`, `NewObservableGauge` and
+    `NewObservableUpDownCounter`.
+  - TypeScript: `observableCounter`, `observableGauge` and
+    `observableUpDownCounter`.
+  - C#: `ProvideTelemetry.ObservableCounter`, `ObservableGauge` and
+    `ObservableUpDownCounter`.
+
+  Callbacks run at each scrape and each OTLP export interval. A callback that
+  raises contributes nothing to that collection and logs one warning per
+  instrument. Observations are gated by metrics enablement and consent at
+  collection time, and are neither sampled nor backpressured. The returned
+  handle's `unregister` is idempotent. An observable created before setup
+  never runs. In Go, backends opt in through the new optional
+  `ObservableBackend` interface, so third-party `Backend` implementations
+  still compile.
+
+- **SDK health as metrics.** A scrape carries the health snapshot as
+  `provide_telemetry_*` series, for example
+  `provide_telemetry_export_failures_total{signal}`,
+  `provide_telemetry_circuit_state{signal}` and
+  `provide_telemetry_setup_error`. These series stay visible while OTLP export
+  is failing. `PROVIDE_METRICS_HEALTH_OTLP=true` also registers them as
+  observable instruments on the provider the SDK installs, so push-only
+  services get them over OTLP. They are not consent-gated and do not count
+  toward `emitted_metrics`, and a scrape carries each family once.
+
+- **OTLP push security is uniform across all five languages.** The SDKs
+  support per-signal `OTEL_EXPORTER_OTLP_{LOGS,TRACES,METRICS}_HEADERS`, which
+  are new in C#, and `OTEL_EXPORTER_OTLP_CERTIFICATE`,
+  `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` and `OTEL_EXPORTER_OTLP_CLIENT_KEY`
+  with their per-signal forms, which are new in C# and Rust. The per-signal
+  value wins. Before this, Rust ignored the certificate variables and C#
+  ignored those and the per-signal headers. Export then failed silently
+  against a private CA or a Prometheus requiring basic auth.
+
+  Some TLS files cannot be used: a CA file that cannot be read, one with no
+  PEM certificates, or a client certificate and key that do not pair. In all
+  five languages such a file now leaves that signal's exporter unbuilt and
+  logs `otlp.tls_file_unreadable`. The health snapshot's setup error names
+  the variable and path. Setup does not fail, and the other signals and the
+  pull reader keep working. Before this, Python built the exporter anyway and
+  every export failed. Go fell back to the system trust store. In Rust,
+  changing these files or the Prometheus settings with a live reconfiguration
+  is refused, and needs a restart.
+
+### Changed
+
+- **Log health counters change meaning in all five languages.** `emitted_logs`
+  is now counted once a record has passed through both its local and backend
+  sinks, not when it is admitted. A record whose backend export fails still
+  counts as emitted, and also adds to `export_failures_logs`. A refused record
+  is never counted as emitted. A record refused by consent now counts toward
+  `dropped_logs`, as sampling and backpressure refusals already did. Before
+  this, Python, TypeScript, Go and Rust counted nothing for a consent refusal.
+  Python and Go counted `emitted_logs` when the backpressure ticket was taken,
+  before PII and either sink ran. TypeScript counted it before either sink ran.
+  C# skipped health entirely when the backend threw. That exception still
+  reaches the caller, but the emission and the export failure are now recorded
+  first.
+
+  Values move after upgrade. A service whose consent level refuses logs will
+  now report a rising `dropped_logs`, and so will
+  `provide_telemetry_dropped_total{signal="logs"}`. Recheck any alert built on
+  either counter.
+
+- **Log pipeline stages run in the canonical order of
+  `spec/pipeline_fixtures.yaml`.** Python now runs consent, sampling and
+  backpressure before hardening, so a refused record does no payload work.
+  TypeScript now renders the local line before it exports to OTLP. It used to
+  export first. Custom processors or sinks that relied on the old order may see
+  records at a different point.
+
+- **C#: `Counter`, `Gauge` and `Histogram` take an optional description and
+  unit.** `ProvideTelemetry.Counter(name, description: null, unit: null)` and
+  its siblings, on both the facade and `IMeter`, match the other four SDKs.
+  The OpenTelemetry backend passes both to the BCL instrument, so C# metrics
+  now reach OTLP backends with their unit, and Prometheus stores a histogram
+  with unit `ms` as `<name>_milliseconds_sum` rather than `<name>_sum`. The
+  in-process fallback accepts and ignores them.
+
+  Binary-breaking: an assembly built against 0.10.x raises
+  `MissingMethodException` on these calls and must be rebuilt. Source-breaking
+  only for a third-party `IMeter` implementation, which must add the two
+  parameters.
+
+- **Dependency floors move up in three SDKs.**
+  - **Go:** `go/otel` now requires OpenTelemetry Go v1.47.0, where `otel/log`
+    and `sdk/log` are stable at v1.47.0 too. That `otel/log` line is a breaking
+    change upstream: code of yours that builds OTel log records with
+    `log.Value`/`log.KeyValue` needs OTel's `attribute` types. The SDK reads and
+    sets the global logger provider through `otel.GetLoggerProvider` and
+    `otel.SetLoggerProvider`, which share one global with the deprecated
+    `otel/log/global`.
+  - **TypeScript:** the experimental OpenTelemetry JS peers (`api-logs`,
+    `sdk-logs` and the three OTLP HTTP exporters) accept `>=0.221.0 <0.224.0`.
+    `^0.221.0` accepted only 0.221.x.
+  - **C#:** `Provide.Telemetry.OpenTelemetry` depends on OpenTelemetry 1.19.1
+    and Microsoft.Extensions 10.0.12.
+
+### Fixed
+
+- **Rust: metric unit and description now reach OTel.** `counter()`,
+  `gauge()` and `histogram()` stored both values but built the instrument
+  without them. Every Rust metric therefore reached OTLP with no unit: a `ms`
+  histogram arrived in Prometheus as `<name>_sum` instead of
+  `<name>_milliseconds_sum`. The first instrument to record under a name
+  still fixes its unit and description until teardown.
+- **Python: a runtime update that fails partway rolls its policies back.**
+  `update_runtime_config` and `apply_runtime_config` wrote the sampling, queue
+  and exporter policies one at a time. A later failure left the new policies
+  in force under the old config. The policies in force before the call are
+  now restored.
+- **Python: some keys took the log call down.** If a key object's `__str__`
+  raised, the whole log call failed. Such a key now becomes the placeholder,
+  with its value masked.
+- **Python: the sanitizer no longer deadlocks when it is re-entered on the
+  same thread.** A GC finalizer that logged while secret patterns were being
+  read blocked forever on a non-reentrant lock.
+- **Go: a failed `SetupTelemetry` leaves the process as it found it.** Setup
+  installs consent, the sampling, queue and exporter policies, strict schema,
+  the logger and the log sink before backend wiring. Before this, a wiring
+  failure left all of them in place. They are now restored.
+- **Go: setup refuses invalid exporter durations.**
+  `PROVIDE_EXPORTER_{LOGS,TRACES,METRICS}_{BACKOFF,TIMEOUT}_SECONDS` and
+  `PROVIDE_EXPORTER_LOGS_SHUTDOWN_TIMEOUT_SECONDS` now reject `NaN` and `Inf`.
+  A `NaN` timeout used to disable the bound it set. `SetupTelemetry(WithConfig)`
+  now runs the same validation as `ReconfigureTelemetry`, so values that call
+  refuses, such as a negative queue size, can no longer be installed at
+  setup. A zero or negative shutdown timeout still switches the bound off.
+- **Go: caller code that panics no longer takes the log call down.**
+  - An `Error()` or `MarshalText()` method that panics during hardening turns
+    that one value into the redaction marker.
+  - A `WithLogOutput` writer that panics in `Write` is counted as an export
+    failure.
+  - A writer that panics in `Flush` no longer aborts `ShutdownTelemetry`
+    partway.
+- **A log output writer that logs back through the SDK no longer deadlocks
+  or recurses.** This covers Go's `WithLogOutput` and Python's and Rust's
+  `set_log_output`. When the writer logs from inside its own write or flush,
+  on the goroutine or thread that is already writing, that nested record is
+  dropped and counted as a log export failure. The record being written is
+  not affected. Writes from other goroutines or threads still wait their turn
+  and are never dropped.
+  - Go deadlocked on the sink's lock, or on the lock slog's JSON and text
+    handlers hold while they write.
+  - Python recursed instead, because the stdlib handler lock is re-entrant.
+    About a hundred nested writes later, `RecursionError` escaped the log
+    call, and nothing was written or counted. A writer that logs through
+    stdlib `logging` is caught as well.
+  - Rust deadlocked on its sink mutex, on its render-capture mutex, and on
+    the pretty renderer's colour check. It also deadlocked when shutdown
+    flushed a writer that logged, or when a replaced writer logged from
+    `Drop`.
+  - Python and Rust now also count a writer that fails as a log export
+    failure, as Go does. Python's writer raising used to print a traceback
+    and the record to stderr. Rust's writer returning an error lost the record
+    silently, and a panic unwound out of the log call or aborted
+    `shutdown_telemetry`.
+  - TypeScript and C# have no log output sink, so this does not apply to
+    them. Their hosts redirect through the console methods and
+    `Console.SetError`.
+
+  The rule is `log_output.reentrance` in `spec/telemetry-api.yaml`.
+- **TypeScript: an OTel logger that throws now counts an export failure.**
+  Before this, the exception failed the log call and the record skipped
+  health.
+
+### Security
+
+- **Python: records from third-party stdlib loggers are now hardened and
+  PII-redacted.** The SDK's handler sits on the root logger. A record from any
+  `logging.getLogger(...)` reached the console, JSON and OTLP output without
+  going through the processor chain. Secrets in its message, its positional or
+  mapping arguments, or its `extra` attributes left the process verbatim.
+  These records are now rebuilt from a cleaned copy. The message is formatted
+  from the cleaned arguments and cleaned again. Malformed arguments fail closed
+  to the redaction marker instead of raising out of `emit`.
+- **Python: endpoint credentials are masked even in a malformed URL.** The
+  endpoint masker could not handle every URL. `repr(config)` raised on a
+  non-numeric or out-of-range port, which is the bad endpoint an operator most
+  needs to see. A scheme-less `user:password@host` was printed with its
+  password intact. The password is now replaced in the authority text itself.
+  The host's case and an IPv6 literal's brackets are kept.
+
 ## [0.10.1] — 2026-09-09
 
 ### Added
@@ -1024,7 +1360,7 @@ pin plain tracebacks or have no rich-formatter dependency to fall into.
   (`RegExp.test` advances `lastIndex`). Patterns are stored as stateless
   clones.
 - **Credentialed OTLP endpoints are accepted.** Python, Rust and TypeScript
-  each read the userinfo colon in `https://user:pw@collector.example` as an
+  each read the userinfo colon in `https://user:pw@collector.example` as an <!-- pragma: allowlist secret -->
   empty-port separator and refused the endpoint (Go and C# were correct).
   All three strip userinfo before the port scan; both URL forms are pinned in
   the shared behavioral fixtures.

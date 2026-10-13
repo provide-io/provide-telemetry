@@ -17,8 +17,8 @@ fn new_event_injects_runtime_identity_context_and_trace() {
     }));
     let _context = crate::context::bind_context([("request_id", json!("req-1"))]);
     let _trace = set_trace_context(
-        Some("0123456789abcdef0123456789abcdef".to_string()),
-        Some("0123456789abcdef".to_string()),
+        Some("0123456789abcdef0123456789abcdef".to_string()), // pragma: allowlist secret
+        Some("0123456789abcdef".to_string()),                 // pragma: allowlist secret
     );
 
     let event = new_event("tests.identity", "INFO", "identity.check");
@@ -32,9 +32,9 @@ fn new_event_injects_runtime_identity_context_and_trace() {
     assert_eq!(event.context.get("version"), Some(&json!("1.2.3")));
     assert_eq!(
         event.trace_id.as_deref(),
-        Some("0123456789abcdef0123456789abcdef")
+        Some("0123456789abcdef0123456789abcdef") // pragma: allowlist secret
     );
-    assert_eq!(event.span_id.as_deref(), Some("0123456789abcdef"));
+    assert_eq!(event.span_id.as_deref(), Some("0123456789abcdef")); // pragma: allowlist secret
     assert_eq!(event.event_metadata, None);
 }
 
@@ -124,5 +124,61 @@ fn log_event_helpers_respect_consent_gate() {
     log_event_with_event("ERROR", "tests.consent", &ev);
 
     assert!(Logger::drain_events_for_tests().is_empty());
-    assert_eq!(crate::health::get_health_snapshot(), before);
+    // Each refusal is a drop, as the health snapshot spec names consent.
+    let after = crate::health::get_health_snapshot();
+    assert_eq!(after.emitted_logs, before.emitted_logs);
+    assert_eq!(after.dropped_logs, before.dropped_logs + 3);
+}
+
+#[test]
+fn stamped_root_fields_replace_caller_fields_and_unstamped_ones_leave_them() {
+    let _guard = acquire_test_state_lock();
+    reset_logger_state();
+    let mut forged = BTreeMap::new();
+    for key in ["service", "env", "version", "trace_id", "span_id"] {
+        forged.insert(key.to_string(), json!(format!("forged-{key}")));
+    }
+
+    set_active_config(Some(TelemetryConfig {
+        service_name: "svc".to_string(),
+        environment: "stage".to_string(),
+        version: "1.2.3".to_string(),
+        ..TelemetryConfig::default()
+    }));
+    let _context = crate::context::bind_context([("env", json!("bound-env"))]);
+    let trace = set_trace_context(
+        Some("0123456789abcdef0123456789abcdef".to_string()), // pragma: allowlist secret
+        Some("0123456789abcdef".to_string()),                 // pragma: allowlist secret
+    );
+    let stamped = build_event("tests.identity", "INFO", "identity.forged", &forged);
+    assert_eq!(stamped.context.get("service"), Some(&json!("svc")));
+    assert_eq!(stamped.context.get("env"), Some(&json!("stage")));
+    assert_eq!(stamped.context.get("version"), Some(&json!("1.2.3")));
+    // The live context is rendered over the map; the forged keys are gone
+    // rather than left for the OTel bridge to forward as attributes.
+    assert_eq!(stamped.context.get("trace_id"), None);
+    assert_eq!(stamped.context.get("span_id"), None);
+    assert_eq!(
+        stamped.trace_id.as_deref(),
+        Some("0123456789abcdef0123456789abcdef") // pragma: allowlist secret
+    );
+    drop(trace);
+
+    // Nothing stamped: no live span, an empty identity. The caller's stand.
+    set_active_config(Some(TelemetryConfig {
+        service_name: String::new(),
+        environment: String::new(),
+        version: String::new(),
+        ..TelemetryConfig::default()
+    }));
+    let _cleared = set_trace_context(None, None);
+    let unstamped = build_event("tests.identity", "INFO", "identity.kept", &forged);
+    for key in ["service", "env", "version", "trace_id", "span_id"] {
+        assert_eq!(
+            unstamped.context.get(key),
+            Some(&json!(format!("forged-{key}"))),
+            "{key}"
+        );
+    }
+    assert_eq!(unstamped.trace_id, None);
 }

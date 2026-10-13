@@ -7,13 +7,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 
 	telemetry "github.com/provide-io/provide-telemetry/go"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	otellog "go.opentelemetry.io/otel/log"
-	logglobal "go.opentelemetry.io/otel/log/global"
 	otellognoop "go.opentelemetry.io/otel/log/noop"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	otelmetricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -44,9 +44,15 @@ func init() {
 type _backend struct{}
 
 func (b *_backend) Setup(cfg *telemetry.TelemetryConfig, state telemetry.BackendSetupState) error {
+	_takeTLSProblems() // drop anything left from an earlier attempt
 	_setupTracerProvider(state, cfg)
 	_setupMeterProvider(state, cfg)
 	_setupLoggerProvider(state, cfg)
+	if problems := _takeTLSProblems(); problems != "" {
+		// After any ignored OTEL_METRICS_EXPORTER entries, which setup recorded first.
+		state.ReportSetupError(strings.Join(append(append([]string(nil), cfg.Metrics.ExporterWarnings...), problems), "; "))
+	}
+	_syncPromListener(cfg, state.ReportSetupError)
 	return nil
 }
 
@@ -197,6 +203,8 @@ func _joinFlushErrors(errs []error) error {
 // sequence — shutdown is the last chance to get queued records out, so a
 // stalled traces exporter must not cost metrics and logs their drain.
 func (b *_backend) Shutdown(ctx context.Context) error {
+	// Stop scrapes first: once shutdown starts there is nothing left to serve.
+	_stopPromListener()
 	// Detach the providers under the lock, then drain them outside it. Holding
 	// the write lock across the drain would block every RLock reader — a
 	// concurrent FlushTelemetry resolving providers, Providers(), LoggerHandler
@@ -213,6 +221,7 @@ func (b *_backend) Shutdown(ctx context.Context) error {
 	_otelMeterProvider = nil
 	_otelLoggerProvider = nil
 	_resetGlobalsWeSet(installedTP, installedMP, installedLP)
+	_setPromState(_promShutDown, nil)
 	_providersMu.Unlock()
 
 	return _drainConcurrently(ctx, providers, _drainable.Shutdown)
@@ -246,8 +255,8 @@ func _resetGlobalsWeSet(tp *sdktrace.TracerProvider, mp *sdkmetric.MeterProvider
 		_weSetMeterGlobal = false
 	}
 	if _weSetLoggerGlobal {
-		if lp != nil && logglobal.GetLoggerProvider() == otellog.LoggerProvider(lp) {
-			logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+		if lp != nil && otel.GetLoggerProvider() == otellog.LoggerProvider(lp) {
+			otel.SetLoggerProvider(otellognoop.NewLoggerProvider())
 		}
 		_weSetLoggerGlobal = false
 	}
@@ -258,6 +267,7 @@ func _shutdownOTelProviders(ctx context.Context) error {
 }
 
 func (b *_backend) ResetForTests() {
+	_stopPromListener()
 	_providersMu.Lock()
 	defer _providersMu.Unlock()
 
@@ -267,12 +277,13 @@ func (b *_backend) ResetForTests() {
 	_weSetTracerGlobal = false
 	_weSetMeterGlobal = false
 	_weSetLoggerGlobal = false
+	_setPromState(_promNotSetUp, nil)
 	_newOTLPTraceExporter = _defaultOTLPTraceExporterFactory
 	_newOTLPMetricsExporter = _defaultOTLPMetricsExporterFactory
 	_newOTLPLogExporter = _defaultOTLPLogExporterFactory
 	otel.SetTracerProvider(otelnooptrace.NewTracerProvider())
 	otel.SetMeterProvider(otelmetricnoop.NewMeterProvider())
-	logglobal.SetLoggerProvider(otellognoop.NewLoggerProvider())
+	otel.SetLoggerProvider(otellognoop.NewLoggerProvider())
 }
 
 func _resetOTelProviders() {

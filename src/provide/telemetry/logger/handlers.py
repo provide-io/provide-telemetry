@@ -11,7 +11,83 @@ import contextlib
 import logging
 from typing import Any
 
-from provide.telemetry.logger.processors import _BACKPRESSURE_TICKET_KEY
+from provide.telemetry.logger._foreign_records import sanitize_foreign_record
+from provide.telemetry.logger.processors import (
+    _BACKPRESSURE_TICKET_KEY,
+    _PIPELINE_RECORD_KEY,
+    _PIPELINE_RECORD_MARKER,
+)
+from provide.telemetry.logger.sink import WRITER_FRAME
+
+
+class LogWriterReenteredError(RuntimeError):
+    """A record logged from inside the log output writer, on the thread writing to it."""
+
+
+_REENTERED = LogWriterReenteredError("record logged from inside the log output writer was dropped")
+
+
+def _count_export_failure(exc: Exception) -> None:
+    # Imported on the failure path only, keeping it off every record's way through.
+    from provide.telemetry.health import record_export_failure
+
+    record_export_failure("logs", exc)  # pragma: no mutate — health counts the failure and ignores the exception
+
+
+class _HostWriterHandler(logging.StreamHandler):  # type: ignore[type-arg]
+    """The console handler for a writer the host installed with ``set_log_output``.
+
+    Two things differ from the ``StreamHandler`` it extends, both because the
+    writer is the host's code running inside a log call.
+
+    A record logged from inside the writer, on the thread already writing to it,
+    is not written: it would call the writer again, and that call would log
+    again. It is counted as a log export failure instead, and the record being
+    written is unaffected. A record from another thread is never refused; it
+    waits for the handler's lock as it always has.
+
+    A writer that raises costs only the record it was writing, counted as a log
+    export failure, where ``StreamHandler`` hands it to ``handleError`` -- which
+    prints a traceback, and the record with it, to stderr: the stream a host that
+    installed a writer has said it is not reading.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        frame = WRITER_FRAME
+        if frame.active:
+            _count_export_failure(_REENTERED)  # pragma: no mutate — health counts the failure and ignores the exception
+            return
+        frame.active = True
+        try:
+            self.stream.write(self.format(record) + self.terminator)
+            logging.StreamHandler.flush(self)
+        except Exception as exc:
+            _count_export_failure(exc)  # pragma: no mutate — health counts the failure and ignores the exception
+        finally:
+            frame.active = False
+
+    def flush(self) -> None:
+        """Flush the writer, unless this thread is already inside it.
+
+        A writer whose ``write`` reaches a flush of this handler -- through
+        ``logging.shutdown`` or a reconfiguration -- would otherwise call back
+        into itself. A flush that raises still raises, as it does from a
+        ``StreamHandler``; teardown is where flushes happen, and it decides.
+        """
+        frame = WRITER_FRAME
+        if frame.active:
+            return
+        frame.active = True
+        try:
+            logging.StreamHandler.flush(self)
+        finally:
+            frame.active = False
+
+
+# The children a retarget moves: the plain console handler and the one wrapping
+# a host's writer. Exact types, so a FileHandler -- a StreamHandler by
+# inheritance -- keeps the file it owns.
+_STREAM_CHILDREN = (logging.StreamHandler, _HostWriterHandler)
 
 
 class _BackpressureFanoutHandler(logging.Handler):
@@ -65,7 +141,8 @@ class _BackpressureFanoutHandler(logging.Handler):
         child and its provider on the way out of a teardown that exists to
         dismantle them.
 
-        Only exact ``StreamHandler`` children are moved. A ``FileHandler`` is one
+        Only the console children are moved -- an exact ``StreamHandler``, or the
+        handler wrapping a host's writer. A ``FileHandler`` is a ``StreamHandler``
         by inheritance and owns a file of its own to write to, which is not this
         SDK's to redirect.
 
@@ -77,7 +154,7 @@ class _BackpressureFanoutHandler(logging.Handler):
         its flush, so the flush is attempted and only its failure ignored.
         """
         for handler in self._handlers:
-            if type(handler) is not logging.StreamHandler:
+            if not isinstance(handler, logging.StreamHandler) or type(handler) not in _STREAM_CHILDREN:
                 continue
             handler.acquire()
             try:
@@ -89,6 +166,7 @@ class _BackpressureFanoutHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         from provide.telemetry.backpressure import release
+        from provide.telemetry.health import increment_emitted
 
         # Popped, not read: the ticket is ours, and OTel's LoggingHandler turns
         # whatever is left on the record into OTLP attributes. Reading it with
@@ -97,10 +175,24 @@ class _BackpressureFanoutHandler(logging.Handler):
         # that reached a collector. Lifting it here keeps it alive for the
         # release below while hiding it from every child handler at once.
         ticket = record.__dict__.pop(_BACKPRESSURE_TICKET_KEY, None)
+        # A record without the pipeline's marker came from a plain stdlib
+        # logger and never ran the processor chain; the children get a
+        # hardened, sanitized copy of it instead. Popped for the same reason
+        # as the ticket: nothing of ours is exported as an attribute.
+        admitted = record.__dict__.pop(_PIPELINE_RECORD_KEY, None) is _PIPELINE_RECORD_MARKER
+        if not admitted:
+            record = sanitize_foreign_record(record)
         try:
             for handler in self._handlers:
                 if record.levelno >= handler.level:
                     handler.handle(record)
+            # The health stage: after the local and backend sinks, before the
+            # release (spec/pipeline_fixtures.yaml). A backend that failed to
+            # export still counts -- its handler contained the failure and
+            # recorded it as an export failure -- but only a record the
+            # pipeline admitted, and so holds a ticket, is one it emitted.
+            if admitted and ticket is not None:
+                increment_emitted("logs")
         finally:
             if ticket is not None:
                 release(ticket)

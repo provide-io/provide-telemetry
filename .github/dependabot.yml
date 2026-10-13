@@ -11,7 +11,7 @@ updates:
   - package-ecosystem: pip
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
     open-pull-requests-limit: 0
     groups:
       minor-and-patch:
@@ -21,17 +21,51 @@ updates:
   - package-ecosystem: npm
     directory: /typescript
     schedule:
-      interval: monthly
+      interval: weekly
     open-pull-requests-limit: 0
     groups:
       minor-and-patch:
         update-types: [minor, patch]
     labels: ["dependencies", "typescript"]
 
+  - package-ecosystem: gomod
+    directories: ["/go", "/go/otel", "/go/cmd/e2e_cross_language_client"]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    # The modules require each other through replace directives; their own
+    # versions move with VERSION, not with Dependabot.
+    ignore:
+      - dependency-name: "github.com/provide-io/provide-telemetry/*"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    labels: ["dependencies", "go"]
+
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    labels: ["dependencies", "rust"]
+
+  - package-ecosystem: nuget
+    directory: /csharp
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    labels: ["dependencies", "csharp"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
     open-pull-requests-limit: 0
     groups:
       actions:

@@ -10,9 +10,11 @@ use serde::{Deserialize, Serialize};
 mod from_env;
 mod parse;
 pub(crate) mod probe;
+pub(crate) mod prometheus;
 mod redact;
 mod validate;
 
+pub use prometheus::PrometheusConfig;
 pub use redact::redact_config;
 
 /// Ceiling on exporter retries per signal, shared with the resilience layer's
@@ -126,6 +128,48 @@ pub struct MetricsConfig {
     /// OTLP endpoint. Parsed from `OTEL_METRIC_EXPORT_INTERVAL` (OTel spec).
     /// Default: 60 000 ms (60 seconds).
     pub metric_export_interval_ms: u64,
+    /// Selected metric exporters, from `OTEL_METRICS_EXPORTER`: `otlp` and/or
+    /// `prometheus`. Empty means none (`OTEL_METRICS_EXPORTER=none`).
+    pub exporters: Vec<String>,
+    /// What `OTEL_METRICS_EXPORTER` asked for that was ignored; setup logs these
+    /// and reports them as `setup_error` (spec
+    /// `prometheus_metrics.metrics_exporter_warnings`).
+    pub exporter_warnings: Vec<String>,
+    /// Also export the health metrics over OTLP (`PROVIDE_METRICS_HEALTH_OTLP`).
+    pub health_otlp: bool,
+    /// Prometheus pull reader, handler and listener settings.
+    pub prometheus: PrometheusConfig,
+}
+
+impl MetricsConfig {
+    /// Whether `name` is one of the selected exporters.
+    pub fn has_exporter(&self, name: &str) -> bool {
+        self.exporters.iter().any(|exporter| exporter == name)
+    }
+
+    /// Whether the standalone Prometheus listener should run.
+    pub fn prometheus_listener_enabled(&self) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        match self.prometheus.listen.as_str() {
+            "true" => true,
+            "auto" => self.has_exporter(prometheus::EXPORTER_PROMETHEUS),
+            _ => false,
+        }
+    }
+
+    /// Whether the Prometheus pull reader is attached; asking for the listener implies it.
+    pub fn prometheus_reader_enabled(&self) -> bool {
+        self.enabled
+            && (self.has_exporter(prometheus::EXPORTER_PROMETHEUS)
+                || self.prometheus_listener_enabled())
+    }
+
+    /// Whether OTLP metrics export is selected (it still needs an endpoint).
+    pub fn otlp_reader_enabled(&self) -> bool {
+        self.enabled && self.has_exporter(prometheus::EXPORTER_OTLP)
+    }
 }
 
 fn default_metric_export_interval_ms() -> u64 {
@@ -140,6 +184,10 @@ impl Default for MetricsConfig {
             otlp_endpoint: None,
             otlp_protocol: String::new(),
             metric_export_interval_ms: default_metric_export_interval_ms(),
+            exporters: prometheus::default_exporters(),
+            exporter_warnings: Vec::new(),
+            health_otlp: false,
+            prometheus: PrometheusConfig::default(),
         }
     }
 }
@@ -252,6 +300,10 @@ pub struct TelemetryConfig {
     pub environment: String,
     pub version: String,
     pub strict_schema: bool,
+    /// Fail config parsing on a value that would otherwise be warned about and
+    /// ignored (`PROVIDE_TELEMETRY_STRICT_CONFIG`). Today that is
+    /// `OTEL_METRICS_EXPORTER` only.
+    pub strict_config: bool,
     pub pii_max_depth: usize,
     pub logging: LoggingConfig,
     pub tracing: TracingConfig,
@@ -271,6 +323,7 @@ impl Default for TelemetryConfig {
             environment: "dev".to_string(),
             version: "0.0.0".to_string(),
             strict_schema: false,
+            strict_config: false,
             pii_max_depth: 8,
             logging: LoggingConfig::default(),
             tracing: TracingConfig::default(),

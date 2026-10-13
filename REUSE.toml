@@ -75,6 +75,7 @@ path = [
   "typescript/tsconfig.json",
   "typescript/tsconfig.scripts.json",
   "typescript/tsconfig.test.json",
+  "typescript/examples/tsconfig.json",
 ]
 SPDX-FileCopyrightText = "Copyright (C) 2026 provide.io llc"
 SPDX-License-Identifier = "Apache-2.0"

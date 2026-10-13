@@ -95,5 +95,7 @@ def test_go_quick_start_compiles(tmp_path: Path) -> None:
     )
     tidy = subprocess.run(["go", "mod", "tidy"], cwd=module, capture_output=True, text=True, check=False)
     assert tidy.returncode == 0, f"go mod tidy failed:\n{tidy.stderr}"
-    result = subprocess.run(["go", "build", "./..."], cwd=module, capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        ["go", "build", "-buildvcs=false", "./..."], cwd=module, capture_output=True, text=True, check=False
+    )
     assert result.returncode == 0, f"go/README.md quick start does not compile:\n{result.stderr}"

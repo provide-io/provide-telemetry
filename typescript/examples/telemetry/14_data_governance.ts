@@ -114,7 +114,9 @@ function demoReceipts(): void {
     console.log(`  fieldPath:    ${r.fieldPath}`);
     console.log(`  action:       ${r.action}`);
     console.log(`  originalHash: ${r.originalHash.slice(0, 16)}...`);
-    console.log(r.hmac ? `  hmac:         ${r.hmac.slice(0, 16)}...` : '  hmac:         (unsigned)');
+    console.log(
+      r.hmac ? `  hmac:         ${r.hmac.slice(0, 16)}...` : '  hmac:         (unsigned)',
+    );
   } else {
     console.log('  (no receipts captured)');
   }

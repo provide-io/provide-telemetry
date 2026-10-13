@@ -96,10 +96,12 @@ fn from_map_test_parses_signal_specific_and_policy_fields() {
         ("PROVIDE_SECURITY_MAX_ATTR_VALUE_LENGTH", "256"),
         ("PROVIDE_SECURITY_MAX_ATTR_COUNT", "16"),
         ("PROVIDE_SECURITY_MAX_NESTING_DEPTH", "4"),
+        ("PROVIDE_TELEMETRY_STRICT_CONFIG", "true"),
     ]))
     .expect("all explicit env values should parse");
 
     assert!(cfg.strict_schema);
+    assert!(cfg.strict_config);
     assert_eq!(cfg.pii_max_depth, 3);
     assert_eq!(cfg.logging.level, "DEBUG");
     assert_eq!(cfg.logging.fmt, "json");

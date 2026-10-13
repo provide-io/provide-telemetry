@@ -429,15 +429,19 @@ jobs:
         if: ${{ hashFiles('go/otel/go.mod') != '' }}
         working-directory: go/otel
         run: |
-          # The standalone flush probe requires a live collector and is covered
-          # by ci-go's collector-content gate, not the unit mutation runner.
+          # The standalone flush and Prometheus push/scrape probes need a live
+          # backend and are covered by ci-go's collector-content gate and
+          # ci-contracts' prometheus-push job, not the unit mutation runner.
           "$GITHUB_WORKSPACE/scripts/run_gremlins_gate.sh" \
             --workers=1 \
             --test-cpu=1 \
             --timeout-coefficient=100 \
             --threshold-efficacy=100 \
             --threshold-mcover=100 \
+            --exclude-files="mutation_constants.go" \
             --exclude-files="cmd/flush_collector_probe/" \
+            --exclude-files="cmd/prometheus_push_probe/" \
+            --exclude-files="cmd/prometheus_scrape_probe/" \
             --exclude-files="examples/" \
             .
 
@@ -469,8 +473,8 @@ jobs:
       # ci-csharp.yml enforces applying to the mutation job too.
       - name: Build (warnings as errors)
         run: dotnet build Provide.Telemetry.sln -warnaserror -m:1
-      # Thresholds live in csharp/stryker-config.json (break 84 against a
-      # measured 85.84 % on 2026-08-14) together with the reasoning for that
+      # Thresholds live in csharp/stryker-config.json (break 85 against a
+      # measured 86.50 % on 2026-08-16) together with the reasoning for that
       # number and what it would take to raise it. Unlike the Go gate, no
       # wrapper script is needed: Stryker exits 2 of its own accord when the
       # score falls below break, which the falsifiability check on this gate

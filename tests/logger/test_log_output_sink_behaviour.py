@@ -234,17 +234,23 @@ def test_a_writer_is_released_even_with_no_pipeline_to_detach_it_from() -> None:
         root.handlers = saved
 
 
-def test_retargeting_leaves_a_child_that_is_not_a_plain_stream_alone() -> None:
+def test_retargeting_leaves_a_child_that_is_not_a_plain_stream_alone(tmp_path: Path) -> None:
     """A FileHandler owns a file of its own, which is not this SDK's to redirect."""
     stream_child = logging.StreamHandler(io.StringIO())
     other_child = logging.Handler()
-    fanout = _BackpressureFanoutHandler([other_child, stream_child])
+    file_child = logging.FileHandler(tmp_path / "own.log", encoding="utf-8")
+    own_file = file_child.stream
+    fanout = _BackpressureFanoutHandler([other_child, file_child, stream_child])
     destination = io.StringIO()
 
-    fanout.retarget_stream_children(destination)
+    try:
+        fanout.retarget_stream_children(destination)
 
-    assert stream_child.stream is destination
-    assert not hasattr(other_child, "stream")
+        assert stream_child.stream is destination
+        assert file_child.stream is own_file
+        assert not hasattr(other_child, "stream")
+    finally:
+        file_child.close()
 
 
 def test_retargeting_moves_a_child_whose_stream_has_been_closed(tmp_path: Path) -> None:

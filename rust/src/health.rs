@@ -139,6 +139,11 @@ pub fn increment_receipt_failures() {
     crate::_lock::lock(health()).receipt_failures += 1;
 }
 
+/// Record why setup could not complete part of its work, or clear it with `None`.
+pub(crate) fn set_setup_error(error: Option<String>) {
+    crate::_lock::lock(health()).setup_error = error;
+}
+
 pub fn _reset_health_for_tests() {
     *crate::_lock::lock(health()) = HealthSnapshot::default();
 }

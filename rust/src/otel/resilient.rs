@@ -95,15 +95,15 @@ impl<E: SpanExporter> SpanExporter for ResilientSpanExporter<E> {
         run_otel_resilience(Signal::Traces, &policy, || self.inner.export(batch.clone())).await
     }
 
-    fn shutdown(&mut self) -> OTelSdkResult {
+    fn shutdown(&self) -> OTelSdkResult {
         self.inner.shutdown()
     }
 
-    fn shutdown_with_timeout(&mut self, timeout: Duration) -> OTelSdkResult {
+    fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
         self.inner.shutdown_with_timeout(timeout)
     }
 
-    fn force_flush(&mut self) -> OTelSdkResult {
+    fn force_flush(&self) -> OTelSdkResult {
         self.inner.force_flush()
     }
 

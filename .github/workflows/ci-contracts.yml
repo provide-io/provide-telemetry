@@ -15,6 +15,18 @@ on:
       - "rust/examples/contract_probe.rs"
       - "VERSION"
       - ".github/workflows/ci-contracts.yml"
+      - "csharp/src/**"
+      - "infra/prometheus/**"
+      - "ci/prometheus-tls-setup.sh"
+      - "e2e/test_prometheus_push_e2e.py"
+      - "e2e/test_prometheus_scrape_e2e.py"
+      - "scripts/prometheus_push_probe.py"
+      - "typescript/scripts/prometheus-push-probe.ts"
+      - "typescript/scripts/prometheus-scrape-probe.ts"
+      - "rust/examples/prometheus_push_probe.rs"
+      - "rust/examples/prometheus_scrape_probe.rs"
+      - "csharp/probes/PrometheusPushProbe/**"
+      - "csharp/probes/PrometheusScrapeProbe/**"
   # No paths filter: this workflow owns required status contexts, so it must
   # always run. The per-area gating lives on the jobs -- see the changes job.
   pull_request:
@@ -133,3 +145,108 @@ jobs:
       # so this job only runs contract cases.
       - name: Contract probe check (cross-language semantics)
         run: uv run python spec/run_behavioral_parity.py --skip-output
+
+  # Tier 1 of the Prometheus contract (spec: prometheus_metrics): every SDK's
+  # ordinary OTLP metrics exporter pushes to a real Prometheus 3 OTLP receiver,
+  # and the series are read back through the Prometheus HTTP API. Names, labels
+  # and values are checked against spec/prometheus_fixtures.yaml push_ingestion.
+  prometheus-push:
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: typescript/package-lock.json
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version: "1.26"
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1  # v5.4.0
+        with:
+          dotnet-version: "10.0.x"
+      # Pinned SHA of dtolnay/rust-toolchain `stable` branch HEAD as of 2026-04-18.
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable@2026-04-18
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+        with:
+          workspaces: rust
+      # Python (with the otel extra) and TypeScript dependencies
+      - name: Install dependencies
+        run: python ci/install_parity_deps.py
+      # Three instances of the image docker-compose.yml runs: plain, basic auth,
+      # and TLS (private CA) + basic auth. The secured ones share one generated
+      # web config dir; see ci/prometheus-tls-setup.sh.
+      - name: Start Prometheus 3 with the OTLP receiver
+        run: |
+          tls_dir="$(ci/prometheus-tls-setup.sh "$RUNNER_TEMP/prometheus-tls")"
+          echo "PROMETHEUS_TLS_CA=$tls_dir/ca.crt" >> "$GITHUB_ENV"
+          start() {
+            name="$1"; port="$2"; shift 2
+            docker run -d --name "$name" \
+              -p "127.0.0.1:$port:9090" \
+              -v "$PWD/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+              -v "$tls_dir:/etc/prometheus/web:ro" \
+              prom/prometheus:v3.13.4 \
+              --config.file=/etc/prometheus/prometheus.yml \
+              --web.enable-otlp-receiver "$@"
+          }
+          start prometheus 9090
+          start prometheus-auth 9444 --web.config.file=/etc/prometheus/web/auth-only.yml
+          start prometheus-tls 9443 --web.config.file=/etc/prometheus/web/web-config.yml
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9090/-/ready \
+              && curl -sf -u e2e:e2e-test-only-password http://127.0.0.1:9444/-/ready \
+              && curl -sf --cacert "$tls_dir/ca.crt" -u e2e:e2e-test-only-password https://localhost:9443/-/ready; then
+              exit 0
+            fi
+            sleep 1
+          done
+          for c in prometheus prometheus-auth prometheus-tls; do docker logs "$c"; done
+          exit 1
+      # PROVIDE_E2E_REQUIRE_ALL_RUNTIMES turns a missing toolchain into a failure
+      # rather than a skip, so a language that never ran cannot pass.
+      - name: Push from every SDK and verify in Prometheus
+        env:
+          PROMETHEUS_URL: "http://127.0.0.1:9090"
+          PROMETHEUS_AUTH_URL: "http://127.0.0.1:9444"
+          PROMETHEUS_TLS_URL: "https://localhost:9443"
+          PROMETHEUS_BASIC_AUTH_USER: "e2e"
+          PROMETHEUS_BASIC_AUTH_PASSWORD: "e2e-test-only-password"
+          PROVIDE_E2E_REQUIRE_ALL_RUNTIMES: "1"
+        run: uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q e2e/test_prometheus_push_e2e.py
+      # Tier 3: a Prometheus on the host network scrapes the SDK listener on
+      # 127.0.0.1:9464 (plain) and :9465 (TLS from the test CA + basic auth).
+      - name: Start Prometheus 3 scraping the SDK listener
+        run: |
+          docker run -d --name prometheus-scrape --network host \
+            -v "$PWD/infra/prometheus/scrape-e2e.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$(dirname "$PROMETHEUS_TLS_CA"):/etc/prometheus/web:ro" \
+            prom/prometheus:v3.13.4 \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --web.listen-address=127.0.0.1:9091
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:9091/-/ready && exit 0
+            sleep 1
+          done
+          docker logs prometheus-scrape
+          exit 1
+      # The Rust probe needs the prometheus-listener feature; building it here
+      # keeps its compile out of the probe's ready timeout.
+      - name: Build the Rust scrape probe
+        working-directory: rust
+        run: cargo build --locked --features prometheus-listener --example prometheus_scrape_probe
+      - name: Prometheus scrapes every SDK listener
+        env:
+          PROMETHEUS_SCRAPE_URL: "http://127.0.0.1:9091"
+          PROVIDE_E2E_REQUIRE_ALL_RUNTIMES: "1"
+        run: uv run python scripts/run_pytest_gate.py -m e2e --no-cov -q e2e/test_prometheus_scrape_e2e.py
+      - name: Prometheus logs
+        if: always()
+        run: for c in prometheus prometheus-auth prometheus-tls prometheus-scrape; do docker logs "$c" || true; done

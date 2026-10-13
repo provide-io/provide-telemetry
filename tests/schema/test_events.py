@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from unittest.mock import patch
 
@@ -64,14 +64,14 @@ def test_validate_required_keys_error_message_uses_comma_separator() -> None:
 
 
 @contextmanager
-def _strict_config() -> Iterator[None]:
+def _strict_config() -> Generator[None]:
     """Patch runtime to report strict event-name mode."""
     with patch("provide.telemetry.runtime._is_strict_event_name", return_value=True):
         yield
 
 
 @contextmanager
-def _relaxed_config() -> Iterator[None]:
+def _relaxed_config() -> Generator[None]:
     """Patch runtime to report relaxed event-name mode (default)."""
     with patch("provide.telemetry.runtime._is_strict_event_name", return_value=False):
         yield

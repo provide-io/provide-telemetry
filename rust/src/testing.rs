@@ -26,6 +26,10 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 /// contract test and the cross-language parity gate measure the same thing.
 pub use crate::config::probe::{config_defaults_probe, ProbedConfigEntry};
 
+/// Observe the logs pipeline's gates, backend and bookkeeping stage by stage,
+/// for the `spec/pipeline_fixtures.yaml` conformance test.
+pub use crate::logger::set_pipeline_stage_hook;
+
 static TEST_STATE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[cfg_attr(test, mutants::skip)] // Equivalent mutants only swap in Mutex::default().
@@ -45,6 +49,8 @@ pub fn acquire_test_state_lock() -> MutexGuard<'static, ()> {
 /// Reset all telemetry state to keep tests isolated.
 pub fn reset_telemetry_state() {
     let _ = shutdown_telemetry(None);
+    // Back to the never-set-up endpoint status, not the shut-down one.
+    crate::prometheus::set_status(crate::prometheus::Status::NotSetUp);
     _reset_otel_for_tests();
     // Restore the stranded-drain-worker budget. Sound even with workers still
     // pending: each decrements with a saturating subtraction on its way out.

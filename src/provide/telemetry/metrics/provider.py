@@ -13,8 +13,11 @@ from typing import Any
 
 from provide.telemetry import _otel
 from provide.telemetry._endpoint import validate_otlp_endpoint
+from provide.telemetry._otlp_tls import tls_ready
 from provide.telemetry._resource import build_resource
 from provide.telemetry.config import TelemetryConfig
+from provide.telemetry.metrics import _health_otlp
+from provide.telemetry.metrics import prometheus as _prometheus
 from provide.telemetry.resilience import run_with_resilience
 from provide.telemetry.resilient_exporter import wrap_exporter
 
@@ -92,6 +95,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
     global _metrics_explicitly_disabled
     if not config.metrics.enabled:
         _metrics_explicitly_disabled = True
+        _prometheus.set_status(_prometheus.METRICS_DISABLED)
         return
     _metrics_explicitly_disabled = False
     from provide.telemetry.resilience import _is_running_in_event_loop
@@ -107,6 +111,9 @@ def setup_metrics(config: TelemetryConfig) -> None:
             stacklevel=2,  # pragma: no mutate — stacklevel tuning; any small positive int surfaces the caller frame
         )  # pragma: no mutate — closing paren line for multi-line call; trivial
     if not _HAS_OTEL_METRICS:
+        _prometheus.set_status(
+            _prometheus.OTEL_MISSING if config.metrics.prometheus_reader_enabled else _prometheus.NOT_SELECTED
+        )
         return
 
     with _meter_lock:
@@ -123,7 +130,7 @@ def setup_metrics(config: TelemetryConfig) -> None:
 
     provider_cls, resource_cls, reader_cls, exporter_cls = components
     readers: list[Any] = []
-    if config.metrics.otlp_endpoint:
+    if config.metrics.otlp_endpoint and config.metrics.otlp_reader_enabled and tls_ready("metrics"):
         raw_exporter = run_with_resilience(
             "metrics",
             lambda: exporter_cls(
@@ -133,10 +140,14 @@ def setup_metrics(config: TelemetryConfig) -> None:
             ),
         )
         if raw_exporter is None:
+            _prometheus.set_status(_prometheus.SETUP_FAILED)
             return
         # Wrap so every export() call applies retry/timeout/circuit-breaker policy.
         readers.append(reader_cls(wrap_exporter("metrics", raw_exporter)))
 
+    pull_reader, pull_status = _prometheus_reader(config, otel_metrics)
+    if pull_reader is not None:
+        readers.append(pull_reader)
     resource = build_resource(config, resource_cls)
     provider = provider_cls(resource=resource, metric_readers=readers)
 
@@ -148,12 +159,36 @@ def setup_metrics(config: TelemetryConfig) -> None:
                 shutdown()
             return
         otel_metrics.set_meter_provider(provider)
+        if pull_reader is not None:
+            _prometheus.mark_ready(pull_reader, _prometheus.options_for(config))
+        else:
+            _prometheus.set_status(pull_status)
         _meter_provider = provider
         _meter_global_set = True  # pragma: no mutate — latched True after successful provider install; boolean toggle asserted by shutdown tests
         # Clear stale meters cached before provider was set up so
         # subsequent get_meter() calls return meters from the real provider.
         _meters.clear()
         _meters["provide.telemetry"] = otel_metrics.get_meter("provide.telemetry")
+    if config.metrics.health_otlp:
+        _health_otlp.register(provider.get_meter("provide.telemetry"), otel_metrics.Observation)
+
+
+def _prometheus_reader(config: TelemetryConfig, otel_metrics: Any) -> tuple[Any | None, str]:
+    """The pull reader to attach, or None and the endpoint status to record instead.
+
+    A live provider already on the OTel global means ours will not become
+    global (OpenTelemetry sets it once per process), so instruments would never
+    reach a reader on ours. It is the host's, or one an earlier setup of ours
+    installed before a shutdown.
+    """
+    if not config.metrics.prometheus_reader_enabled:
+        return None, _prometheus.NOT_SELECTED
+    if _otel.is_live_provider(otel_metrics.get_meter_provider()):
+        return None, _prometheus.PROCESS_LOCKED if _meter_global_set else _prometheus.HOST_PROVIDER
+    base = _otel.load_metric_reader_base()
+    if base is None:
+        return None, _prometheus.OTEL_MISSING
+    return _prometheus.pull_reader_class(base)(), _prometheus.READY
 
 
 def _has_real_meter_provider(otel_metrics: Any) -> bool:
@@ -201,6 +236,7 @@ def _set_meter_for_test(meter: Any | None) -> None:
     _meter_global_set = False
     _setup_generation = 0
     _metrics_explicitly_disabled = False
+    _prometheus.set_status(_prometheus.NOT_SET_UP)
 
 
 def shutdown_metrics(timeout_seconds: float | None = None) -> None:
@@ -211,7 +247,9 @@ def shutdown_metrics(timeout_seconds: float | None = None) -> None:
     bound is not optional.
     """
     from provide.telemetry._provider_drain import dispose_detached_provider
+    from provide.telemetry.metrics import _prom_listener
 
+    _prom_listener.stop()  # nothing is left to serve once shutdown starts
     global _meter_provider, _setup_generation
     with _meter_lock:
         _setup_generation += 1
@@ -220,6 +258,7 @@ def shutdown_metrics(timeout_seconds: float | None = None) -> None:
         # lock across a bounded teardown is what made readers wait it out.
         _meters.clear()
         _meter_provider = None
+    _prometheus.set_status(_prometheus.SHUT_DOWN)
     if provider is None:
         return
     dispose_detached_provider(provider, timeout_seconds)

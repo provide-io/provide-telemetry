@@ -42,7 +42,7 @@ async function doWork(iteration: number): Promise<void> {
       iteration * 12.5,
       { iteration: String(iteration) },
     );
-    gauge('example.basic.active_tasks', { description: 'Active task gauge', unit: '1' }).add(1);
+    gauge('example.basic.active_tasks', { description: 'Active task gauge', unit: '1' }).set(1);
   });
 }
 
@@ -53,7 +53,9 @@ async function main(): Promise<void> {
   const cfg = getConfig();
   const log = getLogger('examples.basic');
 
-  console.log(`⚙️  Service: ${cfg.serviceName}  |  Env: ${cfg.environment}  |  Version: ${cfg.version}`);
+  console.log(
+    `⚙️  Service: ${cfg.serviceName}  |  Env: ${cfg.environment}  |  Version: ${cfg.version}`,
+  );
 
   // ── 📋 Structured context binding ───────────────────────
   console.log('\n📋 Binding structured context fields...');
@@ -66,7 +68,7 @@ async function main(): Promise<void> {
   for (let i = 0; i < 3; i++) {
     await doWork(i);
     await new Promise((r) => setTimeout(r, 50));
-    console.log(`  🔹 Iteration ${i}: counter +1, histogram ${i * 12.5}ms, gauge +1`);
+    console.log(`  🔹 Iteration ${i}: counter +1, histogram ${i * 12.5}ms, gauge set to 1`);
   }
 
   // ── 🧹 Context cleanup ─────────────────────────────────
