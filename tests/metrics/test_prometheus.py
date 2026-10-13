@@ -361,6 +361,7 @@ shutdown_telemetry()
 @pytest.mark.otel
 def test_real_sdk_end_to_end() -> None:
     """In a fresh process: OpenTelemetry sets the global MeterProvider once per process."""
+    pytest.importorskip("opentelemetry.sdk.metrics")
     import subprocess  # nosec B404 — fixed script, no user input
     import sys
 

@@ -217,6 +217,7 @@ def test_the_default_seams_are_the_provider_functions() -> None:
 
 @pytest.mark.otel
 def test_observables_reach_the_real_sdk() -> None:
+    pytest.importorskip("opentelemetry.sdk.metrics")
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 

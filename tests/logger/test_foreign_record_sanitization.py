@@ -141,6 +141,7 @@ def test_a_pipeline_record_is_not_processed_twice(_clean_root: None) -> None:
 
 @pytest.mark.otel
 def test_a_third_party_record_is_redacted_before_the_otel_handler() -> None:
+    pytest.importorskip("opentelemetry.sdk._logs")
     from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
     from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 
