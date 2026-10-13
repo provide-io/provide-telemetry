@@ -86,10 +86,19 @@ fn logger_test_config_service_replaces_a_context_bound_service() {
     let raw = take_json_capture();
     teardown();
 
-    let parsed: serde_json::Value =
-        serde_json::from_str(String::from_utf8(raw).expect("utf8").trim()).expect("valid JSON");
+    let text = String::from_utf8(raw).expect("utf8");
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("valid JSON"))
+        .collect();
     // The reserved_root_fields rule: the identity the SDK stamps replaces a
     // bound or caller value; a caller naming another service uses peer.service.
+    // The replacement is reported by a warning just before the record.
+    let [warning, parsed] = lines.as_slice() else {
+        panic!("want a warning and the record, got {text}");
+    };
+    assert_eq!(warning["message"], "logger.reserved_field.replaced");
+    assert_eq!(warning["field"], "service");
     assert_eq!(
         parsed["service"], "config-service",
         "the configured service must replace a context-bound one"

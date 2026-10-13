@@ -105,6 +105,50 @@ contract_cases:
       last_log.trace_id: "deadbeefdeadbeefdeadbeefdeadbeef"
       last_log.span_id: "deadbeefdeadbeef"
 
+  reserved_root_fields_replacement_reported:
+    description: >
+      reserved_root_fields.replacement_reporting: a stamped value replacing a
+      different caller value adds to reserved_field_replacements, and each
+      field's first replacement in the process logs one warning naming the
+      field, just before the record. A caller value equal to the stamped one
+      is not a replacement.
+    steps:
+      - op: setup
+      - op: emit_log
+        message: "test.replaced.first"
+        fields:
+          event: "test.replaced.first"
+          env: "forged-env"
+          version: "9.9.9"
+      - op: count_logs
+        event: "logger.reserved_field.replaced"
+        into: first_warnings
+      - op: capture_log
+        event: "logger.reserved_field.replaced"
+        into: warning
+      - op: capture_log
+        into: first_log
+      - op: emit_log
+        message: "test.replaced.again"
+        fields:
+          event: "test.replaced.again"
+          env: "parity"
+          version: "8.8.8"
+      - op: count_logs
+        event: "logger.reserved_field.replaced"
+        into: again_warnings
+      - op: get_health
+        into: health
+      - op: shutdown
+    expect:
+      first_warnings.count: 2
+      warning.field: "version"
+      warning.level: "WARN"
+      first_log.message: "test.replaced.first"
+      first_log.version: "1.2.3"
+      again_warnings.count: 0
+      health.reserved_field_replacements: 3
+
   setup_invalid_overrides:
     description: "Passing an out-of-range config value raises a ConfigurationError"
     steps:

@@ -94,9 +94,9 @@ def test_health_snapshot_declares_receipt_failures() -> None:
 
 
 def test_health_snapshot_field_count_is_pinned() -> None:
-    """26 serialized fields: the 25 that existed plus receipt_failures.
+    """27 serialized fields: 8 per signal for 3 signals, and 3 global.
 
     Pinning the count makes an accidental addition or removal a test failure
     rather than a silent change to a cross-language contract.
     """
-    assert len(_spec()["health_snapshot"]["fields"]) == 26
+    assert len(_spec()["health_snapshot"]["fields"]) == 27

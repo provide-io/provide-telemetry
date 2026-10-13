@@ -145,10 +145,11 @@ const PER_SIGNAL: [(&str, PromType); 8] = [
     ("provide_telemetry_circuit_open_total", PromType::Counter),
 ];
 
-/// The two global health families.
-const GLOBAL: [&str; 2] = [
+/// The global health families.
+const GLOBAL: [&str; 3] = [
     "provide_telemetry_setup_error",
     "provide_telemetry_receipt_failures_total",
+    "provide_telemetry_reserved_field_replacements_total",
 ];
 
 /// Whether `name` is one of the health families the collector serves. A reader
@@ -234,8 +235,11 @@ pub(crate) fn health_families(snapshot: &HealthSnapshot) -> Vec<Family> {
     setup_error.push(Vec::new(), if has_error { 1.0 } else { 0.0 });
     let mut receipts = Family::new(GLOBAL[1], PromType::Counter, "");
     receipts.push(Vec::new(), snapshot.receipt_failures as f64);
+    let mut replacements = Family::new(GLOBAL[2], PromType::Counter, "");
+    replacements.push(Vec::new(), snapshot.reserved_field_replacements as f64);
     families.push(setup_error);
     families.push(receipts);
+    families.push(replacements);
     families
 }
 

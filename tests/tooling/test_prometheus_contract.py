@@ -89,8 +89,10 @@ def test_full_snapshot_fixture_matches_the_mapping(contract: dict[str, Any], fix
             raw = snapshot[f"{entry['field']}_{signal}"]
             value = health["circuit_state_values"][raw] if entry["field"] == "circuit_state" else raw
             derived.append((entry["metric"], (("signal", signal),), float(value)))
-    derived.append(("provide_telemetry_setup_error", (), 1.0 if snapshot["setup_error"] else 0.0))
-    derived.append(("provide_telemetry_receipt_failures_total", (), float(snapshot["receipt_failures"])))
+    for entry in health["global"]:
+        raw = snapshot[entry["field"]]
+        value = (1.0 if raw else 0.0) if entry["field"] == "setup_error" else float(raw)
+        derived.append((entry["metric"], (), value))
     expected = [(s["metric"], tuple(sorted(s["labels"].items())), float(s["value"])) for s in case["expected_samples"]]
     assert sorted(expected) == sorted(derived)
 

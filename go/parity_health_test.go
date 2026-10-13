@@ -14,8 +14,8 @@ import (
 
 func TestParity_Health_CanonicalFieldCount(t *testing.T) {
 	rt := reflect.TypeOf(HealthSnapshot{})
-	if rt.NumField() != 26 {
-		t.Errorf("HealthSnapshot: want 26 canonical fields, got %d", rt.NumField())
+	if rt.NumField() != 27 {
+		t.Errorf("HealthSnapshot: want 27 canonical fields, got %d", rt.NumField())
 	}
 }
 
@@ -33,8 +33,8 @@ func TestParity_Health_CanonicalFieldNames(t *testing.T) {
 		"MetricsEmitted", "MetricsDropped", "MetricsExportFailures",
 		"MetricsRetries", "MetricsExportLatencyMs", "MetricsAsyncBlockingRisk",
 		"MetricsCircuitState", "MetricsCircuitOpenCount",
-		// Global (2)
-		"SetupError", "ReceiptFailures",
+		// Global (3)
+		"SetupError", "ReceiptFailures", "ReservedFieldReplacements",
 	}
 
 	rt := reflect.TypeOf(HealthSnapshot{})
@@ -124,6 +124,9 @@ func TestParity_Health_DefaultCountersZero(t *testing.T) {
 	// ReceiptFailures is the second global counter and resets with the rest.
 	if snap.ReceiptFailures != 0 {
 		t.Errorf("ReceiptFailures: want 0, got %d", snap.ReceiptFailures)
+	}
+	if snap.ReservedFieldReplacements != 0 {
+		t.Errorf("ReservedFieldReplacements: want 0, got %d", snap.ReservedFieldReplacements)
 	}
 }
 

@@ -71,8 +71,11 @@ internal static class PrometheusHealth
         setupError.Samples.Add(new Sample("", [], string.IsNullOrEmpty(s.SetupError) ? 0 : 1));
         var receipts = new Family("provide_telemetry_receipt_failures_total", "counter");
         receipts.Samples.Add(new Sample("", [], s.ReceiptFailures));
+        var replacements = new Family("provide_telemetry_reserved_field_replacements_total", "counter");
+        replacements.Samples.Add(new Sample("", [], s.ReservedFieldReplacements));
         families.Add(setupError);
         families.Add(receipts);
+        families.Add(replacements);
         return families;
     }
 }

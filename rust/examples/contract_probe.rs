@@ -9,6 +9,7 @@
 //! and emits `{"case":"<id>","variables":{...}}` to stdout.
 
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 use regex::Regex;
 use serde_json::{json, Value};
@@ -163,7 +164,14 @@ fn exec_register_secret_pattern(step: &Value) {
     provide_telemetry::register_secret_pattern(name, compiled);
 }
 
+/// The JSON output of the most recent emit_log, read by capture_log and
+/// count_logs as often as a case asks.
+static CAPTURED: Mutex<String> = Mutex::new(String::new());
+
 fn exec_emit_log(step: &Value) {
+    // Only this emit's output: a warning logged on its behalf comes with it.
+    // Taking the capture also turns it off, so it is switched back on.
+    provide_telemetry::enable_json_capture_for_tests();
     let message = as_str(step, "message");
     let logger = provide_telemetry::get_logger(Some("contract"));
     // Pass any step-local structured fields (excluding "event" which duplicates
@@ -183,6 +191,35 @@ fn exec_emit_log(step: &Value) {
     } else {
         logger.info_fields(message, &extra);
     }
+    *CAPTURED.lock().unwrap() =
+        String::from_utf8(provide_telemetry::take_json_capture()).unwrap_or_default();
+    provide_telemetry::enable_json_capture_for_tests();
+}
+
+/// The captured JSON records in order, keeping only those whose message is
+/// the step's event when it names one.
+fn matching_records(step: &Value) -> Vec<Value> {
+    let event = step.get("event").and_then(Value::as_str);
+    CAPTURED
+        .lock()
+        .unwrap()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|record| event.is_none() || record.get("message").and_then(Value::as_str) == event)
+        .collect()
+}
+
+fn exec_count_logs(step: &Value, variables: &mut BTreeMap<String, Value>) {
+    let count = matching_records(step).len();
+    variables.insert(as_str(step, "into").to_string(), json!({ "count": count }));
+}
+
+fn exec_get_health(step: &Value, variables: &mut BTreeMap<String, Value>) {
+    let snapshot = provide_telemetry::get_health_snapshot();
+    variables.insert(
+        as_str(step, "into").to_string(),
+        json!({ "reserved_field_replacements": snapshot.reserved_field_replacements }),
+    );
 }
 
 fn exec_capture_log(step: &Value, variables: &mut BTreeMap<String, Value>) {
@@ -191,16 +228,8 @@ fn exec_capture_log(step: &Value, variables: &mut BTreeMap<String, Value>) {
         return;
     }
 
-    let raw = String::from_utf8(provide_telemetry::take_json_capture()).unwrap_or_default();
-
-    // Parse the last JSON line from captured output.
-    let mut record = Value::Null;
-    for line in raw.lines().rev() {
-        if let Ok(v) = serde_json::from_str::<Value>(line) {
-            record = v;
-            break;
-        }
-    }
+    // The last captured record, or the last one with the step's event.
+    let record = matching_records(step).pop().unwrap_or(Value::Null);
 
     // Flatten the record into dotted variables for the harness.
     // The harness expects e.g. last_log.trace_id, last_log.span_id, etc.
@@ -274,6 +303,8 @@ fn run_case(case_id: &str, case: &Value) -> Value {
             "register_secret_pattern" => exec_register_secret_pattern(step),
             "emit_log" => exec_emit_log(step),
             "capture_log" => exec_capture_log(step, &mut variables),
+            "count_logs" => exec_count_logs(step, &mut variables),
+            "get_health" => exec_get_health(step, &mut variables),
             "get_runtime_status" => exec_get_runtime_status(step, &mut variables),
             unknown => panic!("unsupported contract operation: '{unknown}'"),
         }

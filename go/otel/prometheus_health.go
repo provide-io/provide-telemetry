@@ -37,6 +37,7 @@ const (
 	_healthCircuitOpens = "provide_telemetry_circuit_open_total"
 	_healthSetupError   = "provide_telemetry_setup_error"
 	_healthReceipts     = "provide_telemetry_receipt_failures_total"
+	_healthReplacements = "provide_telemetry_reserved_field_replacements_total"
 )
 
 var _healthHelp = map[string]string{ //nolint:gochecknoglobals
@@ -50,6 +51,7 @@ var _healthHelp = map[string]string{ //nolint:gochecknoglobals
 	_healthCircuitOpens: "Times the export circuit breaker has opened.",
 	_healthSetupError:   "1 when the last setup failed, else 0.",
 	_healthReceipts:     "Governance receipts a configured ReceiptSink refused or threw on.",
+	_healthReplacements: "Reserved root fields whose caller value the stamped value replaced.",
 }
 
 func _newHealthCollector(snapshot func() telemetry.HealthSnapshot) *_healthCollector {
@@ -60,7 +62,7 @@ func _newHealthCollector(snapshot func() telemetry.HealthSnapshot) *_healthColle
 	} {
 		c.signal[name] = prometheus.NewDesc(name, _healthHelp[name], []string{"signal"}, nil)
 	}
-	for _, name := range []string{_healthSetupError, _healthReceipts} {
+	for _, name := range []string{_healthSetupError, _healthReceipts, _healthReplacements} {
 		c.global[name] = prometheus.NewDesc(name, _healthHelp[name], nil, nil)
 	}
 	return c
@@ -88,6 +90,7 @@ func (c *_healthCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 	ch <- prometheus.MustNewConstMetric(c.global[_healthSetupError], prometheus.GaugeValue, setupError)
 	ch <- prometheus.MustNewConstMetric(c.global[_healthReceipts], prometheus.CounterValue, float64(s.ReceiptFailures))
+	ch <- prometheus.MustNewConstMetric(c.global[_healthReplacements], prometheus.CounterValue, float64(s.ReservedFieldReplacements))
 }
 
 func (c *_healthCollector) collectSignal(ch chan<- prometheus.Metric, sig _signalHealth) {

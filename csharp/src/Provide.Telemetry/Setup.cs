@@ -359,6 +359,7 @@ public static class Setup
         Resilience.Reset();
         Cardinality.Reset();
         Health.Reset();
+        ReservedFields.Reset();
         Pii.Reset();
         Schema.Reset();
         Context.Reset();

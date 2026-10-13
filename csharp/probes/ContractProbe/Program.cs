@@ -55,6 +55,30 @@ static string FindFixtures()
     throw new FileNotFoundException("contract_fixtures.yaml not found; tried: " + string.Join(", ", candidates));
 }
 
+// The JSON records the last emit_log captured, in order, keeping only those
+// whose message is event when one is given.
+static List<Dictionary<string, object?>> MatchingRecords(Dictionary<string, object?> variables, string? evt)
+{
+    var buf = variables.GetValueOrDefault("__log_buffer")?.ToString() ?? "";
+    var records = new List<Dictionary<string, object?>>();
+    foreach (var line in buf.Split('\n'))
+    {
+        var t = line.Trim();
+        if (!t.StartsWith('{')) continue;
+        try
+        {
+            var record = JsonSerializer.Deserialize<Dictionary<string, object?>>(t);
+            if (record is null) continue;
+            if (evt is null || (record.TryGetValue("message", out var m) && Unwrap(m) as string == evt))
+            {
+                records.Add(record);
+            }
+        }
+        catch (JsonException) { /* not a record */ }
+    }
+    return records;
+}
+
 static void RunStep(Step s, Dictionary<string, object?> variables, Dictionary<string, object?> boundFields)
 {
     switch (s.Op)
@@ -141,22 +165,23 @@ static void RunStep(Step s, Dictionary<string, object?> variables, Dictionary<st
                 variables["__log_buffer"] = sw.ToString();
                 break;
             }
+        case "count_logs":
+            variables[s.Into ?? "count"] = new Dictionary<string, object?>
+            {
+                ["count"] = MatchingRecords(variables, s.Event).Count,
+            };
+            break;
+        case "get_health":
+            variables[s.Into ?? "health"] = new Dictionary<string, object?>
+            {
+                ["reserved_field_replacements"] = ProvideTelemetry.GetHealthSnapshot().ReservedFieldReplacements,
+            };
+            break;
         case "capture_log":
             {
-                var buf = variables.GetValueOrDefault("__log_buffer")?.ToString() ?? "";
-                Dictionary<string, object?>? parsed = null;
-                foreach (var line in buf.Split('\n'))
-                {
-                    var t = line.Trim();
-                    if (!t.StartsWith('{')) continue;
-                    try
-                    {
-                        parsed = JsonSerializer.Deserialize<Dictionary<string, object?>>(t);
-                        break;
-                    }
-                    catch { /* next */ }
-                }
-                parsed ??= new Dictionary<string, object?>();
+                // The last captured record, or the last one with the step's event.
+                var parsed = MatchingRecords(variables, s.Event).LastOrDefault()
+                    ?? new Dictionary<string, object?>();
                 // Normalise dotted OTel-style keys to contract snake_case.
                 if (parsed.TryGetValue("trace.id", out var tid))
                 {
@@ -258,4 +283,5 @@ sealed class Step
     public Dictionary<string, object>? Overrides { get; set; }
     public string? Name { get; set; }
     public string? Pattern { get; set; }
+    public string? Event { get; set; }
 }

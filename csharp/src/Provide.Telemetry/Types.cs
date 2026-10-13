@@ -111,8 +111,15 @@ public sealed class HealthSnapshot
     public string MetricsCircuitState { get; set; } = "closed";
     public long MetricsCircuitOpenCount { get; set; }
 
-    /// <summary>Receipts a sink refused or faulted on. The 26th canonical field.</summary>
+    /// <summary>Receipts a sink refused or faulted on.</summary>
     public long ReceiptFailures { get; set; }
+
+    /// <summary>
+    /// Reserved root fields whose caller or bound value differed from the value
+    /// the SDK stamped, one per field per record
+    /// (<c>reserved_root_fields.replacement_reporting</c> in the spec).
+    /// </summary>
+    public long ReservedFieldReplacements { get; set; }
 
     public string SetupError { get; set; } = "";
 }

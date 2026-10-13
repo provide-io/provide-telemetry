@@ -10,7 +10,7 @@ Demonstrates:
 - record_red_metrics for HTTP request/error/duration (RED)
 - record_use_metrics for resource utilization (USE)
 - classify_error for error taxonomy
-- HealthSnapshot with all 26 fields
+- HealthSnapshot with all 27 fields
 - SLO config via TelemetryConfig environment overrides
 """
 
@@ -77,7 +77,7 @@ def main() -> None:
             log.error(event("example", "slo", "error"), exc_name=exc_name, status_code=code, **taxonomy)
 
     # ── 🩺 Full health snapshot ──────────────────────────────
-    print("\n🩺 Full HealthSnapshot (all 26 fields):")
+    print("\n🩺 Full HealthSnapshot (all 27 fields):")
     s = get_health_snapshot()
     print(f"  📤 Emitted:            logs={s.emitted_logs}  traces={s.emitted_traces}  metrics={s.emitted_metrics}")
     print(f"  📉 Dropped:            logs={s.dropped_logs}  traces={s.dropped_traces}  metrics={s.dropped_metrics}")
@@ -99,6 +99,7 @@ def main() -> None:
     )
     print(f"  🛑 Setup error:        {s.setup_error}")
     print(f"  🧾 Receipt failures:   {s.receipt_failures}")
+    print(f"  🔁 Reserved replaced:  {s.reserved_field_replacements}")
 
     print("\n🏁 Done!")
     shutdown_telemetry()

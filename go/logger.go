@@ -81,8 +81,8 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 	r = h.applyBoundAttrs(r)
 	r = h.applyContextFields(ctx, r)
 	r = h.applyLoggerName(r)
-	r = h.applyStandardFields(r)
-	r = h.applyTraceFields(ctx, r)
+	r, replacedIdentity := h.applyStandardFields(r)
+	r, replacedTrace := h.applyTraceFields(ctx, r)
 
 	// Consent gate: block before any processing when consent level forbids logs.
 	// The refusal is a drop like any other admission refusal: dropped_logs
@@ -121,6 +121,9 @@ func (h *_telemetryHandler) Handle(ctx context.Context, r slog.Record) error {
 		_pipelineStage(_stageRelease)
 		Release(ticket)
 	}()
+
+	// Admitted: only now is a replacement worth counting and warning about.
+	h.reportReservedReplacements(ctx, r, append(replacedIdentity, replacedTrace...))
 
 	r = h.applyErrorFingerprint(r)
 	r = h.applyPII(r)
@@ -225,8 +228,9 @@ func (h *_telemetryHandler) applyContextFields(ctx context.Context, r slog.Recor
 	return nr
 }
 
-// applyStandardFields adds service.name, service.env, and service.version from config.
-func (h *_telemetryHandler) applyStandardFields(r slog.Record) slog.Record {
+// applyStandardFields adds service.name, service.env, and service.version from
+// config, returning the wire names of the caller fields it replaced.
+func (h *_telemetryHandler) applyStandardFields(r slog.Record) (slog.Record, []string) {
 	cfg := h.cfg
 	stamped := make([]slog.Attr, 0, 3)
 	if cfg.ServiceName != "" {
@@ -238,11 +242,12 @@ func (h *_telemetryHandler) applyStandardFields(r slog.Record) slog.Record {
 	if cfg.Version != "" {
 		stamped = append(stamped, slog.String("service.version", cfg.Version))
 	}
-	return _stampRootFields(r, stamped)
+	return _stampRootFields(r, stamped), _replacedRootFields(r, stamped)
 }
 
-// applyTraceFields adds trace.id and span.id if available in context.
-func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record) slog.Record {
+// applyTraceFields adds trace.id and span.id if available in context,
+// returning the wire names of the caller fields it replaced.
+func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record) (slog.Record, []string) {
 	traceID, spanID := _getTraceSpanFromContext(ctx)
 	stamped := make([]slog.Attr, 0, 2)
 	if traceID != "" {
@@ -251,7 +256,7 @@ func (h *_telemetryHandler) applyTraceFields(ctx context.Context, r slog.Record)
 	if spanID != "" {
 		stamped = append(stamped, slog.String(_attrSpanID, spanID))
 	}
-	return _stampRootFields(r, stamped)
+	return _stampRootFields(r, stamped), _replacedRootFields(r, stamped)
 }
 
 // Root attribute names the library stamps on every record, and the

@@ -46,6 +46,7 @@ type step struct {
 	Overrides   map[string]any `yaml:"overrides"`
 	Name        string         `yaml:"name"`
 	Pattern     string         `yaml:"pattern"`
+	Event       string         `yaml:"event"`
 }
 
 // ctx is the shared context threaded through all operations. Go propagation
@@ -57,8 +58,9 @@ var ctx = context.Background()
 // of baseCtx so clear_propagation can restore without losing bound fields.
 var baseCtx = context.Background()
 
-// logBuffer captures stderr output between emit_log and capture_log steps.
-var logBuffer *os.File
+// capturedOutput is the stderr output of the most recent emit_log, read by
+// capture_log and count_logs as often as a case asks.
+var capturedOutput string
 
 // loadFixtures reads and parses the contract YAML file.
 func loadFixtures() fixtureFile {
@@ -220,21 +222,18 @@ func opEmitLog(s step, _ map[string]any) {
 	os.Stderr = origStderr
 	_ = w.Close()
 
-	// Store pipe reader for capture_log.
-	logBuffer = r
+	data, _ := io.ReadAll(r)
+	_ = r.Close()
+	capturedOutput = string(data)
 }
 
-// opCaptureLog reads the last JSON line from the captured stderr output.
+// opCaptureLog reads the last captured JSON record, or the last one whose
+// message is the step's event.
 func opCaptureLog(s step, variables map[string]any) {
-	if logBuffer == nil {
-		variables[s.Into] = map[string]any{}
-		return
+	record := map[string]any{}
+	if matching := matchingRecords(s.Event); len(matching) > 0 {
+		record = matching[len(matching)-1]
 	}
-	data, _ := io.ReadAll(logBuffer)
-	_ = logBuffer.Close()
-	logBuffer = nil
-
-	record := extractJSONRecord(string(data))
 	// Normalise Go field names to cross-language contract names — the
 	// renames log_output_format in spec/behavioral_fixtures.yaml lists.
 	for raw, contract := range map[string]string{
@@ -263,6 +262,17 @@ func opCaptureLog(s step, variables map[string]any) {
 	variables[s.Into] = record
 }
 
+// opCountLogs counts the captured records whose message is the step's event.
+func opCountLogs(s step, variables map[string]any) {
+	variables[s.Into] = map[string]any{"count": len(matchingRecords(s.Event))}
+}
+
+// opGetHealth reads the health counters the contract cases assert on.
+func opGetHealth(s step, variables map[string]any) {
+	snapshot := telemetry.GetHealthSnapshot()
+	variables[s.Into] = map[string]any{"reserved_field_replacements": snapshot.ReservedFieldReplacements}
+}
+
 // opGetRuntimeStatus reads the current runtime status.
 func opGetRuntimeStatus(s step, variables map[string]any) {
 	status := telemetry.GetRuntimeStatus()
@@ -277,20 +287,24 @@ func opGetRuntimeStatus(s step, variables map[string]any) {
 	}
 }
 
-// extractJSONRecord finds the last JSON object line in output.
-func extractJSONRecord(output string) map[string]any {
-	lines := strings.Split(output, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
+// matchingRecords returns the captured JSON records in order, keeping only
+// those whose message is event when event is set.
+func matchingRecords(event string) []map[string]any {
+	var records []map[string]any
+	for _, line := range strings.Split(capturedOutput, "\n") {
+		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "{") {
 			continue
 		}
 		var record map[string]any
-		if err := json.Unmarshal([]byte(line), &record); err == nil {
-			return record
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			continue
+		}
+		if event == "" || record["message"] == event {
+			records = append(records, record)
 		}
 	}
-	return map[string]any{}
+	return records
 }
 
 // dispatch maps operation names to handler functions.
@@ -306,6 +320,8 @@ var dispatch = map[string]func(step, map[string]any){
 	"register_secret_pattern": opRegisterSecretPattern,
 	"emit_log":                opEmitLog,
 	"capture_log":             opCaptureLog,
+	"count_logs":              opCountLogs,
+	"get_health":              opGetHealth,
 	"get_runtime_status":      opGetRuntimeStatus,
 }
 

@@ -100,6 +100,7 @@ public sealed class PrometheusEndpointTests : PromTestBase
         Assert.Contains("provide_telemetry_emitted_total{signal=\"metrics\"} 3\n", body);
         Assert.Contains("provide_telemetry_setup_error 0\n", body);
         Assert.Contains("\nprovide_telemetry_receipt_failures_total 0\n", body);
+        Assert.Contains("\nprovide_telemetry_reserved_field_replacements_total 0\n", body);
 
         var head = PrometheusMetrics.MetricsHandler("HEAD");
         Assert.Equal((200, 0), (head.Status, head.Body.Length));
@@ -182,6 +183,7 @@ public sealed class PrometheusEndpointTests : PromTestBase
             string property;
             if (key == "setup_error") property = "SetupError";
             else if (key == "receipt_failures") property = "ReceiptFailures";
+            else if (key == "reserved_field_replacements") property = "ReservedFieldReplacements";
             else
             {
                 var signal = key[(key.LastIndexOf('_') + 1)..];
@@ -212,9 +214,9 @@ public sealed class PrometheusEndpointTests : PromTestBase
             var want = (sample.Str("metric")!, labels, double.Parse(sample.Str("value")!, CultureInfo.InvariantCulture));
             Assert.True(actual.Contains(want), $"{id}: missing {want}");
         }
-        Assert.Equal(26, actual.Count);
+        Assert.Equal(27, actual.Count);
         Assert.Equal(
-            ["counter", "counter", "counter", "counter", "gauge", "counter", "gauge", "counter", "gauge", "counter"],
+            ["counter", "counter", "counter", "counter", "gauge", "counter", "gauge", "counter", "gauge", "counter", "counter"],
             families.Select(f => f.Kind));
     }
 

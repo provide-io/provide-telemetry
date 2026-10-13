@@ -180,6 +180,7 @@ const PER_SIGNAL: readonly [(s: Signal) => keyof HealthSnapshot, string, Family[
 
 const SETUP_ERROR = 'provide_telemetry_setup_error';
 const RECEIPT_FAILURES = 'provide_telemetry_receipt_failures_total';
+const RESERVED_FIELD_REPLACEMENTS = 'provide_telemetry_reserved_field_replacements_total';
 
 /**
  * The collector's family names. Instruments of these names on the provider
@@ -190,6 +191,7 @@ export const HEALTH_METRIC_NAMES: ReadonlySet<string> = new Set([
   ...PER_SIGNAL.map(([, metric]) => metric),
   SETUP_ERROR,
   RECEIPT_FAILURES,
+  RESERVED_FIELD_REPLACEMENTS,
 ]);
 
 const CIRCUIT_STATES: ReadonlyMap<string, number> = new Map([
@@ -216,7 +218,9 @@ export function healthFamilies(snapshot: HealthSnapshot): Family[] {
   setupError.samples.push(['', {}, snapshot.setupError ? 1 : 0]);
   const receipts = family(RECEIPT_FAILURES, 'counter');
   receipts.samples.push(['', {}, snapshot.receiptFailures]);
-  return [...families, setupError, receipts];
+  const replacements = family(RESERVED_FIELD_REPLACEMENTS, 'counter');
+  replacements.samples.push(['', {}, snapshot.reservedFieldReplacements]);
+  return [...families, setupError, receipts, replacements];
 }
 
 /** One rendered collection. */

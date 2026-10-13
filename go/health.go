@@ -9,8 +9,8 @@ import (
 )
 
 // HealthSnapshot holds point-in-time counters for all telemetry signals.
-// The canonical layout has 26 fields: 8 per signal (logs, traces, metrics)
-// plus 2 global fields (SetupError, ReceiptFailures).
+// The canonical layout has 27 fields: 8 per signal (logs, traces, metrics)
+// plus 3 global fields (SetupError, ReceiptFailures, ReservedFieldReplacements).
 //
 // *AsyncBlockingRisk is always zero in Go, and structurally so.
 //
@@ -65,7 +65,7 @@ type HealthSnapshot struct {
 	MetricsCircuitState      string
 	MetricsCircuitOpenCount  int64
 
-	// Global (2 fields)
+	// Global (3 fields)
 	SetupError string
 	// ReceiptFailures counts governance receipts a configured ReceiptSink
 	// refused or panicked on. Without it, a sink that silently drops every
@@ -73,6 +73,10 @@ type HealthSnapshot struct {
 	// emit path cannot say so by logging, because logging is what produces
 	// receipts in the first place.
 	ReceiptFailures int64
+	// ReservedFieldReplacements counts reserved root fields whose caller or
+	// bound value differed from the value the library stamped, one per field
+	// per record (reserved_root_fields.replacement_reporting in the spec).
+	ReservedFieldReplacements int64
 }
 
 // _signalHealthCounters holds lock-free per-signal counters.
@@ -109,6 +113,7 @@ var (
 	_healthMetrics    _signalHealthCounters
 	_setupErrorHealth atomic.Value // always stores string
 	_receiptFailures  atomic.Int64
+	_reservedReplaced atomic.Int64
 )
 
 // _healthFor returns the counter set for the given signal.
@@ -159,8 +164,9 @@ func GetHealthSnapshot() HealthSnapshot {
 		MetricsCircuitState:      metricsCS.State,
 		MetricsCircuitOpenCount:  int64(metricsCS.OpenCount),
 
-		SetupError:      setupErr,
-		ReceiptFailures: _receiptFailures.Load(),
+		SetupError:                setupErr,
+		ReceiptFailures:           _receiptFailures.Load(),
+		ReservedFieldReplacements: _reservedReplaced.Load(),
 	}
 }
 
@@ -205,4 +211,5 @@ func _resetHealth() {
 	_healthMetrics.reset()
 	_setupErrorHealth.Store("")
 	_receiptFailures.Store(0)
+	_reservedReplaced.Store(0)
 }

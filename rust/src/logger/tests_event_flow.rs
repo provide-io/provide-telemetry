@@ -60,7 +60,7 @@ fn inject_runtime_identity_fields_is_a_noop_without_runtime_or_valid_env() {
     std::env::set_var("PROVIDE_LOG_PII_MAX_DEPTH", "-1");
 
     let mut context = BTreeMap::new();
-    inject_runtime_identity_fields(&mut context);
+    let _ = inject_runtime_identity_fields(&mut context);
 
     assert!(context.is_empty());
     std::env::remove_var("PROVIDE_LOG_PII_MAX_DEPTH");

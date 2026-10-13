@@ -3,8 +3,8 @@
 
 /**
  * Internal self-observability counters — mirrors Python provide.telemetry.health.
- * Canonical 26-field layout: 8 per signal (logs, traces, metrics) + 2 global
- * (setupError, receiptFailures).
+ * Canonical 27-field layout: 8 per signal (logs, traces, metrics) + 3 global
+ * (setupError, receiptFailures, reservedFieldReplacements).
  */
 
 export interface HealthSnapshot {
@@ -45,6 +45,12 @@ export interface HealthSnapshot {
    * deliberately cannot log, because logging is what produces receipts.
    */
   receiptFailures: number;
+  /**
+   * Reserved root fields whose caller or bound value differed from the value
+   * the SDK stamped, one per field per record
+   * (reserved_root_fields.replacement_reporting in spec/telemetry-api.yaml).
+   */
+  reservedFieldReplacements: number;
 }
 
 /** Numeric fields that live in the mutable _state object (not derived circuit fields). */
@@ -67,7 +73,8 @@ type NumericHealthField =
   | 'asyncBlockingRiskLogs'
   | 'asyncBlockingRiskTraces'
   | 'asyncBlockingRiskMetrics'
-  | 'receiptFailures';
+  | 'receiptFailures'
+  | 'reservedFieldReplacements';
 
 let _setupError: string | null = null;
 
@@ -91,6 +98,7 @@ const _state = {
   asyncBlockingRiskTraces: 0,
   asyncBlockingRiskMetrics: 0,
   receiptFailures: 0,
+  reservedFieldReplacements: 0,
 };
 
 // Lazy reference to avoid circular dependency at module load time.
@@ -141,6 +149,7 @@ export function getHealthSnapshot(): HealthSnapshot {
     circuitOpenCountMetrics: csMetrics.openCount,
     setupError: _setupError,
     receiptFailures: _state.receiptFailures,
+    reservedFieldReplacements: _state.reservedFieldReplacements,
   };
 }
 
@@ -224,5 +233,6 @@ export function _resetHealthForTests(): void {
   _state.asyncBlockingRiskTraces = 0;
   _state.asyncBlockingRiskMetrics = 0;
   _state.receiptFailures = 0;
+  _state.reservedFieldReplacements = 0;
   _setupError = null;
 }

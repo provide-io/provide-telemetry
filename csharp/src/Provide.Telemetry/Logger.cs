@@ -143,10 +143,16 @@ public sealed class Logger
             Sanitize = hardened => Materialize(
                 Pii.SanitizeHardened(hardened, cfg.Logging.Sanitize),
                 schemaError, callerFilename, callerLine),
-            Build = payload => CanonicalLogRecord.Create(
-                DateTimeOffset.UtcNow, level, rendered, _name, cfg,
-                Context.GetTraceContext().TraceId, Context.GetTraceContext().SpanId,
-                payload, errorFingerprint),
+            Build = payload =>
+            {
+                var (traceId, spanId) = Context.GetTraceContext();
+                // Admitted by now, so a replacement is worth reporting, and a
+                // warning logged here reaches the output before this record.
+                ReservedFields.Report(ReservedFields.Replaced(payload, cfg, traceId, spanId));
+                return CanonicalLogRecord.Create(
+                    DateTimeOffset.UtcNow, level, rendered, _name, cfg,
+                    traceId, spanId, payload, errorFingerprint);
+            },
             EmitLocal = record => Console.Error.WriteLine(Render(record, cfg)),
             Backend = backend is null ? null : backend.EmitLog,
         });

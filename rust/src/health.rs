@@ -38,6 +38,10 @@ pub struct HealthSnapshot {
     /// Without this, a sink that silently drops every receipt is
     /// indistinguishable from one that delivers them.
     pub receipt_failures: u64,
+    /// Reserved root fields whose caller or bound value differed from the value
+    /// the SDK stamped, one per field per record
+    /// (`reserved_root_fields.replacement_reporting` in the spec).
+    pub reserved_field_replacements: u64,
 }
 
 static HEALTH: OnceLock<Mutex<HealthSnapshot>> = OnceLock::new();
@@ -137,6 +141,11 @@ pub fn increment_async_blocking_risk(signal: Signal) {
 /// receipt, fail again, and never stop.
 pub fn increment_receipt_failures() {
     crate::_lock::lock(health()).receipt_failures += 1;
+}
+
+/// Count reserved root fields a stamped value replaced.
+pub(crate) fn increment_reserved_field_replacements(count: u64) {
+    crate::_lock::lock(health()).reserved_field_replacements += count;
 }
 
 /// Record why setup could not complete part of its work, or clear it with `None`.

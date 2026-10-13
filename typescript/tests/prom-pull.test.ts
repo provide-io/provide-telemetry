@@ -230,7 +230,7 @@ describe('serving', () => {
   it('HEALTH_METRIC_NAMES lists every health family', () => {
     const names = healthFamilies(getHealthSnapshot()).map((f) => f.name);
     expect([...HEALTH_METRIC_NAMES].sort()).toEqual([...names].sort());
-    expect(HEALTH_METRIC_NAMES.size).toBe(10);
+    expect(HEALTH_METRIC_NAMES.size).toBe(11);
   });
 });
 
@@ -279,8 +279,11 @@ describe('health_metrics fixtures', () => {
     expect(must(families.get('provide_telemetry_receipt_failures_total')).samples).toEqual([
       ['', {}, 0],
     ]);
+    expect(
+      must(families.get('provide_telemetry_reserved_field_replacements_total')).samples,
+    ).toEqual([['', {}, 0]]);
     expect(must(families.get('provide_telemetry_emitted_total')).help).toBe('');
-    expect(families.size).toBe(10);
+    expect(families.size).toBe(11);
   });
 });
 

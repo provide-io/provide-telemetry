@@ -114,6 +114,7 @@ describe('prom-pull, freshly loaded', () => {
       provide_telemetry_circuit_open_total: 'counter',
       provide_telemetry_setup_error: 'gauge',
       provide_telemetry_receipt_failures_total: 'counter',
+      provide_telemetry_reserved_field_replacements_total: 'counter',
     });
     expect([...pull.HEALTH_METRIC_NAMES]).toEqual(Object.keys(kinds));
     const odd = pull.healthFamilies(snapshotFrom({ ...full, circuit_state_logs: 'weird' }));

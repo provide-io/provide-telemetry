@@ -32,6 +32,7 @@ var _healthInstruments = []_healthInstrument{ //nolint:gochecknoglobals
 	{name: _healthCircuitOpens, perSignal: func(s _signalHealth) float64 { return float64(s.circuitOpens) }},
 	{name: _healthSetupError, gauge: true, global: _setupErrorValue},
 	{name: _healthReceipts, global: func(s telemetry.HealthSnapshot) float64 { return float64(s.ReceiptFailures) }},
+	{name: _healthReplacements, global: func(s telemetry.HealthSnapshot) float64 { return float64(s.ReservedFieldReplacements) }},
 }
 
 // _registerHealth is a seam so tests can make registration fail.

@@ -32,6 +32,7 @@ fn every_health_series_reaches_the_reader_with_its_value_and_type() {
     crate::health::increment_dropped(Signal::Traces, 4);
     crate::health::record_export_latency(Signal::Logs, 12.5);
     crate::health::increment_receipt_failures();
+    crate::health::increment_reserved_field_replacements(3);
     crate::health::set_setup_error(Some("boom".to_string()));
     // Health observations are neither consent-gated nor counted as emitted.
     crate::consent::set_consent_level(crate::consent::ConsentLevel::None);
@@ -44,7 +45,7 @@ fn every_health_series_reaches_the_reader_with_its_value_and_type() {
     let view = reader.view();
     let metrics = &view.scopes[0].metrics;
     assert_eq!(view.scopes[0].name, METER_NAME);
-    assert_eq!(metrics.len(), 10);
+    assert_eq!(metrics.len(), 11);
     let series: usize = metrics
         .iter()
         .map(|m| match &m.points {
@@ -52,7 +53,7 @@ fn every_health_series_reaches_the_reader_with_its_value_and_type() {
             Points::Histogram(_) => panic!("no health family is a histogram"),
         })
         .sum();
-    assert_eq!(series, 26);
+    assert_eq!(series, 27);
     for m in metrics {
         assert_eq!(
             (m.unit.as_str(), m.description.as_str()),
@@ -89,6 +90,17 @@ fn every_health_series_reaches_the_reader_with_its_value_and_type() {
         Points::Sum {
             monotonic: true,
             points: vec![(Vec::new(), 1.0)],
+        }
+    );
+    assert_eq!(
+        metric(
+            metrics,
+            "provide_telemetry_reserved_field_replacements_total"
+        )
+        .points,
+        Points::Sum {
+            monotonic: true,
+            points: vec![(Vec::new(), 3.0)],
         }
     );
     // Values are re-read at each collection.

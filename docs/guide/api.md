@@ -284,6 +284,12 @@ of the same name; one the SDK does not stamp on a record (no live span, an
 empty config value) leaves yours standing. To name a remote service, use
 `peer.service`. See `reserved_root_fields` in `spec/telemetry-api.yaml`.
 
+A replacement that loses a different value is reported: it adds to the
+`reserved_field_replacements` health counter, and the first replacement of each
+field in the process logs one WARN record, `logger.reserved_field.replaced`,
+naming the field under `field` (never your value), just before the record it
+affected. A value equal to the stamped one is not a replacement.
+
 ### `unbind_context(*keys: str) -> None`
 
 Remove keys from the structlog contextvars context.
@@ -648,7 +654,7 @@ Remove all cardinality limits and reset seen-value tracking.
 
 NamedTuple with per-signal counters:
 
-Canonical 26-field layout (8 per signal × 3 signals + 2 global), shared across
+Canonical 27-field layout (8 per signal × 3 signals + 3 global), shared across
 Python, TypeScript, Go, Rust, and C#:
 
 - `emitted_{logs,traces,metrics}` — events accepted and forwarded; for logs,
@@ -670,6 +676,9 @@ Python, TypeScript, Go, Rust, and C#:
 - `receipt_failures` — redaction receipts the sink refused or faulted on (in
   Python, a sink's `emit` returning anything other than exactly `True` counts
   as a refusal)
+- `reserved_field_replacements` — reserved root fields (`service`, `env`,
+  `version`, `trace_id`, `span_id`) whose caller or bound value differed from
+  the value the SDK stamped, one per field per record
 
 C# populates every field except `async_blocking_risk_{logs,traces,metrics}`,
 which is always zero because C# ships no event-loop blocking guard — see the

@@ -14,6 +14,7 @@ __all__ = [
     "increment_dropped",
     "increment_emitted",
     "increment_receipt_failures",
+    "increment_reserved_field_replacements",
     "increment_retries",
     "record_export_failure",
     "record_export_latency",
@@ -60,6 +61,7 @@ class HealthSnapshot(NamedTuple):
     circuit_open_count_metrics: int
     setup_error: str | None
     receipt_failures: int
+    reserved_field_replacements: int
 
 
 _lock = threading.Lock()
@@ -71,6 +73,7 @@ _export_failures: dict[Signal, int] = {"logs": 0, "traces": 0, "metrics": 0}
 _export_latency_ms: dict[Signal, float] = {"logs": 0.0, "traces": 0.0, "metrics": 0.0}
 _setup_error: str | None = None
 _receipt_failures = 0
+_reserved_field_replacements = 0
 
 
 _VALID_SIGNALS_HEALTH = frozenset({"logs", "traces", "metrics"})
@@ -144,6 +147,17 @@ def increment_receipt_failures() -> None:
         _receipt_failures += 1
 
 
+def increment_reserved_field_replacements(count: int = 1) -> None:
+    """Count reserved root fields whose caller value a stamped value replaced.
+
+    One per field per record; see reserved_root_fields.replacement_reporting
+    in spec/telemetry-api.yaml.
+    """
+    global _reserved_field_replacements
+    with _lock:
+        _reserved_field_replacements += count
+
+
 def set_setup_error(error: str | None) -> None:
     global _setup_error
     with _lock:
@@ -193,13 +207,15 @@ def get_health_snapshot() -> HealthSnapshot:
             circuit_open_count_metrics=cs_metrics[1],
             setup_error=_setup_error,
             receipt_failures=_receipt_failures,
+            reserved_field_replacements=_reserved_field_replacements,
         )
 
 
 def reset_health_for_tests() -> None:
-    global _setup_error, _receipt_failures
+    global _setup_error, _receipt_failures, _reserved_field_replacements
     with _lock:
         _receipt_failures = 0
+        _reserved_field_replacements = 0
         for signal in ("logs", "traces", "metrics"):
             _emitted[signal] = 0
             _dropped[signal] = 0

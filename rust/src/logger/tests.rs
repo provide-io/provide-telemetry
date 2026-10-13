@@ -67,3 +67,5 @@ mod tests_config;
 mod tests_event_flow;
 #[path = "tests_logger_api.rs"]
 mod tests_logger_api;
+#[path = "tests_reserved.rs"]
+mod tests_reserved;

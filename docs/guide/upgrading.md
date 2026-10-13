@@ -27,6 +27,13 @@ What to check:
   `trace.id` and `span.id` are reserved along with the wire names.
 - **C#:** the `service_name` and `environment` attributes are reserved too.
 
+In releases after 0.11.0, a replacement that loses a different value is not
+silent: it adds to the `reserved_field_replacements` health counter, and the
+first one for each field logs a WARN record, `logger.reserved_field.replaced`,
+naming the field. Search for that event, or watch
+`provide_telemetry_reserved_field_replacements_total`, to find the fields to
+rename.
+
 A field is replaced only when the SDK has a value of its own: an empty config
 value, or no live span, leaves the caller's field standing. Nested fields are
 never touched. In Python, `console` and `pretty` output does not stamp

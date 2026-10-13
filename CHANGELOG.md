@@ -10,6 +10,27 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+### Added
+
+- **A stamped field that replaces a different caller value is reported, in all
+  five languages.** Since 0.11 the SDK's `service`, `env`, `version`,
+  `trace_id` and `span_id` replace a caller or bound field of the same name,
+  and the caller's value was lost without a trace. Now each such replacement
+  adds one to the new health field `reserved_field_replacements`, exported as
+  `provide_telemetry_reserved_field_replacements_total`. The first replacement
+  of each field in a process also logs one WARN record,
+  `logger.reserved_field.replaced`, naming the field under `field`, never the
+  value. The warning comes just before the record whose field was replaced.
+  - A caller value equal to the stamped one is not a replacement, so code that
+    logs the same `version` the SDK stamps sees nothing new.
+  - A record refused by consent, sampling or backpressure is neither counted
+    nor warned about.
+  - The health snapshot grows from 26 fields to 27, and the Prometheus and OTLP
+    health output from 10 families to 11.
+  - The rule is `reserved_root_fields.replacement_reporting` in
+    `spec/telemetry-api.yaml`, and the contract case
+    `reserved_root_fields_replacement_reported` checks it in all five SDKs.
+
 ## [0.11.0] — 2026-10-13
 
 ### Breaking

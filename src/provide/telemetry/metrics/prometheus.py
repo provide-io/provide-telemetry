@@ -68,10 +68,13 @@ _PER_SIGNAL = (
 _SIGNALS = ("logs", "traces", "metrics")
 _SETUP_ERROR = "provide_telemetry_setup_error"
 _RECEIPT_FAILURES = "provide_telemetry_receipt_failures_total"
+_RESERVED_FIELD_REPLACEMENTS = "provide_telemetry_reserved_field_replacements_total"
 # The collector's names. Instruments of these names on the provider (from
 # PROVIDE_METRICS_HEALTH_OTLP) are left out of a scrape, which serves the
 # collector's copy instead, so each family appears once.
-HEALTH_METRIC_NAMES = frozenset({metric for _, metric, _ in _PER_SIGNAL} | {_SETUP_ERROR, _RECEIPT_FAILURES})
+HEALTH_METRIC_NAMES = frozenset(
+    {metric for _, metric, _ in _PER_SIGNAL} | {_SETUP_ERROR, _RECEIPT_FAILURES, _RESERVED_FIELD_REPLACEMENTS}
+)
 _CIRCUIT_STATES = {"closed": 0.0, "half-open": 1.0, "open": 2.0}
 
 
@@ -140,7 +143,9 @@ def health_families(snapshot: Any) -> list[render.Family]:
     setup_error.samples.append(("", {}, 1.0 if snapshot.setup_error else 0.0))
     receipts = render.Family(_RECEIPT_FAILURES, "counter")
     receipts.samples.append(("", {}, float(snapshot.receipt_failures)))
-    return [*families, setup_error, receipts]
+    replacements = render.Family(_RESERVED_FIELD_REPLACEMENTS, "counter")
+    replacements.samples.append(("", {}, float(snapshot.reserved_field_replacements)))
+    return [*families, setup_error, receipts, replacements]
 
 
 def _current() -> tuple[Any, render.RenderOptions] | str:

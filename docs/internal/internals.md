@@ -356,7 +356,8 @@ metrics:
   rejections).
 - **Export latency**: last successful export round-trip in milliseconds.
 - **Circuit state / circuit open count**: per-signal breaker state and trips.
-- **Globals**: `setup_error` and `receipt_failures`.
+- **Globals**: `setup_error`, `receipt_failures` and
+  `reserved_field_replacements`.
 
 Call `get_health_snapshot()` for a point-in-time frozen dataclass of all
 counters.

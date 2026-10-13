@@ -1130,12 +1130,22 @@ reserved_root_fields:
     standing, since nothing better is known: trace_id and span_id when no span
     is live, and an identity field whose config value is empty. Only root keys
     are reserved; a nested field of the same name is the caller's.
+  replacement_reporting: >
+    A replacement that loses data is reported. When a caller or bound-context
+    value under a reserved field differs from the stamped value, the record
+    adds one to the health field reserved_field_replacements for that field,
+    whichever of its spellings the caller used. The first time each field is
+    replaced in a process, the SDK logs one WARN record with event
+    logger.reserved_field.replaced and the field's wire name under `field`,
+    never the caller's value; it is emitted before the record that triggered
+    it. A caller value equal to the stamped one replaces nothing and is
+    neither counted nor reported.
 
 health_snapshot:
   description: >
     Typed, canonical health surface. Every SDK serializes exactly these
     fields under exactly these names: 8 per-signal fields across 3 signals
-    plus 2 global fields.
+    plus 3 global fields.
   fields:
     emitted_logs:
       type: uint64
@@ -1215,6 +1225,9 @@ health_snapshot:
     receipt_failures:
       type: uint64
       description: "Governance receipts a configured ReceiptSink refused or threw on. Without this, a sink that silently drops every receipt is indistinguishable from one that delivers them."
+    reserved_field_replacements:
+      type: uint64
+      description: "Reserved root fields whose caller or bound-context value differed from the value the SDK stamped, one per field per record. See reserved_root_fields.replacement_reporting."
 
 prometheus_metrics:
   description: >
@@ -1378,6 +1391,7 @@ prometheus_metrics:
     global:
       - {field: setup_error, metric: provide_telemetry_setup_error, type: gauge, value: "1 when setup_error is non-empty, else 0"}
       - {field: receipt_failures, metric: provide_telemetry_receipt_failures_total, type: counter}
+      - {field: reserved_field_replacements, metric: provide_telemetry_reserved_field_replacements_total, type: counter}
 
 required_behaviors:
   - id: graceful_degradation
@@ -1484,9 +1498,9 @@ behavioral_parity:
 
   health_snapshot_canonical:
     description: >
-      Health snapshots return 26 canonical fields across all languages.
+      Health snapshots return 27 canonical fields across all languages.
     rules:
-      - 8 per-signal fields x 3 signals (logs, traces, metrics) + 2 global (setup_error, receipt_failures)
+      - 8 per-signal fields x 3 signals (logs, traces, metrics) + 3 global (setup_error, receipt_failures, reserved_field_replacements)
       - circuit_state values are closed, open, half-open
       - export_latency_ms is latest per export, not cumulative
 

@@ -57,6 +57,7 @@ pub fn reset_telemetry_state() {
     #[cfg(feature = "otel")]
     crate::otel::_reset_abandoned_workers_for_tests();
     _reset_health_for_tests();
+    crate::logger::reset_reserved_warnings_for_tests();
     _reset_backpressure_for_tests();
     _reset_sampling_for_tests();
     _reset_resilience_for_tests();

@@ -8,16 +8,18 @@
  * the real public API, and emits JSON output for cross-language comparison.
  */
 
-import process from 'node:process';
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import process from "node:process";
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const tsRequire = createRequire(resolve(__dirname, '..', '..', 'typescript', 'node_modules'));
+const tsRequire = createRequire(
+  resolve(__dirname, "..", "..", "typescript", "node_modules"),
+);
 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-const YAML: { parse: (s: string) => unknown } = tsRequire('yaml');
+const YAML: { parse: (s: string) => unknown } = tsRequire("yaml");
 
 import {
   setupTelemetry,
@@ -33,7 +35,8 @@ import {
   getTraceContext,
   getRuntimeStatus,
   getRuntimeConfig,
-} from '../../typescript/src/index.js';
+  getHealthSnapshot,
+} from "../../typescript/src/index.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +50,7 @@ interface Step {
   overrides?: Record<string, unknown>;
   name?: string;
   pattern?: string;
+  event?: string;
 }
 
 interface ContractCase {
@@ -66,23 +70,26 @@ const origLog = console.log;
 const origWarn = console.warn;
 const origError = console.error;
 
-function installCapture(): void {
-  capturedRecords = [];
-  // The pino logger emits JSON via console.log (level 30 maps to "log").
-  console.log = (...args: unknown[]) => {
-    for (const arg of args) {
-      if (typeof arg === 'string') {
-        try {
-          capturedRecords.push(JSON.parse(arg) as Record<string, unknown>);
-        } catch {
-          // not JSON — ignore
-        }
+function capture(...args: unknown[]): void {
+  for (const arg of args) {
+    if (typeof arg === "string") {
+      try {
+        capturedRecords.push(JSON.parse(arg) as Record<string, unknown>);
+      } catch {
+        // not JSON — library noise, ignored
       }
     }
-  };
-  // Suppress warning/error noise from the library.
-  console.warn = () => {};
-  console.error = () => {};
+  }
+}
+
+function installCapture(): void {
+  capturedRecords = [];
+  // The pino logger writes each JSON record through the console method of its
+  // level: console.log for INFO, console.warn for WARN, console.error for
+  // ERROR. All three are captured; anything that is not a JSON record is not.
+  console.log = capture;
+  console.warn = capture;
+  console.error = capture;
 }
 
 function restoreConsole(): void {
@@ -96,7 +103,7 @@ function restoreConsole(): void {
 function execSetup(step: Step): void {
   const overrides: Record<string, unknown> = {
     consoleOutput: true,
-    logFormat: 'json',
+    logFormat: "json",
     ...(step.overrides ?? {}),
   };
   setupTelemetry(overrides);
@@ -105,7 +112,7 @@ function execSetup(step: Step): void {
 function execSetupInvalid(step: Step): { raised: boolean; error: string } {
   try {
     setupTelemetry(step.overrides ?? {});
-    return { raised: false, error: '' };
+    return { raised: false, error: "" };
   } catch (err: unknown) {
     return {
       raised: true,
@@ -124,8 +131,8 @@ async function execFlush(): Promise<{ ok: boolean }> {
 
 function execBindPropagation(step: Step): void {
   const headers: Record<string, string> = {};
-  if (step.traceparent) headers['traceparent'] = step.traceparent;
-  if (step.baggage) headers['baggage'] = step.baggage;
+  if (step.traceparent) headers["traceparent"] = step.traceparent;
+  if (step.baggage) headers["baggage"] = step.baggage;
   const ctx = extractW3cContext(headers);
   bindPropagationContext(ctx);
 }
@@ -142,28 +149,36 @@ function execBindContext(step: Step): void {
 
 function execRegisterSecretPattern(step: Step): void {
   if (!step.name || !step.pattern) {
-    throw new Error('register_secret_pattern requires name and pattern');
+    throw new Error("register_secret_pattern requires name and pattern");
   }
   registerSecretPattern(step.name, new RegExp(step.pattern));
 }
 
 function execEmitLog(step: Step): void {
-  const logger = getLogger('contract');
-  logger.info(step.fields ?? {}, step.message ?? '');
+  // Only this emit's output, as in the other probes: a warning logged on its
+  // behalf comes with it.
+  capturedRecords = [];
+  const logger = getLogger("contract");
+  logger.info(step.fields ?? {}, step.message ?? "");
 }
 
-function execCaptureLog(): Record<string, unknown> {
-  if (capturedRecords.length === 0) {
-    return {};
-  }
-  return capturedRecords[capturedRecords.length - 1];
+function matchingRecords(step: Step): Record<string, unknown>[] {
+  return capturedRecords.filter(
+    (r) => step.event === undefined || r["message"] === step.event,
+  );
+}
+
+/** The last captured record, or the last one whose message is the step's event. */
+function execCaptureLog(step: Step): Record<string, unknown> {
+  const matching = matchingRecords(step);
+  return matching.length === 0 ? {} : matching[matching.length - 1];
 }
 
 function execGetTraceContext(): Record<string, unknown> {
   const ctx = getTraceContext();
   return {
-    trace_id: ctx.trace_id ?? '',
-    span_id: ctx.span_id ?? '',
+    trace_id: ctx.trace_id ?? "",
+    span_id: ctx.span_id ?? "",
   };
 }
 
@@ -179,13 +194,13 @@ function execGetRuntimeStatus(): Record<string, unknown> {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const caseId = process.env['PROVIDE_CONTRACT_CASE'];
+  const caseId = process.env["PROVIDE_CONTRACT_CASE"];
   if (!caseId) {
-    throw new Error('PROVIDE_CONTRACT_CASE env var is required');
+    throw new Error("PROVIDE_CONTRACT_CASE env var is required");
   }
 
-  const fixturesPath = resolve(__dirname, '..', 'contract_fixtures.yaml');
-  const raw = readFileSync(fixturesPath, 'utf-8');
+  const fixturesPath = resolve(__dirname, "..", "contract_fixtures.yaml");
+  const raw = readFileSync(fixturesPath, "utf-8");
   const fixtures = YAML.parse(raw) as FixtureFile;
   const testCase = fixtures.contract_cases[caseId];
   if (!testCase) {
@@ -200,48 +215,59 @@ async function main(): Promise<void> {
   try {
     for (const step of testCase.steps) {
       switch (step.op) {
-        case 'setup':
+        case "setup":
           execSetup(step);
           break;
-        case 'setup_invalid': {
+        case "setup_invalid": {
           const result = execSetupInvalid(step);
           if (step.into) variables[step.into] = result;
           break;
         }
-        case 'shutdown':
+        case "shutdown":
           await execShutdown();
           break;
-        case 'flush': {
+        case "flush": {
           const flushed = await execFlush();
           if (step.into) variables[step.into] = flushed;
           break;
         }
-        case 'bind_propagation':
+        case "bind_propagation":
           execBindPropagation(step);
           break;
-        case 'clear_propagation':
+        case "clear_propagation":
           execClearPropagation();
           break;
-        case 'bind_context':
+        case "bind_context":
           execBindContext(step);
           break;
-        case 'register_secret_pattern':
+        case "register_secret_pattern":
           execRegisterSecretPattern(step);
           break;
-        case 'emit_log':
+        case "emit_log":
           execEmitLog(step);
           break;
-        case 'capture_log': {
-          const record = execCaptureLog();
+        case "capture_log": {
+          const record = execCaptureLog(step);
           if (step.into) variables[step.into] = record;
           break;
         }
-        case 'get_trace_context': {
+        case "count_logs":
+          if (step.into)
+            variables[step.into] = { count: matchingRecords(step).length };
+          break;
+        case "get_health":
+          if (step.into)
+            variables[step.into] = {
+              reserved_field_replacements:
+                getHealthSnapshot().reservedFieldReplacements,
+            };
+          break;
+        case "get_trace_context": {
           const ctx = execGetTraceContext();
           if (step.into) variables[step.into] = ctx;
           break;
         }
-        case 'get_runtime_status': {
+        case "get_runtime_status": {
           const status = execGetRuntimeStatus();
           if (step.into) variables[step.into] = status;
           break;

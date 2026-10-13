@@ -21,6 +21,7 @@ mod emit;
 pub mod levels;
 mod pretty;
 mod processors;
+mod reserved;
 pub mod sink;
 mod stages;
 pub(crate) mod windows_console;
@@ -77,6 +78,12 @@ pub fn configure_logging(config: crate::config::LoggingConfig) {
 /// Clear the programmatic logging override (test helper).
 pub fn reset_logging_config_for_tests() {
     *crate::_lock::lock(&LOGGING_CONFIG_OVERRIDE) = None;
+    reserved::reset_reserved_warnings();
+}
+
+/// Forget which reserved fields have been warned about (test helper).
+pub(crate) fn reset_reserved_warnings_for_tests() {
+    reserved::reset_reserved_warnings();
 }
 
 /// Read the active logging config.
@@ -138,24 +145,33 @@ fn apply_lazy_logger_policies_from_env() {
 /// be filed under the wrong service by every backend. An empty config value
 /// is not stamped, and then the caller's field stands, since nothing better
 /// is known — the same rule `trace_id` and `span_id` follow.
-fn inject_identity_fields(context: &mut BTreeMap<String, Value>, cfg: TelemetryConfig) {
+///
+/// Returns the fields whose different caller value it replaced.
+fn inject_identity_fields(
+    context: &mut BTreeMap<String, Value>,
+    cfg: TelemetryConfig,
+) -> Vec<&'static str> {
+    let mut replaced = Vec::new();
     for (key, value) in [
         ("service", cfg.service_name),
         ("env", cfg.environment),
         ("version", cfg.version),
     ] {
         if !value.is_empty() {
+            if reserved::replaces(context, key, &value) {
+                replaced.push(key);
+            }
             context.insert(key.to_string(), Value::String(value));
         }
     }
+    replaced
 }
 
-fn inject_runtime_identity_fields(context: &mut BTreeMap<String, Value>) {
-    let cfg = match runtime_identity_config() {
-        Some(cfg) => cfg,
-        None => return,
-    };
-    inject_identity_fields(context, cfg);
+fn inject_runtime_identity_fields(context: &mut BTreeMap<String, Value>) -> Vec<&'static str> {
+    match runtime_identity_config() {
+        Some(cfg) => inject_identity_fields(context, cfg),
+        None => Vec::new(),
+    }
 }
 
 /// Shared emit path: run processors, emit, buffer.
@@ -332,15 +348,20 @@ fn build_event(
     let trace = get_trace_context();
     let mut context = get_context();
     context.extend(extra.clone());
-    inject_runtime_identity_fields(&mut context);
+    let mut replaced = inject_runtime_identity_fields(&mut context);
     let trace_id = trace.get("trace_id").and_then(Clone::clone);
     let span_id = trace.get("span_id").and_then(Clone::clone);
-    if trace_id.is_some() {
-        context.remove("trace_id");
+    for (key, live) in [("trace_id", &trace_id), ("span_id", &span_id)] {
+        if let Some(live) = live {
+            if reserved::replaces(&context, key, live) {
+                replaced.push(key);
+            }
+            context.remove(key);
+        }
     }
-    if span_id.is_some() {
-        context.remove("span_id");
-    }
+    // Admission has already passed, so the replacement is worth reporting,
+    // and a warning logged here reaches the output before this record.
+    reserved::report(&replaced);
     LogEvent {
         level: level.to_string(),
         target: target.to_string(),
