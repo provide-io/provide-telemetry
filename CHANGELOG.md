@@ -10,6 +10,8 @@ NuGet `Provide.Telemetry` — share a version number.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-10-13
+
 ### Breaking
 
 **The fields the SDK stamps now replace caller-supplied fields of the same
