@@ -28,8 +28,27 @@ _PASSWORD = "p4ssw0rd"  # pragma: allowlist secret
         ("http://u:p4ssw0rd@[::1/v1", "http://u:****@[::1/v1"),  # pragma: allowlist secret
         ("u:p4ssw0rd@h:bad", "u:****@h:bad"),  # pragma: allowlist secret
         ("http://u:p4ssw0rd@h:bad?q=1#f", "http://u:****@h:bad?q=1#f"),  # pragma: allowlist secret
+        ("http://:p4ssw0rd@[::1/v1", "http://:****@[::1/v1"),  # pragma: allowlist secret
+        (":p4ssw0rd@h:bad", ":****@h:bad"),  # pragma: allowlist secret
+        ("://u:p4ssw0rd@h/v1", "://u:****@h/v1"),  # pragma: allowlist secret
+        ("XUser:p4ssw0rd@h:bad", "XUser:****@h:bad"),  # pragma: allowlist secret
+        (
+            "http://u:p4ssw0rd@[::1/v1?next=http://x",  # pragma: allowlist secret
+            "http://u:****@[::1/v1?next=http://x",
+        ),
     ],
-    ids=["non-numeric-port", "port-out-of-range", "broken-ipv6", "no-scheme", "query-and-fragment"],
+    ids=[
+        "non-numeric-port",
+        "port-out-of-range",
+        "broken-ipv6",
+        "no-scheme",
+        "query-and-fragment",
+        "broken-ipv6-empty-user",
+        "no-scheme-empty-user",
+        "empty-scheme",
+        "no-scheme-upper-case-user",
+        "second-scheme-in-query",
+    ],
 )
 def test_malformed_endpoint_is_masked_without_raising(url: str, expected: str) -> None:
     masked = _mask_endpoint_url(url)
@@ -47,8 +66,9 @@ def test_malformed_endpoint_is_masked_without_raising(url: str, expected: str) -
         ("http://u:p4ssw0rd@[::1]:4318/v1", "http://u:****@[::1]:4318/v1"),  # pragma: allowlist secret
         ("http://u:p:w@h/v1", "http://u:****@h/v1"),  # pragma: allowlist secret
         ("http://u:pa@ss@h/v1", "http://u:****@h/v1"),  # pragma: allowlist secret
+        ("//u:p4ssw0rd@h/v1", "//u:****@h/v1"),  # pragma: allowlist secret
     ],
-    ids=["host-case-kept", "ipv6-brackets-kept", "colon-in-password", "at-in-password"],
+    ids=["host-case-kept", "ipv6-brackets-kept", "colon-in-password", "at-in-password", "scheme-relative"],
 )
 def test_well_formed_endpoint_masks_only_the_password(url: str, expected: str) -> None:
     assert _mask_endpoint_url(url) == expected
@@ -63,6 +83,7 @@ def test_well_formed_endpoint_masks_only_the_password(url: str, expected: str) -
         "http://h:bad/v1",
         "http://u:@h/v1",
         "u:@h:bad",
+        "?u:p4ssw0rd@h:bad",  # pragma: allowlist secret
         "not a url at all",
         "",
     ],
@@ -73,6 +94,7 @@ def test_well_formed_endpoint_masks_only_the_password(url: str, expected: str) -
         "malformed-no-userinfo",
         "empty-password",
         "empty-password-malformed",
+        "no-authority-before-query",
         "free-text",
         "empty",
     ],

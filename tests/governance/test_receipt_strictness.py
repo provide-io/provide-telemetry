@@ -91,7 +91,7 @@ class _EmitPropertyRaises:
 
 @pytest.mark.parametrize("sink", [_NoEmit(), _EmitNotCallable(), _EmitPropertyRaises()])
 def test_a_sink_without_a_callable_emit_is_refused(sink: object) -> None:
-    with pytest.raises(ConfigurationError, match="callable emit"):
+    with pytest.raises(ConfigurationError, match=r"^receipt sink has no callable emit\(receipt\) method$"):
         enable_receipts(enabled=True, sink=cast(Any, sink))
     assert pii_mod._receipt_hook is None
 

@@ -57,11 +57,12 @@ def _mask_netloc_password(netloc: str) -> str:
     ``.port`` raises on a malformed port, ``.hostname`` lowercases the host and
     strips an IPv6 literal's brackets, and none of that is the masker's to
     change. The last ``@`` ends the userinfo and the first ``:`` ends the user,
-    the same split ``urllib`` makes.
+    the same split ``urllib`` makes. A password implies both separators, so
+    an authority without one has nothing to mask.
     """
-    userinfo, at, host = netloc.rpartition("@")
-    username, colon, password = userinfo.partition(":")
-    if not at or not colon or not password:
+    userinfo, _, host = netloc.rpartition("@")
+    username, _, password = userinfo.partition(":")
+    if not password:
         return netloc
     return f"{username}:****@{host}"
 

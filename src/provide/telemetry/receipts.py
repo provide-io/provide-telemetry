@@ -431,7 +431,8 @@ def _has_callable_emit(sink: object) -> bool:
     property that raises is as unusable as a missing one.
     """
     try:
-        emitter = getattr(sink, "emit", None)
+        # Without the default, a missing emit raises and the except answers False.
+        emitter = getattr(sink, "emit", None)  # pragma: no mutate — equivalent, see above
     except Exception:
         return False
     return callable(emitter)

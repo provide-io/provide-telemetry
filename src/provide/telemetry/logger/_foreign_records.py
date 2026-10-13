@@ -63,7 +63,8 @@ class _Cleaner:
 
     def attributes(self, attributes: dict[str, Any]) -> dict[str, Any]:
         """Harden keys and values the way harden_input hardens an event."""
-        return self._harden(None, "", attributes)
+        # harden_input's processor ignores the logger and method name it is given.
+        return self._harden(None, "", attributes)  # pragma: no mutate — equivalent, see above
 
     def value(self, value: object) -> object:
         """Harden one value the way harden_input hardens an attribute."""
@@ -105,7 +106,7 @@ class _Cleaner:
 def _safe_str(value: object) -> str | None:
     try:
         text = str(value)
-        text.encode("utf-8")
+        text.encode("utf-8")  # pragma: no mutate — codec names are case-insensitive aliases
     except Exception:
         return None
     return text
@@ -126,7 +127,7 @@ def _message(record: logging.LogRecord, cleaner: _Cleaner) -> object:
         return _HARDENED_PLACEHOLDER
     try:
         formatted = template % args
-        formatted.encode("utf-8")
+        formatted.encode("utf-8")  # pragma: no mutate — codec names are case-insensitive aliases
     except Exception:
         return _HARDENED_PLACEHOLDER
     return cleaner.text(formatted)
@@ -149,7 +150,14 @@ def _extras(record: logging.LogRecord, cleaner: _Cleaner) -> dict[str, Any]:
 # root (the lazy get_logger() path attaches beside what is there) finds it
 # already popped. Without this the nested record is sanitized, its digest is
 # redacted into another receipt, and the cycle never ends.
-_active = threading.local()
+class _ThreadState(threading.local):
+    # A class attribute rather than a getattr default: every thread starts idle,
+    # and the release below deletes the flag rather than storing another falsy
+    # value beside it.
+    busy = False
+
+
+_active = _ThreadState()
 
 
 def sanitize_foreign_record(record: logging.LogRecord) -> logging.LogRecord:
@@ -163,7 +171,7 @@ def sanitize_foreign_record(record: logging.LogRecord) -> logging.LogRecord:
         del clean.__dict__[key]
     clean.args = ()
     clean.msg = _HARDENED_PLACEHOLDER
-    if getattr(_active, "busy", False):
+    if _active.busy:
         return clean
     _active.busy = True
     try:
@@ -173,7 +181,7 @@ def sanitize_foreign_record(record: logging.LogRecord) -> logging.LogRecord:
     except Exception:
         return clean
     finally:
-        _active.busy = False
+        del _active.busy
     clean.msg = message
     clean.__dict__.update(extras)
     return clean

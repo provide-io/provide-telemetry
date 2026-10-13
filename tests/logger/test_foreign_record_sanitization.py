@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import threading
 from collections.abc import Iterator, Mapping
 from typing import Any
 
@@ -188,6 +189,21 @@ def test_a_receipt_logged_through_stdlib_does_not_feed_back_into_redaction(_clea
     assert len(lines) == 2
 
 
+class _BoundedReceiptSink(receipts_mod.LoggingReceiptSink):
+    """Stops logging receipts after a few, so a broken guard fails the test.
+
+    Without the bound, a guard that no longer holds turns the receipt cycle into
+    a loop that never returns, and the test hangs instead of failing.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def emit(self, receipt: receipts_mod.RedactionReceipt, /) -> bool:
+        self.calls += 1
+        return self.calls <= 20 and super().emit(receipt)
+
+
 def test_a_record_logged_during_sanitization_fails_closed_instead_of_recursing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -202,9 +218,8 @@ def test_a_record_logged_during_sanitization_fails_closed_instead_of_recursing(
     receipts_mod._reset_receipts_for_tests()
     with receipts_mod._lock:
         receipts_mod._test_mode = False
-    receipts_mod.enable_receipts(
-        enabled=True, signing_key="k", service_name="svc", sink=receipts_mod.LoggingReceiptSink()
-    )
+    sink = _BoundedReceiptSink()
+    receipts_mod.enable_receipts(enabled=True, signing_key="k", service_name="svc", sink=sink)
     try:
         logging.getLogger("third_party").warning("pw %(password)s", {"password": _PASSWORD})
     finally:
@@ -222,6 +237,7 @@ def test_a_record_logged_during_sanitization_fails_closed_instead_of_recursing(
     assert sum(line.startswith("telemetry.receipt ") for line in first_lines) == 2
     assert "***" in second_lines
     assert all(_PASSWORD not in line for line in first_lines + second_lines)
+    assert sink.calls == 2
 
 
 def test_the_guard_is_released_after_a_record(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -232,6 +248,14 @@ def test_the_guard_is_released_after_a_record(monkeypatch: pytest.MonkeyPatch) -
         patched.setattr(pii, "sanitize_payload", _boom)
         assert sanitize_foreign_record(_record("m %s", ("x",))).msg == "***"
     assert sanitize_foreign_record(_record("m %s", ("x",))).msg == "m x"
+
+
+def test_a_thread_that_never_sanitized_starts_unguarded() -> None:
+    results: list[object] = []
+    worker = threading.Thread(target=lambda: results.append(sanitize_foreign_record(_record("m %s", ("x",))).msg))
+    worker.start()
+    worker.join()
+    assert results == ["m x"]
 
 
 def test_the_receipt_sink_marks_its_record_as_the_sdks_own() -> None:
@@ -428,6 +452,13 @@ def test_extras_are_hardened_and_sanitized() -> None:
     assert clean.__dict__["key"] == "v"
     assert clean.__dict__["nested"] == {"token": "***"}
     assert "ke\x00y" not in clean.__dict__
+
+
+def test_extras_use_the_live_pii_depth(monkeypatch: pytest.MonkeyPatch) -> None:
+    nested = {"outer": {"password": _PASSWORD}}
+    assert sanitize_foreign_record(_record("m", None, **nested)).__dict__["outer"] == {"password": "***"}
+    _use_config(monkeypatch, TelemetryConfig(pii_max_depth=1))
+    assert sanitize_foreign_record(_record("m", None, **nested)).__dict__["outer"] == {"password": _PASSWORD}
 
 
 def test_an_extra_that_cleans_to_a_standard_field_cannot_overwrite_it() -> None:

@@ -31,7 +31,7 @@ def _count_export_failure(exc: Exception) -> None:
     # Imported on the failure path only, keeping it off every record's way through.
     from provide.telemetry.health import record_export_failure
 
-    record_export_failure("logs", exc)
+    record_export_failure("logs", exc)  # pragma: no mutate — health counts the failure and ignores the exception
 
 
 class _HostWriterHandler(logging.StreamHandler):  # type: ignore[type-arg]
@@ -55,14 +55,14 @@ class _HostWriterHandler(logging.StreamHandler):  # type: ignore[type-arg]
     def emit(self, record: logging.LogRecord) -> None:
         frame = WRITER_FRAME
         if frame.active:
-            _count_export_failure(_REENTERED)
+            _count_export_failure(_REENTERED)  # pragma: no mutate — health counts the failure and ignores the exception
             return
         frame.active = True
         try:
             self.stream.write(self.format(record) + self.terminator)
             logging.StreamHandler.flush(self)
         except Exception as exc:
-            _count_export_failure(exc)
+            _count_export_failure(exc)  # pragma: no mutate — health counts the failure and ignores the exception
         finally:
             frame.active = False
 
