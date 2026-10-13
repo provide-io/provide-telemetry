@@ -102,6 +102,24 @@ contract instead, which depends on the schema mode:
   `EventName("user", "", "ok")` and `ValidateEventName("a..b")` all return an
   error.
 
+#### Callsite through an adapter
+
+With `PROVIDE_LOG_INCLUDE_CALLER` on (the default), each record carries the
+`filename` and `lineno` of the call that logged it, taken from the slog record's
+program counter. A host that bridges another logging API onto slog — a gRPC
+`grpclog.LoggerV2`, a driver's logger interface — logs from inside its adapter,
+so `logger.Info` there names the adapter. `LogDepth` names the adapter's caller
+instead; depth 0 is the function calling `LogDepth`, depth 1 the one above it:
+
+```go
+func (a grpcAdapter) Infof(format string, args ...any) {
+    telemetry.LogDepth(context.Background(), a.logger, slog.LevelInfo, 1, fmt.Sprintf(format, args...))
+}
+```
+
+Standard library `log` output bridged with `slog.NewLogLogger` already names
+the right frame.
+
 #### Log output
 
 Rendered records go to `os.Stderr`. `WithLogOutput` sends them somewhere else:
