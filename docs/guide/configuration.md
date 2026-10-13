@@ -320,8 +320,7 @@ private CA plus basic auth) and checks every series it reads back.
 ## Serving Metrics for Prometheus to Scrape (Go, Python, TypeScript, C#, Rust)
 
 The Go, Python, TypeScript (Node only; the browser build has no pull support),
-C# and Rust SDKs can also serve metrics for Prometheus to pull; see
-`docs/plans/2026-10-10-prometheus-metrics-design.md`.
+C# and Rust SDKs can also serve metrics for Prometheus to pull.
 
 Add `prometheus` to `OTEL_METRICS_EXPORTER` (`prometheus` alone, or
 `otlp,prometheus` to push as well), then either mount the handler on a server
